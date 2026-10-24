@@ -366,22 +366,28 @@ function attachPageLog(page, errors, tag) {
   const devSync = await deviceOf(deviceId);
   check('本地态收到维护类指令：可送达且不改变模式', devSync.managed === false && devSync.desired && devSync.desired.cmd === 'sync', devSync.desired);
 
-  /* ---------- boot 恢复（显示端 reload） ---------- */
+  /* ---------- 页面重开（boot）：回归即本地控制（v6：移除断电重启自动恢复） ---------- */
   await send([deviceId], 'show', { entryId: 'env-monitor' });
   await waitUntil(() => page1.evaluate(() =>
     !!document.querySelector('#frameViewport iframe[data-for="env-monitor"]')), { label: 'show env' });
   await waitUntil(async () => !(await deviceOf(deviceId)).pending, { label: 'ack' });
   await page1.reload({ waitUntil: 'load' });
-  const okBoot = await waitUntil(() => page1.evaluate(() =>
-    !!document.querySelector('#frameViewport iframe[data-for="env-monitor"]')), { timeout: 12000, label: 'boot 恢复' });
-  const bootNoLock = await page1.evaluate(() => ({
-    lockedClass: document.body.classList.contains('ctl-locked'),
-    btnBack: getComputedStyle(document.getElementById('btnBack')).pointerEvents
-  }));
-  check('页面重开（boot）自动恢复设定画面，且依旧不锁定鼠标',
-    okBoot && bootNoLock.lockedClass === false && bootNoLock.btnBack !== 'none', bootNoLock);
+  const bootLocal = await waitUntil(async () => {
+    const d = await deviceOf(deviceId);
+    return d.managed === false && d.desired === null ? true : false;
+  }, { timeout: 10000, label: '回归即本地' });
+  const onHome = await waitUntil(() => page1.evaluate(() =>
+    !document.getElementById('homeScreen').hidden), { label: '重开后在首页' });
+  check('页面重开（boot）：回归即本地控制（managed=false、停留在首页，不再自动恢复）',
+    bootLocal && onHome);
 
   /* ---------- 控制台：群组下发（全选 home） ---------- */
+  // 先把 DEV2 拉回在线（久未心跳会被离线拦截正确跳过）
+  await beat2({ state: { mode: 'home' } });
+  await page2.click('#btnReload');
+  await waitUntil(() => page2.evaluate(() =>
+    Array.from(document.querySelectorAll('#deviceList .card'))
+      .every((c) => !!c.querySelector('.chip.onl-online'))), { label: '全部在线' });
   await page2.click('#btnAll');
   await page2.click('#btnHome');
   await page2.waitForTimeout(700);

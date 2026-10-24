@@ -43,7 +43,8 @@ const ALL_CMDS = [...DISPLAY_CMDS, ...MAINTAIN_CMDS];
 /** 场景 step 允许的指令（与展示类一致：场景就是一批展示指令的快照） */
 const SCENE_CMDS = DISPLAY_CMDS;
 const ONLINE_SEC = 10;
-const RECENT_SEC = 60;
+/** 离线判定阈值（秒）：回归（重开页面 / 断电重启 / 断网重连）超过该时长即回到本地控制 */
+const RECENT_SEC = Number(process.env.TVSHOW_CTL_RECENT_SEC) || 60;
 const MAX_DEVICES = 500;
 const MAX_SCENES = 50;
 const MAX_BODY_BYTES = 256 * 1024;
@@ -84,10 +85,6 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
       appVersion: String(raw.appVersion || '').slice(0, 20),
       registeredAt: raw.registeredAt || new Date().toISOString(),
       managed: raw.managed === true,
-      // bootRestore 仅注册时按 kind 定默认值，之后落盘值优先
-      bootRestore: raw.bootRestore === undefined || raw.bootRestore === null
-        ? kind !== 'tablet'
-        : raw.bootRestore === true,
       desired: normalizeDesired(raw.desired),
       ackedSeq: Number.isFinite(Number(raw.ackedSeq)) ? Number(raw.ackedSeq) : 0,
       // 以下为内存态（不落盘）
@@ -158,7 +155,6 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
         appVersion: d.appVersion,
         registeredAt: d.registeredAt,
         managed: d.managed,
-        bootRestore: d.bootRestore,
         desired: d.desired,
         ackedSeq: d.ackedSeq
       })),
@@ -286,6 +282,7 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
       // 连接来源 IP（仅内存，随 DHCP 变化属正常；控制台展示用）
       dev.remoteIp = normalizeIp(remoteAddr);
       dev.reported = state;
+      const prevLastSeen = dev.lastSeenAt; // 回归判定要用「上一次」心跳时间
       dev.lastSeenAt = Date.now();
 
       // 设备端脱离/交还意图（v6：受控端本地操作偏离指令画面时自动发送）。
@@ -314,11 +311,21 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
       }
       dev.ackedSeq = Math.max(dev.ackedSeq, Math.min(ackedSeq, d.seq));
 
-      // desired 下发规则（设计 §7.1）
+      // 回归即本地控制（v6 决议：移除「断电重启自动恢复」）——
+      // 页面重开（boot）或离线超过阈值后回归，丢弃未确认指令并交还本地，
+      // 之后由控制台重新下发才会再次接管。
+      const returning = boot ||
+        (prevLastSeen > 0 && Date.now() - prevLastSeen > RECENT_SEC * 1000);
+      if (returning && (dev.desired || dev.managed)) {
+        log(`[ctl] ${dev.id} 回归即本地控制（${boot ? '页面重开/重启' : '离线回归'}），丢弃未确认指令`);
+        dev.desired = null;
+        dev.managed = false;
+        dirty = true;
+      }
+
+      // desired 下发：仅当存在未确认指令（无任何恢复重发）
       let desired = null;
       if (dev.desired && dev.desired.seq > dev.ackedSeq) {
-        desired = { seq: dev.desired.seq, cmd: dev.desired.cmd, args: dev.desired.args };
-      } else if (boot && dev.managed && dev.bootRestore && dev.desired) {
         desired = { seq: dev.desired.seq, cmd: dev.desired.cmd, args: dev.desired.args };
       }
       // content：内容版本随心跳下发——客户端发现落后即立即强制同步
@@ -406,7 +413,6 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
           kind: d.kind,
           appVersion: d.appVersion,
           managed: d.managed,
-          bootRestore: d.bootRestore,
           desired: d.desired,
           ackedSeq: d.ackedSeq,
           pending: !!(d.desired && d.desired.seq > d.ackedSeq),
@@ -429,8 +435,7 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
         if (!name) throw bad('设备名不能为空');
         dev.name = name;
       }
-      if (body.bootRestore !== undefined) dev.bootRestore = body.bootRestore === true;
-      return { ok: true, device: { id: dev.id, name: dev.name, bootRestore: dev.bootRestore } };
+      return { ok: true, device: { id: dev.id, name: dev.name } };
     });
   }
 
@@ -537,15 +542,21 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
     });
   }
 
-  async function handleSceneApply(id) {
+  async function handleSceneApply(id, body) {
     const scene = data.scenes.find((s) => s.id === id);
     if (!scene) throw new HttpError(404, `场景「${id}」不存在`);
+    // 可选 targets：控制台离线拦截后只对在线设备下发（离线设备不排队指令）
+    const only = body && Array.isArray(body.targets) ? body.targets.map(String) : null;
     return mutate((d) => {
       const results = [];
       for (const step of scene.steps) {
         const dev = d.devices.find((x) => x.id === step.deviceId);
         if (!dev) {
           results.push({ id: step.deviceId, ok: false, reason: 'device-gone' });
+          continue;
+        }
+        if (only && !only.includes(step.deviceId)) {
+          results.push({ id: step.deviceId, ok: false, reason: 'offline-skipped' });
           continue;
         }
         d.seq += 1; // 场景应用逐台自增 seq（设计 §9.2）
@@ -682,7 +693,7 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
 
     const applyMatch = p.match(/^\/api\/ctl\/scenes\/([^/]+)\/apply$/);
     if (applyMatch && method === 'POST') {
-      sendJson(res, 200, await handleSceneApply(decodeURIComponent(applyMatch[1])), CORS);
+      sendJson(res, 200, await handleSceneApply(decodeURIComponent(applyMatch[1]), await readBody(req)), CORS);
       return;
     }
 

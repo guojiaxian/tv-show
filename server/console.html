@@ -65,9 +65,8 @@ main { flex: 1; overflow: auto; padding: 16px 22px; display: flex; flex-directio
 .card .nm { display: flex; align-items: center; gap: 8px; }
 .card .nm b { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card .st { margin-top: 4px; font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: #56617a; }
-.dot.online { background: #3FE0A6; }
-.dot.recent { background: #FFB020; }
+.chip.onl-online { color: #3FE0A6; border-color: rgba(63,224,166,.5); background: rgba(63,224,166,.08); }
+.chip.onl-offline { color: #FFB020; border-color: rgba(255,176,32,.55); background: rgba(255,176,32,.1); }
 .chip { border: 1px solid var(--line); border-radius: 999px; padding: 1px 9px; font-size: 11px; }
 .chip.remote { color: #9fe7ff; border-color: rgba(47,210,245,.5); background: rgba(47,210,245,.1); }
 .chip.local { color: #7df0c0; border-color: rgba(63,224,166,.4); }
@@ -373,9 +372,10 @@ footer select {
 
       var st = document.createElement('div');
       st.className = 'st';
-      var dot = document.createElement('span');
-      dot.className = 'dot ' + d.online;
-      dot.title = d.online === 'online' ? '在线' : d.online === 'recent' ? '刚离线' : '离线';
+      var onl = document.createElement('span');
+      onl.className = 'chip ' + (d.online === 'online' ? 'onl-online' : 'onl-offline');
+      onl.textContent = d.online === 'online' ? '在线' : '离线';
+      onl.title = d.online === 'online' ? '在线（心跳正常）' : d.online === 'recent' ? '刚离线（超过 10 秒无心跳）' : '离线（超过 60 秒无心跳，控制指令不发送）';
       var mode = document.createElement('span');
       mode.className = 'chip ' + (d.managed ? 'remote' : 'local');
       mode.textContent = d.managed ? '远程被控' : '本地控制';
@@ -388,7 +388,7 @@ footer select {
       }
       var sm = document.createElement('span');
       sm.textContent = summary(d);
-      st.appendChild(dot);
+      st.appendChild(onl);
       st.appendChild(mode);
       if (d.pending) {
         var pend = document.createElement('span');
@@ -489,9 +489,28 @@ footer select {
    * 下发指令。explicit 传入时对指定设备单台下发（卡片快捷操作）；
    * 否则作用于底部操作条的勾选集。
    */
+  /** 目标中的离线设备（指令不发送给离线设备：回归后仍是本地控制） */
+  function offlineAmong(ids) {
+    return ids.map(function (id) {
+      return state.devices.find(function (d) { return d.id === id; });
+    }).filter(function (d) { return d && d.online !== 'online'; });
+  }
+
   async function sendCmd(cmd, args, explicit) {
     var t = explicit || targets();
     if (!t) { toast('请先勾选目标设备'); return false; }
+    var off = offlineAmong(t);
+    if (off.length === t.length) {
+      var who = off.map(function (d) { return '「' + d.name + '」'; }).join('、');
+      confirmModal('设备已离线', who + ' 当前离线，指令不会发送（设备上线后仍是本地控制）。', [
+        { text: '知道了', run: function () {} }
+      ]);
+      return false;
+    }
+    if (off.length) {
+      toast('已跳过离线设备：' + off.map(function (d) { return d.name; }).join('、'));
+    }
+    t = t.filter(function (id) { return !off.some(function (d) { return d.id === id; }); });
     try {
       var json = await api('POST', '/api/ctl/send', { targets: t, cmd: cmd, args: args || {} });
       toast('已下发「' + cmd + '」→ ' + json.results.length + ' 台设备（≤3 秒生效）');
@@ -724,18 +743,38 @@ footer select {
       var btn = document.createElement('button');
       btn.className = 'btn apply';
       btn.textContent = s.name + '（' + s.steps.length + '）';
-      btn.title = '一键把 ' + s.steps.length + ' 台设备恢复到该场景（离线设备会补投递）';
-      btn.addEventListener('click', async function () {
-        try {
-          var json = await api('POST', '/api/ctl/scenes/' + encodeURIComponent(s.id) + '/apply');
-          var skipped = json.total - json.applied;
-          toast('场景「' + s.name + '」已下发 ' + json.applied + '/' + json.total +
-            (skipped ? '（' + skipped + ' 台设备已移除，跳过）' : ''));
-          refresh();
-        } catch (e) { toast('应用失败：' + e.message); }
-      });
+      btn.title = '一键把 ' + s.steps.length + ' 台设备恢复到该场景（离线设备不发送）';
+      btn.addEventListener('click', function () { applyScene(s); });
       host.appendChild(btn);
     });
+  }
+
+  /** 应用场景：离线设备不发送（回归后仍是本地控制）；部分离线先确认 */
+  function applyScene(scene) {
+    var onlineIds = scene.steps.filter(function (s) {
+      var d = state.devices.find(function (x) { return x.id === s.deviceId; });
+      return d && d.online === 'online';
+    }).map(function (s) { return s.deviceId; });
+    var offlineCount = scene.steps.length - onlineIds.length;
+    if (!onlineIds.length) { toast('场景内设备均已离线，未下发'); return; }
+    var go = function () {
+      api('POST', '/api/ctl/scenes/' + encodeURIComponent(scene.id) + '/apply', { targets: onlineIds })
+        .then(function (json) {
+          toast('场景「' + scene.name + '」已下发 ' + json.applied + '/' + json.total +
+            (offlineCount ? '（' + offlineCount + ' 台离线设备已跳过）' : ''));
+          refresh();
+        })
+        .catch(function (e) { toast('应用失败：' + e.message); });
+    };
+    if (offlineCount) {
+      confirmModal('部分设备离线', '场景内 ' + offlineCount + ' 台设备当前离线，将只对在线的 ' +
+        onlineIds.length + ' 台下发。', [
+        { text: '取消', run: function () {} },
+        { text: '仅对在线设备下发', primary: true, run: go }
+      ]);
+    } else {
+      go();
+    }
   }
 
   function saveSceneDialog() {

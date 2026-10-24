@@ -49,14 +49,9 @@ const beat = (deviceId, extra = {}) => api('POST', '/api/ctl/beat', { deviceId, 
   check('设备档案记录连接来源 IP（127.0.0.1）', !!dev1 && dev1.ip === '127.0.0.1', dev1 && dev1.ip);
   check('注册后出现在设备列表，默认名「新设备-xxxx」', !!dev1 && /^新设备-/.test(dev1.name), dev1);
   check('注册默认 managed=false（初次进入即本地控制）', !!dev1 && dev1.managed === false, dev1);
-  check('pc 设备 bootRestore 默认开', !!dev1 && dev1.bootRestore === true, dev1);
   check('无 desired 时响应 desired=null（无操作不重发）', (await beat('dev-aaaa1111')).json.desired === null);
 
-  r = await beat('dev-bbbb2222', { kind: 'tablet' });
-  r = await api('GET', '/api/ctl/devices');
-  const tab = r.json.devices.find((d) => d.id === 'dev-bbbb2222');
-  check('tablet 设备 bootRestore 默认关', tab && tab.bootRestore === false, tab);
-
+  await beat('dev-bbbb2222', { kind: 'tablet' });
   r = await beat('dev-cccc3333', { kind: 'tv' });
   check('tv 设备注册成功', r.status === 200 && r.json.ok === true);
 
@@ -93,24 +88,19 @@ const beat = (deviceId, extra = {}) => api('POST', '/api/ctl/beat', { deviceId, 
   check('ack 后 pending=false',
     r.json.devices.find((d) => d.id === 'dev-cccc3333').pending === false);
 
-  /* ---------- 3. boot 恢复 ---------- */
-  r = await beat('dev-aaaa1111', { boot: true, ackedSeq: seq1 });
-  check('受控 + bootRestore 开 → boot 无条件重发', r.json.desired && r.json.desired.seq === seq1, r.json.desired);
+  /* ---------- 3. 回归即本地控制（v6：移除断电重启自动恢复） ---------- */
+  // 受控 + 已确认（正在执行指令画面）的设备，页面重开（boot）后回到本地控制
+  await api('POST', '/api/ctl/send', { targets: ['dev-aaaa1111'], cmd: 'home' });
+  r = await beat('dev-aaaa1111');
+  const bootSeq = r.json.desired.seq;
+  await beat('dev-aaaa1111', { ackedSeq: bootSeq, state: { mode: 'home' } });
+  r = await beat('dev-aaaa1111', { boot: true });
+  check('受控设备页面重开（boot）→ 回归即本地控制（managed=false）', r.json.managed === false, r.json);
+  check('回归时不重发指令（desired=null）', r.json.desired === null, r.json);
 
-  // 本地控制态 boot 不重发
-  r = await api('POST', '/api/ctl/release', { targets: ['dev-aaaa1111'] });
-  check('release 受理', r.status === 200 && r.json.ok === true);
-  r = await beat('dev-aaaa1111', { boot: true, ackedSeq: 0 });
-  check('本地控制态 boot 不重发（managed=false）', r.json.desired === null, r.json);
-  check('release 后 managed=false', r.json.managed === false);
-
-  // bootRestore 关的受控设备 boot 不重发
-  await api('POST', '/api/ctl/send', { targets: ['dev-bbbb2222'], cmd: 'home' });
-  r = await api('GET', '/api/ctl/devices');
-  const tabSeq = r.json.devices.find((d) => d.id === 'dev-bbbb2222').desired.seq;
-  await beat('dev-bbbb2222', { ackedSeq: tabSeq });
-  r = await beat('dev-bbbb2222', { boot: true, ackedSeq: tabSeq });
-  check('bootRestore 关的受控设备 boot 不重发', r.json.desired === null, r.json);
+  // bootRestore 已随功能移除：PUT 不再接受该字段（忽略不报错）
+  r = await api('PUT', '/api/ctl/device/dev-aaaa1111', { bootRestore: false });
+  check('PUT 未知字段被忽略（不再有 bootRestore）', r.status === 200, r.status);
 
   /* ---------- 4. 模式开关 switchTo ---------- */
   await api('POST', '/api/ctl/send', { targets: ['dev-aaaa1111'], cmd: 'home' });
@@ -215,7 +205,7 @@ const beat = (deviceId, extra = {}) => api('POST', '/api/ctl/beat', { deviceId, 
   check('离线设备下发 → lastSeen 未变化（没有伪造心跳）',
     beforeDevices.devices.find((d) => d.id === 'dev-cccc3333').lastSeenAt ===
     afterDevices.devices.find((d) => d.id === 'dev-cccc3333').lastSeenAt);
-  // 恢复后第一拍领取
+  // 恢复后第一拍领取（间隔未超离线阈值，不算真离线）
   r = await beat('dev-cccc3333');
   check('离线设备恢复后第一拍即领取', r.json.desired && r.json.desired.cmd === 'show', r.json.desired);
 
@@ -224,8 +214,6 @@ const beat = (deviceId, extra = {}) => api('POST', '/api/ctl/beat', { deviceId, 
   check('改名生效', r.status === 200 && r.json.device.name === '一号电脑', r);
   r = await beat('dev-aaaa1111');
   check('心跳响应回显新名字', r.json.name === '一号电脑', r.json);
-  r = await api('PUT', '/api/ctl/device/dev-aaaa1111', { bootRestore: false });
-  check('bootRestore 可逐台关闭', r.json.device.bootRestore === false);
   r = await api('PUT', '/api/ctl/device/dev-none', { name: 'x' });
   check('更新不存在设备 404', r.status === 404);
 
@@ -234,8 +222,6 @@ const beat = (deviceId, extra = {}) => api('POST', '/api/ctl/beat', { deviceId, 
   r = await beat('dev-bbbb2222', { kind: 'tablet' });
   r = await api('GET', '/api/ctl/devices');
   check('删除后下次心跳重新注册（重置效果）', r.json.devices.some((d) => d.id === 'dev-bbbb2222'));
-  check('重新注册 bootRestore 回到 kind 默认（tablet=关）',
-    r.json.devices.find((d) => d.id === 'dev-bbbb2222').bootRestore === false);
 
   /* ---------- 10.5 脱离即交还：设备端 switchTo local 自动翻转为本地控制 ---------- */
   // 干净起点：下发 show 并 ack（受控态）
@@ -267,6 +253,7 @@ const beat = (deviceId, extra = {}) => api('POST', '/api/ctl/beat', { deviceId, 
   check('快照保存场景（受控设备取 desired）',
     r.status === 201 && r.json.scene && r.json.scene.steps.length >= 2, r.json);
   const sceneId = r.json.scene.id;
+  const sceneFirstTarget = r.json.scene.steps[0].deviceId;
   const showStep = r.json.scene.steps.find((s) => s.cmd === 'show' && s.args.entryId === 'env-monitor');
   check('快照 step 保留指令与参数', !!showStep, showStep);
 
@@ -284,6 +271,10 @@ const beat = (deviceId, extra = {}) => api('POST', '/api/ctl/beat', { deviceId, 
 
   // 应用场景：逐台 seq 自增 + 未受控设备自动接管
   await api('POST', '/api/ctl/release', { targets: ['*'] });
+  r = await api('POST', `/api/ctl/scenes/${sceneId}/apply`, { targets: [sceneFirstTarget] });
+  check('应用场景支持 targets 过滤（离线设备跳过不下发）',
+    r.status === 200 && r.json.applied === 1 &&
+    r.json.results.some((x) => x.reason === 'offline-skipped'), r.json);
   r = await api('POST', `/api/ctl/scenes/${sceneId}/apply`);
   check('应用场景返回 applied 计数', r.status === 200 && r.json.applied >= 2 && r.json.total >= 2, r.json);
   const applySeqs = r.json.results.map((x) => x.seq);
@@ -299,6 +290,28 @@ const beat = (deviceId, extra = {}) => api('POST', '/api/ctl/beat', { deviceId, 
   check('场景删除', r.status === 200);
   r = await api('POST', `/api/ctl/scenes/${sceneId}/apply`);
   check('应用已删场景 404', r.status === 404);
+
+  /* ---------- 11.5 真实离线（>60s）回归：即本地控制，排队指令丢弃 ---------- */
+  // 两台设备并行等待一次 61s：一台带未确认排队指令，一台已确认（正在执行）
+  await beat('dev-gggg7777'); // 先注册（在线）
+  await beat('dev-hhhh8888');
+  await api('POST', '/api/ctl/send', { targets: ['dev-gggg7777'], cmd: 'show', args: { entryId: 'env-monitor' } });
+  await beat('dev-gggg7777'); // 领取，未 ack（排队态）
+  await api('POST', '/api/ctl/send', { targets: ['dev-hhhh8888'], cmd: 'show', args: { entryId: 'storage-monitor' } });
+  r = await beat('dev-hhhh8888');
+  const hSeq = r.json.desired.seq;
+  await beat('dev-hhhh8888', { ackedSeq: hSeq, state: { mode: 'page', entryId: 'storage-monitor' } }); // 已确认跟随
+  console.log('等待 61 秒模拟真实离线回归……');
+  await sleep(61000);
+  r = await beat('dev-gggg7777');
+  check('真离线回归：离线期间排队的指令被丢弃（下次登录仍是本地控制）',
+    r.json.desired === null && r.json.managed === false, r.json);
+  r = await api('GET', '/api/ctl/devices');
+  check('真离线回归：待送达标记清除',
+    r.json.devices.find((d) => d.id === 'dev-gggg7777').pending === false);
+  r = await beat('dev-hhhh8888');
+  check('真离线回归：原本已在执行指令画面的受控设备同样回到本地控制',
+    r.json.managed === false && r.json.desired === null, r.json);
 
   /* ---------- 12. health 与 /console ---------- */
   r = await api('GET', '/api/admin/health');
@@ -319,8 +332,8 @@ const beat = (deviceId, extra = {}) => api('POST', '/api/ctl/beat', { deviceId, 
     const disk = JSON.parse(readFileSync(file, 'utf8'));
     check('落盘不含内存态字段（reported/lastSeenAt）',
       disk.devices.every((d) => d.reported === undefined && d.lastSeenAt === undefined));
-    check('落盘保留 managed/desired/bootRestore',
-      disk.devices.every((d) => 'managed' in d && 'bootRestore' in d));
+    check('落盘保留 managed/desired',
+      disk.devices.every((d) => 'managed' in d));
   }
 
   /* ---------- 汇总 ---------- */

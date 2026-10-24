@@ -1,5 +1,5 @@
 {
-  "seq": 7,
+  "seq": 9,
   "devices": [
     {
       "id": "dev-e8952f98",
@@ -10,7 +10,7 @@
       "managed": false,
       "bootRestore": true,
       "desired": null,
-      "ackedSeq": 7
+      "ackedSeq": 8
     },
     {
       "id": "dev-ec4f1e40",
@@ -18,9 +18,16 @@
       "kind": "pc",
       "appVersion": "2.0-web",
       "registeredAt": "2026-10-24T11:47:31.437Z",
-      "managed": false,
+      "managed": true,
       "bootRestore": true,
-      "desired": null,
+      "desired": {
+        "seq": 9,
+        "cmd": "show",
+        "args": {
+          "entryId": "env-monitor"
+        },
+        "issuedAt": "2026-10-24T17:27:29.794Z"
+      },
       "ackedSeq": 5
     }
   ],
