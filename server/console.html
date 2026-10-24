@@ -34,7 +34,8 @@ header .sub { color: var(--muted); font-size: 12px; }
 header .spacer { flex: 1; }
 .btn {
   background: var(--panel2); color: var(--text); border: 1px solid var(--line);
-  border-radius: 9px; padding: 7px 14px; font-size: 13px; cursor: pointer; white-space: nowrap;
+  border-radius: 9px; padding: 7px 14px; font-size: 13px; cursor: pointer;
+  white-space: nowrap; line-height: 1.5; display: inline-flex; align-items: center; justify-content: center;
 }
 .btn:hover { border-color: rgba(47,210,245,.5); }
 .btn.primary { background: rgba(47,210,245,.16); border-color: rgba(47,210,245,.55); color: #bfeeff; }
@@ -166,8 +167,8 @@ footer select {
 <footer>
   <span class="sel-info" id="selInfo">未勾选设备</span>
   <select id="selEntry"><option value="">显示页面…</option></select>
-  <button class="btn" id="btnRotate">轮询…</button>
-  <button class="btn" id="btnZone">2×2 分屏…</button>
+  <button class="btn" id="btnRotate">轮询</button>
+  <button class="btn" id="btnZone">2×2 分屏</button>
   <button class="btn" id="btnHome">回首页</button>
   <button class="btn" id="btnRelease">取消控制</button>
   <button class="btn" id="btnRefreshCmd">刷新当前页</button>
@@ -438,12 +439,12 @@ footer select {
         sendCmd('show', { entryId: sel.value }, [d.id]);
       });
       ops.appendChild(sel);
-      ['轮询…', '分屏…'].forEach(function (label) {
+      ['轮询', '分屏'].forEach(function (label) {
         var b = document.createElement('button');
         b.className = 'btn';
         b.textContent = label;
         b.addEventListener('click', function () {
-          if (label === '轮询…') rotateDialog([d.id]);
+          if (label === '轮询') rotateDialog([d.id]);
           else zoneDialog([d.id]);
         });
         ops.appendChild(b);

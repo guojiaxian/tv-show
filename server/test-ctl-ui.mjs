@@ -250,7 +250,7 @@ function attachPageLog(page, errors, tag) {
   });
   check('卡片右侧单台快捷操作齐全（当前画面下拉 + 轮询/分屏/取消控制 + 重命名，无开机恢复按钮）',
     !!tvCardOps && tvCardOps.selOptions > 1 && tvCardOps.selSelected === '首页' &&
-    ['轮询…', '分屏…', '取消控制', '重命名'].every((t) => tvCardOps.buttons.includes(t)) &&
+    ['轮询', '分屏', '取消控制', '重命名'].every((t) => tvCardOps.buttons.includes(t)) &&
     !tvCardOps.buttons.some((t) => t.includes('开机恢复')), tvCardOps);
 
   // 不勾选任何设备，直接用 TV 卡片的下拉对它单台下发 show
@@ -275,7 +275,7 @@ function attachPageLog(page, errors, tag) {
   check('显示页面下拉显示设备当前画面（选中正在显示的页）', !!selNow, selNow);
 
   // 卡片「轮询…」弹层单台路径：标题带目标设备名，下发仅作用于该台
-  await page2.click('.card:has(.kind:text-is("TV")) .ops .btn:text-is("轮询…")');
+  await page2.click('.card:has(.kind:text-is("TV")) .ops .btn:text-is("轮询")');
   const soloTitle = await page2.evaluate(() => {
     const h = document.querySelector('.modal header p');
     return h ? h.textContent : '';
@@ -313,6 +313,32 @@ function attachPageLog(page, errors, tag) {
       JSON.stringify(d.reported.rotate.items) === JSON.stringify(['storage-monitor', 'env-monitor']);
   }, { label: 'reported=rotate' });
   check('服务端视角 reported.mode=rotate（含 items 序列）', repRotate);
+
+  /* ---------- 展示页全屏：顶栏全屏按钮 + 全屏时隐藏顶栏 ---------- */
+  // 轮询态即展示态：displayTools 里应有「全屏」按钮（在「重置」与「直连模式」之间）
+  const fsBtn = await page1.evaluate(() => {
+    const tools = Array.from(document.querySelectorAll('#displayTools > .btn')).map((b) => b.textContent.trim());
+    const btn = document.getElementById('btnDisplayFullscreen');
+    return { tools: tools.join('|'), present: !!btn };
+  });
+  check('展示页顶栏有「全屏」按钮（位于「重置」与「直连模式」之间）',
+    fsBtn.present && /重置\|全屏\|直连模式/.test(fsBtn.tools), fsBtn.tools);
+  // 点击进入全屏：顶栏隐藏（真全屏），画面容器变高
+  await page1.click('#btnDisplayFullscreen');
+  await page1.waitForTimeout(600);
+  const fsState = await page1.evaluate(() => ({
+    fullscreen: !!document.fullscreenElement,
+    topbarHidden: getComputedStyle(document.getElementById('topbar')).display === 'none'
+  }));
+  check('点击全屏：进入全屏且顶栏隐藏（真全屏）', fsState.fullscreen && fsState.topbarHidden, fsState);
+  // 退出全屏：顶栏恢复（用户路径为 Esc / F11 / F；顶栏此时已隐藏，测试用 API 退出）
+  await page1.evaluate(() => document.exitFullscreen());
+  await page1.waitForTimeout(600);
+  const fsExit = await page1.evaluate(() => ({
+    fullscreen: !!document.fullscreenElement,
+    topbarHidden: getComputedStyle(document.getElementById('topbar')).display === 'none'
+  }));
+  check('退出全屏：顶栏恢复显示', !fsExit.fullscreen && !fsExit.topbarHidden, fsExit);
 
   await send([deviceId], 'zone', { slots: ['storage-monitor', null, 'env-monitor', 'security-cockpit'] });
   const okZone = await waitUntil(() => page1.evaluate(() =>

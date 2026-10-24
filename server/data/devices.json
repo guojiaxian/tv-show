@@ -1,5 +1,5 @@
 {
-  "seq": 7,
+  "seq": 8,
   "devices": [
     {
       "id": "dev-e8952f98",
@@ -7,9 +7,24 @@
       "kind": "pc",
       "appVersion": "2.0-web",
       "registeredAt": "2026-10-24T11:30:15.841Z",
-      "managed": false,
+      "managed": true,
       "bootRestore": true,
-      "desired": null,
+      "desired": {
+        "seq": 8,
+        "cmd": "rotate",
+        "args": {
+          "intervalSec": 20,
+          "items": [
+            "storage-monitor",
+            "env-monitor",
+            "security-cockpit",
+            "entry-7f1eb4",
+            "entry-a7ab1b"
+          ],
+          "phaseSync": false
+        },
+        "issuedAt": "2026-10-24T15:17:13.412Z"
+      },
       "ackedSeq": 7
     },
     {

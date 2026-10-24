@@ -7,16 +7,9 @@
       "kind": "pc",
       "appVersion": "2.0-web",
       "registeredAt": "2026-10-24T11:30:15.841Z",
-      "managed": true,
+      "managed": false,
       "bootRestore": true,
-      "desired": {
-        "seq": 7,
-        "cmd": "show",
-        "args": {
-          "entryId": "entry-a7ab1b"
-        },
-        "issuedAt": "2026-10-24T13:24:45.610Z"
-      },
+      "desired": null,
       "ackedSeq": 7
     },
     {

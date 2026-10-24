@@ -37,6 +37,8 @@ button, a.btn, select, input { font-family: inherit; }
   height: 58px; display: flex; align-items: center; gap: 16px;
   padding: 0 18px; background: var(--bg2); border-bottom: 1px solid var(--line);
 }
+/* 真全屏（全屏按钮 / F / F11）：隐藏顶栏，画面占满整屏 */
+body.fs-mode #topbar { display: none !important; }
 .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .logo {
   width: 28px; height: 28px; border-radius: 8px; flex: none;
@@ -389,6 +391,7 @@ select {
       <span class="src-chip" id="zoomChip">100%</span>
       <button class="btn" id="btnZoomIn" title="放大（+）">＋</button>
       <button class="btn" id="btnZoomReset" title="重置缩放（0）">重置</button>
+      <button class="btn" id="btnDisplayFullscreen" title="全屏演示（F / Esc 退出；全屏时隐藏顶栏）">全屏</button>
       <button class="btn" id="btnMode" title="直连 / 代理 切换">直连</button>
       <button class="btn" id="btnOpenTab" title="在浏览器新标签打开原地址">原址打开</button>
       <button class="btn" id="btnMenu" title="控制菜单（M）">菜单</button>
@@ -989,6 +992,7 @@ select {
   var el = {};
   ['appTitle','appSubtitle','brandTitle','brandSub','clockTime','clockDate','grid',
    'btnSync','btnRotation','btnZones','btnSettings','btnFullscreen','btnAdmin','btnConsole',
+   'btnDisplayFullscreen',
    'btnMore','moreMenu','btnTurbo',
    'homeScreen','displayScreen','cameraScreen','zoneScreen','settingsScreen',
    'cameraTools','camGrid','btnCamBack','btnCamLayout','btnCamRefresh',
@@ -2440,12 +2444,40 @@ select {
   }
 
   function syncFullscreenButton() {
-    el.btnFullscreen.textContent = isFullscreen() ? '退出全屏' : '全屏';
-    el.btnFullscreen.classList.toggle('on', isFullscreen());
+    var fs = isFullscreen();
+    el.btnFullscreen.textContent = fs ? '退出全屏' : '全屏';
+    el.btnFullscreen.classList.toggle('on', fs);
+    if (el.btnDisplayFullscreen) {
+      el.btnDisplayFullscreen.textContent = fs ? '退出全屏' : '全屏';
+      el.btnDisplayFullscreen.classList.toggle('on', fs);
+    }
     setTimeout(applyZoom, 120); // 全屏切换后容器尺寸变了，重算缩放
     setTimeout(scaleZoneCells, 120);
   }
   document.addEventListener('fullscreenchange', syncFullscreenButton);
+  document.addEventListener('fullscreenchange', syncTopbarVisibility);
+
+  /**
+   * 真全屏：进入全屏（按钮 / F）或 F11（浏览器外壳全屏，无法监听事件，
+   * 用 outerHeight - innerHeight < 50 启发式识别）时隐藏顶栏，画面占满整屏；
+   * 退出（Esc / F11）自动恢复。每次显隐后重算缩放。
+   */
+  function isFsLike() {
+    if (isFullscreen()) return true;
+    // 自动化环境（无头浏览器）没有浏览器外壳，outer==inner 恒成立，启发式失真——直接排除
+    if (navigator.webdriver) return false;
+    return window.outerHeight > 0 && window.innerHeight > 0 &&
+      window.outerHeight - window.innerHeight < 50;
+  }
+  var topbarFsState = false;
+  function syncTopbarVisibility() {
+    var fs = isFsLike();
+    if (fs === topbarFsState) return;
+    topbarFsState = fs;
+    document.body.classList.toggle('fs-mode', fs);
+    setTimeout(function () { applyZoom(); scaleZoneCells(); }, 150);
+  }
+  window.addEventListener('resize', syncTopbarVisibility);
 
   window.addEventListener('beforeunload', function (e) {
     if (CFG.exitConfirm && local.exitGuard) {
@@ -2585,6 +2617,7 @@ select {
   el.btnZones.addEventListener('click', openZones);
   el.btnSettings.addEventListener('click', openSettings);
   el.btnFullscreen.addEventListener('click', toggleFullscreen);
+  el.btnDisplayFullscreen.addEventListener('click', toggleFullscreen);
   // 设备控制：新标签打开独立控制台（显示端页面保持显示不受干扰）
   el.btnConsole.addEventListener('click', function () {
     window.open('/console', '_blank', 'noopener');
