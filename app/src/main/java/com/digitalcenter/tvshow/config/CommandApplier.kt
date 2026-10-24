@@ -120,7 +120,7 @@ object CommandApplier {
     private fun applyZone(activity: Activity, args: JSONObject) {
         val context = activity.applicationContext
         val slots = args.optJSONArray("slots")
-        val zones = (0 until LocalSettings.ZONE_COUNT).map { pos ->
+        val zones = (0 until com.digitalcenter.tvshow.config.ZONE_COUNT).map { pos ->
             val id = slots?.optString(pos).orEmpty()
             ZoneSetting(position = pos, entryId = id)
         }

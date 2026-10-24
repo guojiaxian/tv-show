@@ -26,6 +26,7 @@ import com.digitalcenter.tvshow.config.TurboSetting
 import com.digitalcenter.tvshow.databinding.ActivityMainBinding
 import com.digitalcenter.tvshow.databinding.ItemEntryCardBinding
 import com.digitalcenter.tvshow.net.ConfigRepository
+import com.digitalcenter.tvshow.net.ControlChannel
 import com.digitalcenter.tvshow.util.UiUtil
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -77,6 +78,8 @@ class MainActivity : AppCompatActivity() {
 
         // 先完成同步层初始化（同步返回，不阻塞），再用本地内容渲染首屏
         ConfigRepository.init(this)
+        // 多设备互控：注册受控通道（心跳 + 领指令；幂等，全部 Activity 只初始化一次）
+        ControlChannel.init(this)
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -103,6 +106,8 @@ class MainActivity : AppCompatActivity() {
         handler.post(clockTask)
         // 从设置界面返回后，轮询开关/序列可能已变，重新读取本机设置
         rotationSetting = LocalSettings.rotation(this)
+        // 多设备互控：回首页即上报 home（随下一拍心跳）
+        ControlChannel.reportHome()
         // 回到前台时补一次同步（受最小间隔限制，避免频繁请求）
         if (binding.root.isLaidOut) syncFromServer(force = false)
     }
@@ -118,6 +123,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        // 远程被控时锁定展示操作（【菜单】豁免——菜单首项即控制模式开关，是唯一本地出口）
+        if (ControlChannel.interceptKeyLocked(keyCode, this)) return true
         showKeyHint()
         if (keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_INFO) {
             showHomeMenu()
@@ -132,23 +139,29 @@ class MainActivity : AppCompatActivity() {
      * 「轮询展示」「分区展示」都是**直接进入展示页**：
      * 轮询的开关/页面/间隔、分区的每格内容，都在各自展示页里按【菜单】/【确定】现场调整，
      * 因此首页不再需要单独的设置入口。
+     * 首项固定为「控制模式」开关（多设备互控，设计 §8.2）；远程被控态下菜单只保留该开关与关闭。
      */
     private fun showHomeMenu() {
         val labels = ArrayList<String>()
         val actions = ArrayList<() -> Unit>()
 
-        labels.add(getString(R.string.menu_sync_now))
-        actions.add { syncFromServer(force = true) }
+        labels.add(CtlUi.modeMenuLabel(this))
+        actions.add { CtlUi.toggleMode(this) }
 
-        labels.add(getString(R.string.menu_rotation_display))
-        actions.add { startRotation() }
+        if (!ControlChannel.locked) {
+            labels.add(getString(R.string.menu_sync_now))
+            actions.add { syncFromServer(force = true) }
 
-        labels.add(getString(R.string.menu_zone_display))
-        actions.add { startActivity(Intent(this, ZoneDisplayActivity::class.java)) }
+            labels.add(getString(R.string.menu_rotation_display))
+            actions.add { startRotation() }
 
-        // 极速模式本机总开关：翻转后不强制刷新首页（首页无 WebView，下次进入展示页即生效）
-        labels.add(turboMenuLabel())
-        actions.add { toggleTurbo() }
+            labels.add(getString(R.string.menu_zone_display))
+            actions.add { startActivity(Intent(this, ZoneDisplayActivity::class.java)) }
+
+            // 极速模式本机总开关：翻转后不强制刷新首页（首页无 WebView，下次进入展示页即生效）
+            labels.add(turboMenuLabel())
+            actions.add { toggleTurbo() }
+        }
 
         labels.add(getString(R.string.menu_cancel))
         actions.add { }

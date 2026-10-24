@@ -34,10 +34,12 @@ import com.digitalcenter.tvshow.config.DisplayEntry
 import com.digitalcenter.tvshow.config.LocalSettings
 import com.digitalcenter.tvshow.config.RotationSetting
 import com.digitalcenter.tvshow.config.TurboSetting
+import com.digitalcenter.tvshow.config.CommandApplier
 import com.digitalcenter.tvshow.config.displayUrlOf
 import com.digitalcenter.tvshow.config.effectiveUrlOf
 import com.digitalcenter.tvshow.databinding.ActivityWebBinding
 import com.digitalcenter.tvshow.net.ConfigRepository
+import com.digitalcenter.tvshow.net.ControlChannel
 import com.digitalcenter.tvshow.util.UiUtil
 import com.digitalcenter.tvshow.util.ViewportFit
 import org.json.JSONObject
@@ -47,7 +49,7 @@ import kotlin.math.roundToInt
  * 大屏展示页：使用 WebView 加载指定 IP + 端口的展示页面，
  * 并将电视遥控器按键映射到网页元素（焦点移动 / 触发点击）。
  */
-class WebDisplayActivity : AppCompatActivity() {
+class WebDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
 
     companion object {
         const val EXTRA_ENTRY_ID = "extra_entry_id"
@@ -529,6 +531,20 @@ class WebDisplayActivity : AppCompatActivity() {
         else if (viaCompatProxy) Log.i(TAG, "兼容转译：改经服务端代理加载 $target")
         showLoading()
         webView.loadUrl(target)
+        // 多设备互控：上报当前状态（单页与轮询切页都经过这里，一处覆盖全部路径）
+        if (rotationActive) {
+            ControlChannel.reportRotate(
+                rotationIndex, rotationEntries.size,
+                rotationSetting.intervalSec, rotationSetting.items
+            )
+        } else {
+            ControlChannel.reportPage(e.id)
+        }
+    }
+
+    /** 维护类指令 refresh 的落点（[CommandApplier] 经栈顶 Activity 调用） */
+    override fun reloadCurrent() {
+        reloadPage()
     }
 
     private fun reloadPage() {
@@ -762,6 +778,8 @@ class WebDisplayActivity : AppCompatActivity() {
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+            // 远程被控时锁定展示操作（【菜单】豁免——菜单首项即控制模式开关，是唯一本地出口）
+            if (ControlChannel.interceptKeyLocked(event.keyCode, this)) return true
             when (event.keyCode) {
                 // 返回键：直接回到首页，避免在网页历史中迷失
                 KeyEvent.KEYCODE_BACK -> {
@@ -808,36 +826,46 @@ class WebDisplayActivity : AppCompatActivity() {
         val labels = ArrayList<String>()
         val actions = ArrayList<() -> Unit>()
 
-        // 轮询播放模式下，再按一次【菜单】即进入轮询设置
-        if (rotationActive) {
-            labels.add(getString(R.string.menu_rotation_settings))
-            actions.add { startActivity(Intent(this, SettingsActivity::class.java)) }
-        }
+        // 首项固定为控制模式开关（多设备互控，设计 §8.2）
+        labels.add(CtlUi.modeMenuLabel(this))
+        actions.add { CtlUi.toggleMode(this) }
 
-        labels.add(getString(R.string.menu_refresh))
-        actions.add { reloadPage() }
+        // 远程被控态下其余条目属于被锁定的展示操作，裁剪掉（设计 §8.2）
+        if (!ControlChannel.locked) {
+            // 轮询播放模式下，再按一次【菜单】即进入轮询设置
+            if (rotationActive) {
+                labels.add(getString(R.string.menu_rotation_settings))
+                actions.add { startActivity(Intent(this, SettingsActivity::class.java)) }
+            }
 
-        // 极速模式开关：翻转后立即用新地址重载当前页（单页/轮询均生效）
-        labels.add(
-            getString(
-                if (LocalSettings.turbo(this).enabled) R.string.menu_turbo_on
-                else R.string.menu_turbo_off
+            labels.add(getString(R.string.menu_refresh))
+            actions.add { reloadPage() }
+
+            // 极速模式开关：翻转后立即用新地址重载当前页（单页/轮询均生效）
+            labels.add(
+                getString(
+                    if (LocalSettings.turbo(this).enabled) R.string.menu_turbo_on
+                    else R.string.menu_turbo_off
+                )
             )
-        )
-        actions.add { toggleTurboAndReload() }
+            actions.add { toggleTurboAndReload() }
 
-        if (webView.canGoBack()) {
-            labels.add(getString(R.string.menu_back))
-            actions.add { webView.goBack() }
+            if (webView.canGoBack()) {
+                labels.add(getString(R.string.menu_back))
+                actions.add { webView.goBack() }
+            }
+            labels.add(getString(R.string.menu_zoom_in))
+            actions.add { changeZoom(ZOOM_STEP) }
+            labels.add(getString(R.string.menu_zoom_out))
+            actions.add { changeZoom(-ZOOM_STEP) }
+            labels.add(getString(R.string.menu_zoom_reset))
+            actions.add { changeZoom(100 - zoomPercent) }
+            labels.add(getString(R.string.menu_home))
+            actions.add { finish() }
         }
-        labels.add(getString(R.string.menu_zoom_in))
-        actions.add { changeZoom(ZOOM_STEP) }
-        labels.add(getString(R.string.menu_zoom_out))
-        actions.add { changeZoom(-ZOOM_STEP) }
-        labels.add(getString(R.string.menu_zoom_reset))
-        actions.add { changeZoom(100 - zoomPercent) }
-        labels.add(getString(R.string.menu_home))
-        actions.add { finish() }
+
+        labels.add(getString(R.string.menu_cancel))
+        actions.add { }
 
         val subtitle = "${info.title}  ·  ${info.url}  ·  缩放 ${zoomPercent}%"
         controlDialog = TvDialogs.menu(
@@ -857,6 +885,15 @@ class WebDisplayActivity : AppCompatActivity() {
         if (rotationActive) {
             syncRotationSettings()
             scheduleRotation()
+        }
+        // 多设备互控：回到前台时按当前模式补一次上报（startLoad 已覆盖切页路径）
+        if (rotationActive) {
+            ControlChannel.reportRotate(
+                rotationIndex, rotationEntries.size,
+                rotationSetting.intervalSec, rotationSetting.items
+            )
+        } else {
+            entry?.let { ControlChannel.reportPage(it.id) }
         }
     }
 

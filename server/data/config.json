@@ -1,10 +1,10 @@
 {
-  "version": 168,
+  "version": 171,
   "epoch": 9,
   "metaRev": 168,
   "orderRev": 86,
   "prunedBeforeRev": 0,
-  "updatedAt": "2026-10-07T14:50:26.089Z",
+  "updatedAt": "2026-10-24T08:40:15.791Z",
   "appTitle": "数智资源中心大屏聚合平台",
   "appSubtitle": "DIGITAL CENTER · DISPLAY HUB",
   "exitConfirm": true,
@@ -74,7 +74,7 @@
       "spaHistory": false,
       "compatTranspile": false,
       "compatTarget": "",
-      "turboEnabled": true,
+      "turboEnabled": false,
       "turboIntervalSec": 0.5,
       "turboQuality": 75,
       "autoLogin": {
@@ -86,7 +86,7 @@
         "submitSelector": "#loginBtn",
         "successSelector": ""
       },
-      "rev": 165
+      "rev": 170
     },
     {
       "id": "entry-7f1eb4",
@@ -206,6 +206,10 @@
     {
       "id": "preview-sync-x",
       "rev": 154
+    },
+    {
+      "id": "entry-828718",
+      "rev": 171
     }
   ]
 }

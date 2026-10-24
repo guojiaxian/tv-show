@@ -183,25 +183,25 @@ object ControlChannel {
      * 现场交还本地：立即解锁、画面保持；意图随下一拍心跳送达服务端。
      * 二次确认由调用方（菜单项）用 TvDialogs.confirm 完成。
      */
-    fun switchToLocal(context: Context) {
-        applyMode(remote = false, silent = false, context = context)
+    fun switchToLocal(activity: Activity) {
+        applyMode(remote = false, silent = false, activity = activity)
         switchIntent = "local"
     }
 
     /** 现场主动进入远程被控（本地态下菜单里选择「远程被控」）：直接生效，无需确认 */
-    fun switchToRemote(context: Context) {
-        applyMode(remote = true, silent = false, context = context)
+    fun switchToRemote(activity: Activity) {
+        applyMode(remote = true, silent = false, activity = activity)
         switchIntent = "remote"
     }
 
     /** 模式影子翻转 + 角标 + 提示；立即生效，不等网络（服务端失联时照常工作） */
-    private fun applyMode(remote: Boolean, silent: Boolean, context: Context? = null) {
+    private fun applyMode(remote: Boolean, silent: Boolean, activity: Activity? = null) {
         if (localMode == !remote) return
         localMode = !remote
-        val activity = context ?: currentActivity
-        activity?.let { mainHandler.post { refreshBadge(it) } }
+        val target = activity ?: currentActivity
+        target?.let { mainHandler.post { refreshBadge(it) } }
         if (!silent) {
-            val ctx = context ?: return
+            val ctx: Context = target ?: return
             mainHandler.post {
                 Toast.makeText(
                     ctx,
@@ -363,7 +363,7 @@ object ControlChannel {
         if (switchIntent == null) {
             if (!managed && !localMode) {
                 val activity = currentActivity
-                applyMode(remote = false, silent = false, context = activity)
+                applyMode(remote = false, silent = false, activity = activity)
                 activity?.let {
                     mainHandler.post {
                         Toast.makeText(it, "控制端已交还本地控制", Toast.LENGTH_SHORT).show()
@@ -371,7 +371,7 @@ object ControlChannel {
                 }
             } else if (managed && localMode) {
                 val activity = currentActivity
-                applyMode(remote = true, silent = true, context = activity)
+                applyMode(remote = true, silent = true, activity = activity)
             }
         }
     }
@@ -382,6 +382,6 @@ object ControlChannel {
     /** 供 CommandApplier 在应用展示类指令后置受控态（本地无 Toast：切画面本身就是信号） */
     fun onDisplayCommandApplied() {
         val activity = currentActivity
-        applyMode(remote = true, silent = true, context = activity)
+        applyMode(remote = true, silent = true, activity = activity)
     }
 }

@@ -21,6 +21,7 @@ import com.digitalcenter.tvshow.config.RotationSetting
 import com.digitalcenter.tvshow.databinding.ActivitySettingsBinding
 import com.digitalcenter.tvshow.databinding.ItemSettingRowBinding
 import com.digitalcenter.tvshow.net.ConfigRepository
+import com.digitalcenter.tvshow.net.ControlChannel
 import com.digitalcenter.tvshow.util.UiUtil
 
 /**
@@ -66,6 +67,18 @@ class SettingsActivity : AppCompatActivity() {
         binding.settingsHint.text = getString(R.string.rotation_settings_hint)
 
         renderRows()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // 多设备互控：上报本机设置界面（远程指令到达时此页会被 CLEAR_TOP 切走）
+        ControlChannel.reportSettings()
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        // 远程被控时锁定设置操作（【菜单】豁免——可切回本地控制）
+        if (ControlChannel.interceptKeyLocked(keyCode, this)) return true
+        return super.onKeyDown(keyCode, event)
     }
 
     /* ---------------- 行渲染 ---------------- */

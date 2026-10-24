@@ -34,8 +34,10 @@ import com.digitalcenter.tvshow.config.ZONE_MIN_HEIGHT
 import com.digitalcenter.tvshow.config.ZONE_MIN_WIDTH
 import com.digitalcenter.tvshow.config.ZoneSetting
 import com.digitalcenter.tvshow.config.TurboSetting
+import com.digitalcenter.tvshow.config.CommandApplier
 import com.digitalcenter.tvshow.config.effectiveUrlOf
 import com.digitalcenter.tvshow.net.ConfigRepository
+import com.digitalcenter.tvshow.net.ControlChannel
 import com.digitalcenter.tvshow.util.UiUtil
 import com.digitalcenter.tvshow.util.ViewportFit
 import kotlin.math.roundToInt
@@ -60,7 +62,7 @@ import kotlin.math.roundToInt
  *  - 在 1920×1080 的普通电视上，每格 960×540 → 页面仍按 1920×1080 布局后整体缩放。
  * 这样"每个分区不低于 1920×1080"这一标准在客户端真正落地。
  */
-class ZoneDisplayActivity : AppCompatActivity() {
+class ZoneDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
 
     companion object {
         private const val TAG = "ZoneDisplay"
@@ -487,6 +489,7 @@ class ZoneDisplayActivity : AppCompatActivity() {
             renderCell(position)
             flashZone(position)
             updateHint()
+            ControlChannel.reportZone(cellEntries.map { it?.id.orEmpty() })
             Toast.makeText(
                 this,
                 getString(R.string.zone_selected, position + 1, cellLabel(position)),
@@ -504,20 +507,26 @@ class ZoneDisplayActivity : AppCompatActivity() {
         val labels = ArrayList<String>()
         val actions = ArrayList<() -> Unit>()
 
-        labels.add(getString(R.string.menu_zone_refresh))
-        actions.add { reloadAll() }
+        // 首项固定为控制模式开关（多设备互控，设计 §8.2）
+        labels.add(CtlUi.modeMenuLabel(this))
+        actions.add { CtlUi.toggleMode(this) }
 
-        // 极速模式开关：翻转后 4 格全部按新地址重载
-        labels.add(
-            getString(
-                if (LocalSettings.turbo(this).enabled) R.string.menu_turbo_on
-                else R.string.menu_turbo_off
+        if (!ControlChannel.locked) {
+            labels.add(getString(R.string.menu_zone_refresh))
+            actions.add { reloadAll() }
+
+            // 极速模式开关：翻转后 4 格全部按新地址重载
+            labels.add(
+                getString(
+                    if (LocalSettings.turbo(this).enabled) R.string.menu_turbo_on
+                    else R.string.menu_turbo_off
+                )
             )
-        )
-        actions.add { toggleTurboAndReloadZones() }
+            actions.add { toggleTurboAndReloadZones() }
 
-        labels.add(getString(R.string.menu_home))
-        actions.add { finish() }
+            labels.add(getString(R.string.menu_home))
+            actions.add { finish() }
+        }
 
         TvDialogs.menu(
             context = this,
@@ -525,6 +534,11 @@ class ZoneDisplayActivity : AppCompatActivity() {
             subtitle = getString(R.string.zone_settings_subtitle, ZONE_MIN_WIDTH, ZONE_MIN_HEIGHT),
             items = labels
         ) { index -> actions.getOrNull(index)?.invoke() }.show()
+    }
+
+    /** 维护类指令 refresh 的落点：刷新全部分区 */
+    override fun reloadCurrent() {
+        reloadAll()
     }
 
     /** 翻转极速模式总开关，4 格全部重载 */
@@ -550,6 +564,8 @@ class ZoneDisplayActivity : AppCompatActivity() {
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+            // 远程被控时锁定展示操作（【菜单】豁免——菜单首项即控制模式开关，是唯一本地出口）
+            if (ControlChannel.interceptKeyLocked(event.keyCode, this)) return true
             showKeyHint()
             when (event.keyCode) {
                 KeyEvent.KEYCODE_BACK -> {
@@ -593,6 +609,8 @@ class ZoneDisplayActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         slots.values.forEach { it.webView?.onResume() }
+        // 多设备互控：上报 2×2 四格内容摘要
+        ControlChannel.reportZone(cellEntries.map { it?.id.orEmpty() })
     }
 
     override fun onPause() {

@@ -18,8 +18,10 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.digitalcenter.tvshow.R
+import com.digitalcenter.tvshow.config.CommandApplier
 import com.digitalcenter.tvshow.net.CameraClient
 import com.digitalcenter.tvshow.net.ConfigRepository
+import com.digitalcenter.tvshow.net.ControlChannel
 import com.digitalcenter.tvshow.net.MjpegReader
 import com.digitalcenter.tvshow.util.UiUtil
 import java.util.concurrent.Executors
@@ -39,7 +41,7 @@ import java.util.concurrent.Executors
  *
  * 遥控器：方向键选格、确定键放大/退回、菜单键切换布局/重连/返回首页、返回键回首页。
  */
-class CameraWallActivity : AppCompatActivity() {
+class CameraWallActivity : AppCompatActivity(), CommandApplier.Reloadable {
 
     companion object {
         private const val TAG = "CameraWall"
@@ -365,6 +367,8 @@ class CameraWallActivity : AppCompatActivity() {
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+            // 远程被控时锁定展示操作（【菜单】豁免——菜单首项即控制模式开关，是唯一本地出口）
+            if (ControlChannel.interceptKeyLocked(event.keyCode, this)) return true
             keyHintShower()
             when (event.keyCode) {
                 KeyEvent.KEYCODE_BACK -> {
@@ -431,29 +435,40 @@ class CameraWallActivity : AppCompatActivity() {
     }
 
     private fun showControlMenu() {
-        val labels = listOf(
-            getString(if (layout == MODE_WALL) R.string.camera_menu_single else R.string.camera_menu_wall),
-            getString(R.string.camera_menu_reconnect),
-            getString(R.string.menu_home)
-        )
+        val labels = ArrayList<String>()
+        val actions = ArrayList<() -> Unit>()
+
+        // 首项固定为控制模式开关（多设备互控，设计 §8.2）
+        labels.add(CtlUi.modeMenuLabel(this))
+        actions.add { CtlUi.toggleMode(this) }
+
+        if (!ControlChannel.locked) {
+            labels.add(getString(if (layout == MODE_WALL) R.string.camera_menu_single else R.string.camera_menu_wall))
+            actions.add {
+                layout = if (layout == MODE_WALL) MODE_SINGLE else MODE_WALL
+                startStreams()
+            }
+            labels.add(getString(R.string.camera_menu_reconnect))
+            actions.add {
+                startStreams()
+                Toast.makeText(this, R.string.camera_reconnecting, Toast.LENGTH_SHORT).show()
+            }
+            labels.add(getString(R.string.menu_home))
+            actions.add { finish() }
+        }
+
         TvDialogs.menu(
             context = this,
             title = getString(R.string.camera_title),
             subtitle = getString(R.string.camera_menu_subtitle, cameras.size),
             items = labels
-        ) { index ->
-            when (index) {
-                0 -> {
-                    layout = if (layout == MODE_WALL) MODE_SINGLE else MODE_WALL
-                    startStreams()
-                }
-                1 -> {
-                    startStreams()
-                    Toast.makeText(this, R.string.camera_reconnecting, Toast.LENGTH_SHORT).show()
-                }
-                else -> finish()
-            }
-        }.show()
+        ) { index -> actions.getOrNull(index)?.invoke() }.show()
+    }
+
+    /** 维护类指令 refresh 的落点：重连全部画面 */
+    override fun reloadCurrent() {
+        startStreams()
+        Toast.makeText(this, R.string.camera_reconnecting, Toast.LENGTH_SHORT).show()
     }
 
     /* ---------------- 生命周期 ---------------- */
@@ -466,6 +481,8 @@ class CameraWallActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (cameras.isNotEmpty() && !streaming) startStreams()
+        // 多设备互控：上报画面墙状态（entryId 可能为空——本页无强依赖）
+        ControlChannel.reportCamera(intent.getStringExtra(WebDisplayActivity.EXTRA_ENTRY_ID).orEmpty())
     }
 
     override fun onPause() {
