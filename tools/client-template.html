@@ -351,6 +351,27 @@ select {
   opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s;
 }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* ===== 多设备互控：模式开关 / 远程被控角标 / 受控锁定 ===== */
+#ctlSwitch {
+  display: inline-flex; align-items: center; gap: 0; flex: none;
+  border: 1px solid rgba(47,210,245,.35); border-radius: 999px; overflow: hidden;
+  background: rgba(9,16,28,.7); font-size: 12px; user-select: none; cursor: pointer;
+}
+#ctlSwitch .cs-opt { padding: 5px 12px; color: var(--muted); white-space: nowrap; transition: all .18s; }
+#ctlSwitch .cs-opt.on-local { background: rgba(63,224,166,.16); color: #7df0c0; }
+#ctlSwitch .cs-opt.on-remote { background: rgba(47,210,245,.2); color: #9fe7ff; }
+#ctlBadge {
+  position: fixed; right: 14px; bottom: 14px; z-index: 55;
+  padding: 6px 14px; border-radius: 999px; font-size: 12px; letter-spacing: 1px;
+  color: #9fe7ff; background: rgba(9,16,28,.62); border: 1px solid rgba(47,210,245,.45);
+  opacity: .75; pointer-events: none;
+}
+body.ctl-locked #grid, body.ctl-locked #frameViewport,
+body.ctl-locked #camGrid, body.ctl-locked #zoneGrid { pointer-events: none !important; }
+body.ctl-locked .tools .btn { opacity: .38; pointer-events: none !important; }
+body.ctl-locked .tools .menu { display: none !important; }
+body.ctl-locked #ctlSwitch { opacity: 1 !important; pointer-events: auto !important; }
 </style>
 </head>
 <body>
@@ -396,6 +417,11 @@ select {
       <button class="btn" id="btnCamBack">← 返回首页</button>
       <button class="btn" id="btnCamLayout" title="在 3×3 与 1×1 之间切换（M）">布局：3×3</button>
       <button class="btn" id="btnCamRefresh" title="重新连接全部画面">刷新</button>
+    </div>
+    <!-- 模式开关：本地控制 / 远程被控（任何模式下常驻可点，是受控态下唯一的本地出口） -->
+    <div id="ctlSwitch" title="控制模式：本地控制 = 本机自主操作；远程被控 = 跟随控制端指令">
+      <span class="cs-opt" id="csLocal">本地控制</span>
+      <span class="cs-opt" id="csRemote">远程被控</span>
     </div>
   </div>
 </div>
@@ -475,6 +501,7 @@ select {
 </main>
 
 <div id="dialogLayer" hidden></div>
+<div id="ctlBadge" hidden>远程被控</div>
 <div id="toast"></div>
 
 <script id="bootstrap" type="application/json">__BOOTSTRAP__</script>
@@ -506,7 +533,8 @@ select {
    'errorPanel','errorMessage','rotationChip','rotationText','btnRotationToggle','zoomChip','btnMode',
    'btnBack','btnBack2','btnRetry','btnUseProxy','btnOpenTab','btnOpenTab2','btnZoomIn',
    'btnZoomOut','btnZoomReset','btnMenu','zoneGrid','zoneHint','btnZoneBack','btnZoneRefresh',
-   'settingsList','btnSettingsBack','settingsState','dialogLayer','toast'
+   'settingsList','btnSettingsBack','settingsState','dialogLayer','toast',
+   'ctlSwitch','csLocal','csRemote','ctlBadge'
   ].forEach(function (id) { el[id] = document.getElementById(id); });
 
   var AUTO_LOGIN_SRC = document.getElementById('autoLoginSrc').textContent;
@@ -895,7 +923,8 @@ select {
     }
     // 「强制原址打开」：原生视频插件等页面无法内嵌，点击时直接在新标签访问。
     // 配了自动登录的入口走代理地址——独立标签页里由服务端代理注入自动登录脚本
-    if (entry.openOriginal === true) {
+    // （远程指令指定该入口时例外：受控设备无人值守，仍内嵌打开，opts.embed）
+    if (entry.openOriginal === true && !opts.embed) {
       if (!opts.rotation) stopRotation();
       var useProxy = entry.autoLogin && entry.autoLogin.enabled !== false && entry.autoLogin.password;
       toast('正在新标签页打开「' + entry.title + '」' + (useProxy ? '（含自动登录）' : ''));
@@ -1039,6 +1068,7 @@ select {
     el.displayTools.hidden = !onDisplay;
     el.cameraTools.hidden = !onCamera;
     if (onDisplay || onCamera) setMoreMenu(false);
+    applyCtlLock(); // 模式切换后同步受控锁定态（锁定不作用于「设备控制」屏）
   }
 
   function reloadPage() {
@@ -1515,6 +1545,7 @@ select {
       vp.className = 'zone-viewport';
       var frame = document.createElement('iframe');
       frame.src = srcOf(entry);
+      frame.setAttribute('data-for', entry.id);
       // 不设 referrerpolicy：代理模式下服务端要靠 Referer 兜底「脚本跳转丢前缀」的情况
       vp.appendChild(frame);
       body.appendChild(vp);
@@ -2002,6 +2033,19 @@ select {
   document.addEventListener('keydown', function (e) {
     var key = e.key;
 
+    /* 远程被控时锁定全部展示快捷操作（设计 §8.1）：唯一本地出口是顶栏模式开关（鼠标点击）。
+       例外：指令到达前已打开的菜单弹窗允许用 Esc 关闭，否则界面被卡住。 */
+    if (!ctl.localMode) {
+      if (dialog.open && key === 'Escape') { e.preventDefault(); closeDialog(); return; }
+      e.preventDefault();
+      var now = Date.now();
+      if (now - ctl.lastLockToast > 5000) {
+        ctl.lastLockToast = now;
+        toast('远程被控中 · 点顶栏开关（本地控制）交还本机操作');
+      }
+      return;
+    }
+
     if (dialog.open) {
       if (key === 'Escape') { e.preventDefault(); var cb = dialog.onCancel; closeDialog(); cb && cb(); return; }
       if (key === 'ArrowDown' || key === 'ArrowUp') {
@@ -2136,9 +2180,239 @@ select {
   el.btnCamBack.addEventListener('click', backToHome);
   el.btnCamLayout.addEventListener('click', function () { setCameraLayout(camWall.layout === 1 ? 3 : 1); });
   el.btnCamRefresh.addEventListener('click', refreshCameraWall);
+  el.ctlSwitch.addEventListener('click', onCtlSwitchClick);
   window.addEventListener('resize', function () { applyZoom(); scaleZoneCells(); });
 
-  /* ============================ 启动 ============================ */
+  /* ============================ 多设备互控 · 受控半边 ============================
+   * 设计 docs/远程控制台-设计方案.md §7/§8/§10.1：
+   *  - 3s 心跳（失败指数退避最长 30s）：注册 / 上报本机状态 / 领指令 / 同步模式
+   *  - 模式 = 服务端权威 managed + 本机即时影子 localMode：现场拨开关立即生效，
+   *    意图 switchTo 随下一拍心跳捎带，未确认前每拍重发（幂等，离线暂存恢复后送达）
+   *  - 展示类指令（show/rotate/zone/home）应用后自动进入远程被控：切画面 + 锁定展示操作；
+   *    维护类（refresh/sync）不改变模式
+   *  - 退出远程被控一律二次确认；进入远程被控直接生效
+   * ============================================================================ */
+
+  var CTL_BEAT_MS = 3000;
+  var ctl = {
+    deviceId: null,          // 本机设备身份（localStorage 终身不变，与 IP 无关）
+    kind: 'pc',              // pc | tablet（服务端仅用于图标与 bootRestore 默认值）
+    localMode: true,         // 即时影子：true=本地控制（默认，行为与现状一致）
+    ackedSeq: 0,             // 已确认应用的指令序号（内存态）
+    boot: true,              // 本页面生命周期内的第一次心跳
+    intent: null,            // 待送达的模式开关意图：'local' | 'remote'
+    failStreak: 0,
+    lastError: null,         // 指令应用失败原因（随状态上报，控制屏可见）
+    lastLockToast: 0
+  };
+
+  function detectKind() {
+    var touch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    var mobileUA = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
+    var iPadOS = /Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1;
+    return touch && (mobileUA || iPadOS) ? 'tablet' : 'pc';
+  }
+
+  function loadDeviceId() {
+    try {
+      var id = localStorage.getItem('tvshow.deviceId');
+      if (id) return id;
+      var bytes = new Uint8Array(4);
+      crypto.getRandomValues(bytes);
+      id = 'dev-' + Array.prototype.map.call(bytes, function (b) {
+        return b.toString(16).padStart(2, '0');
+      }).join('');
+      localStorage.setItem('tvshow.deviceId', id);
+      return id;
+    } catch (e) { return null; } // 存储被禁时退化为不注册（file:// 场景）
+  }
+
+  /** 上报的本机状态（服务端据此展示设备卡片，并可在「存为场景」时转为恢复指令） */
+  function currentState() {
+    var s = { mode: 'home' };
+    if (state.mode === 'display') {
+      if (rotation.active) {
+        var list = rotationEntries();
+        s = {
+          mode: 'rotate',
+          rotate: {
+            index: rotation.index, total: list.length,
+            intervalSec: local.rotation.intervalSec,
+            items: list.map(function (e) { return e.id; })
+          }
+        };
+      } else {
+        s = { mode: 'page', entryId: state.entry ? state.entry.id : '' };
+      }
+    } else if (state.mode === 'camera') {
+      s = { mode: 'camera', entryId: camWall.entry ? camWall.entry.id : '' };
+    } else if (state.mode === 'zones') {
+      s = { mode: 'zone', zone: { slots: local.zones.map(function (z) { return z.entryId || null; }) } };
+    } else if (state.mode === 'settings') {
+      s = { mode: 'settings' };
+    }
+    if (ctl.lastError) s.lastError = ctl.lastError;
+    return s;
+  }
+
+  /** 模式影子翻转 + UI（开关高亮 / 角标 / 锁定）；立即生效，不等网络 */
+  function applyMode(mode, opts) {
+    opts = opts || {};
+    var target = mode === 'local';
+    if (ctl.localMode === target) { renderCtlSwitch(); return; }
+    ctl.localMode = target;
+    renderCtlSwitch();
+    applyCtlLock();
+    if (!opts.silent) toast(target ? '已交还本地控制' : '已进入远程被控');
+  }
+
+  function renderCtlSwitch() {
+    el.csLocal.classList.toggle('on-local', ctl.localMode);
+    el.csRemote.classList.toggle('on-remote', !ctl.localMode);
+  }
+
+  /** 锁定只作用于展示界面；「设备控制」屏（P3）不受锁定以保证随时可自我解除 */
+  function applyCtlLock() {
+    var locked = !ctl.localMode && state.mode !== 'control';
+    document.body.classList.toggle('ctl-locked', locked);
+    el.ctlBadge.hidden = !locked;
+  }
+
+  /** 顶栏开关：本地→远程直接生效；远程→本地须二次确认（评审决议） */
+  function onCtlSwitchClick() {
+    if (ctl.localMode) {
+      applyMode('remote');
+      ctl.intent = 'remote';
+      return;
+    }
+    openDialog('退出远程被控？', '交还本机操作后，画面保持不变；控制端再次下发指令时会自动切回远程被控。', [
+      { text: '继续远程被控', run: function () {} },   // 默认焦点在继续（防误触），与电视端一致
+      { text: '退出，恢复本地操作', primary: true, run: function () {
+        applyMode('local');
+        ctl.intent = 'local';
+      } }
+    ], 'Enter 确认　Esc 取消');
+  }
+
+  /** 指令应用器：全部复用现有 screen 切换函数，不新造状态机 */
+  function applyCommand(desired) {
+    var cmd = desired.cmd;
+    var args = desired.args || {};
+    ctl.lastError = null;
+    try {
+      if (cmd === 'show') {
+        var entry = entryOf(args.entryId);
+        if (!entry) { backToHome(); ctl.lastError = '指令引用的入口已不存在'; }
+        else openEntry(entry, { embed: true });
+        applyMode('remote', { silent: true });
+      } else if (cmd === 'rotate') {
+        local.rotation = {
+          enabled: local.rotation.enabled,
+          intervalSec: Math.min(3600, Math.max(1, Number(args.intervalSec) || 15)),
+          items: (args.items || []).filter(function (id) { return !!entryOf(id); }),
+          // 同相切换时服务端已生成统一起点；否则以本机收到时刻起算
+          startedAt: Number(args.startedAt) || correctedNow()
+        };
+        saveLocalSettings();
+        stopRotation();
+        // 序列里的入口在本机内容同步滞后时可能暂不可见；全部失效则不进轮询
+        // （不能落到 startRotation 的「首次进入默认全部参与」分支）
+        if (!local.rotation.items.length) {
+          backToHome();
+          ctl.lastError = '轮询序列中的入口在本机均不可用';
+        } else {
+          startRotation();
+        }
+        applyMode('remote', { silent: true });
+      } else if (cmd === 'zone') {
+        var slots = Array.isArray(args.slots) ? args.slots : [null, null, null, null];
+        local.zones = [0, 1, 2, 3].map(function (p) {
+          var id = slots[p] && entryOf(slots[p]) ? slots[p] : '';
+          return { position: p, entryId: id };
+        });
+        saveLocalSettings();
+        openZones();
+        applyMode('remote', { silent: true });
+      } else if (cmd === 'home') {
+        backToHome();
+        applyMode('remote', { silent: true });
+      } else if (cmd === 'refresh') {
+        if (state.mode === 'display') reloadPage();
+        else if (state.mode === 'zones') { renderZones(); toast('已刷新全部页面'); }
+        else if (state.mode === 'camera') refreshCameraWall();
+      } else if (cmd === 'sync') {
+        syncFromServer(true);
+      }
+    } catch (e) {
+      ctl.lastError = '指令应用失败：' + (e && e.message ? e.message : e);
+    }
+  }
+
+  async function doBeat() {
+    if (!ctl.deviceId) return; // 无存储（file:// 且禁用 localStorage）时静默不注册
+    if (!SERVER_BASE && !servedOverHttp) return;
+    var body = {
+      deviceId: ctl.deviceId,
+      kind: ctl.kind,
+      appVersion: '2.0-web',
+      boot: ctl.boot,
+      ackedSeq: ctl.ackedSeq,
+      state: currentState()
+    };
+    ctl.boot = false;
+    if (ctl.intent) body.switchTo = ctl.intent;
+    var ctrl = new AbortController();
+    var timer = setTimeout(function () { ctrl.abort(); }, 5000);
+    try {
+      var res = await fetch(SERVER_BASE + '/api/ctl/beat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: ctrl.signal,
+        cache: 'no-store'
+      });
+      clearTimeout(timer);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      var json = await res.json();
+      ctl.failStreak = 0;
+
+      // 意图已送达且服务端状态与之相符 → 清除（未清除前每拍重发，幂等）
+      if (ctl.intent && json.managed !== undefined &&
+          json.managed === (ctl.intent === 'remote')) {
+        ctl.intent = null;
+      }
+
+      if (json.desired) {
+        applyCommand(json.desired);
+        ctl.ackedSeq = json.desired.seq;
+      } else if (!ctl.intent) {
+        // 纯模式校正（无在途意图时）：控制端「取消控制」→ 解锁；boot 恢复 → 锁定
+        if (json.managed === false && !ctl.localMode) {
+          applyMode('local');
+          toast('控制端已交还本地控制');
+        } else if (json.managed === true && ctl.localMode) {
+          applyMode('remote', { silent: true });
+        }
+      }
+    } catch (e) {
+      clearTimeout(timer);
+      ctl.failStreak++;
+      // 离线保持：受控态下画面继续（本机设置已写入），恢复后心跳自动续上
+    } finally {
+      var delay = ctl.failStreak === 0
+        ? CTL_BEAT_MS
+        : Math.min(30000, CTL_BEAT_MS * Math.pow(2, ctl.failStreak));
+      setTimeout(doBeat, delay);
+    }
+  }
+
+  function initCtl() {
+    ctl.deviceId = loadDeviceId();
+    ctl.kind = detectKind();
+    renderCtlSwitch();
+    if (ctl.deviceId) doBeat();
+  }
+
 
   loadLocalSettings();
   renderTurboButton();
@@ -2146,6 +2420,7 @@ select {
   syncClockOffset();
   // 启动不阻塞于网络：先用兜底内容渲染首屏，再后台增量同步
   syncFromServer(false);
+  initCtl(); // 多设备互控：注册心跳 + 领指令（受控半边）
   setTimeout(function () { if (!rotation.active) applyZoom(); }, 200);
 })();
 </script>
