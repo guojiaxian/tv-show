@@ -32,6 +32,7 @@ const { createProxy } = require('./proxy');
 const camera = require('./camera');
 const transpile = require('./transpile');
 const { createShot } = require('./shot');
+const { createCtl } = require('./ctl');
 
 /* ============================ 配置与常量 ============================ */
 
@@ -173,6 +174,8 @@ let data = null;
 let proxy = null;
 /** 极速模式采集模块（惰性拉起 Chromium，首次有观看者才启动） */
 let shot = null;
+/** 多设备互控 · 控制通道（设备档案 / 心跳 / 指令 / 场景） */
+let ctl = null;
 /** 串行化写操作，避免并发请求基于同一份旧数据互相覆盖 */
 let writeChain = Promise.resolve();
 
@@ -597,15 +600,19 @@ async function handle(req, res) {
   // 极速模式（截图展示）：/shot/<id>/view|frame.jpg|meta.json|beat
   if (shot && shot.isShotPath(url.pathname)) return shot.handle(req, res, url);
 
+  // 多设备互控 · 控制通道：/api/ctl/*
+  if (ctl && ctl.isCtlPath(url.pathname)) return ctl.handle(req, res, url);
+
   const p = url.pathname.replace(/\/+$/, '') || '/';
   const method = req.method.toUpperCase();
 
   if (method === 'OPTIONS') return sendEmpty(res, 204, CORS);
 
   /* ---------- 电脑浏览器客户端页面（站点首页） ---------- */
-  // 站点根路径即电脑端客户端；/app、/client 为历史别名，保持可用
+  // 站点根路径即电脑端客户端；/app、/client 为历史别名，保持可用；
+  // /console 是「设备控制」screen 的直达别名（同一页面，前端按 ?screen=control 直切）
   if (p === '/' || p === '/index.html' || p === '/app' || p === '/client' ||
-      p === '/app/index.html' || p === '/client/index.html') {
+      p === '/app/index.html' || p === '/client/index.html' || p === '/console') {
     return serveHtmlFile(res, CLIENT_FILE, '电脑端客户端页面缺失，请先执行 node tools/build-client.mjs');
   }
 
@@ -665,7 +672,9 @@ async function handle(req, res) {
       // 极速模式（截图采集）能力与活跃数
       shot: shot
         ? shot.status()
-        : { available: false, reason: '未初始化', activeEntries: 0 }
+        : { available: false, reason: '未初始化', activeEntries: 0 },
+      // 多设备互控：设备档案规模与在线数
+      ctl: ctl ? ctl.status() : null
     }, { ...CORS, ETag: etagOf(data) });
   }
 
@@ -787,6 +796,13 @@ function start() {
   });
   shot.start();
 
+  // 多设备互控 · 控制通道（零依赖，devices.json 独立于 config.json）
+  ctl = createCtl({
+    dataDir: DATA_DIR,
+    getEntries: () => data.entries,
+    log: (msg) => console.log(msg)
+  });
+
   const server = http.createServer((req, res) => {
     handle(req, res).catch((err) => {
       const status = err instanceof HttpError ? err.status : 500;
@@ -818,6 +834,7 @@ function start() {
     console.log(`  客户端接口 http://${shown}:${PORT}/api/config`);
     console.log(`  反向代理   http://${shown}:${PORT}/proxy/<入口id>/…（供电脑端自动登录使用）`);
     console.log(`  极速模式   http://${shown}:${PORT}/shot/<入口id>/view（截图展示）`);
+    console.log(`  设备控制   http://${shown}:${PORT}/console（多设备互控 · 平板书签直达）`);
     console.log(`  数据文件   ${DATA_FILE}`);
     console.log(`  当前版本   version=${data.version} epoch=${data.epoch} 条目=${data.entries.length}`);
     console.log('');
