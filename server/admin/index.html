@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>大屏聚合平台 · 管理后台</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%230a1220'/%3E%3Crect x='5' y='5' width='14' height='4' rx='1' fill='%232fd2f5'/%3E%3Crect x='5' y='10.5' width='14' height='4' rx='1' fill='%232fd2f5'/%3E%3Crect x='5' y='16' width='14' height='4' rx='1' fill='%232fd2f5'/%3E%3C/svg%3E">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #060a13; --panel: #0e1728; --panel2: #121c2e; --line: #22314a;
+    --text: #e8f1ff; --muted: #8fa6c4; --dim: #5f7796; --accent: #2fd2f5;
+    --ok: #3fe0a6; --warn: #ffb020; --danger: #ff6b6b;
+  }
+  body {
+    background: var(--bg); color: var(--text); min-height: 100vh;
+    font-family: "PingFang SC", "Microsoft YaHei", "Source Han Sans CN", "Noto Sans CJK SC", Arial, sans-serif;
+    font-size: 14px; line-height: 1.5;
+  }
+  a { color: var(--accent); }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 22px 20px 60px; }
+
+  /* ---------- 顶栏 ---------- */
+  header {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 16px 20px; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; margin-bottom: 18px;
+  }
+  header .bar { width: 4px; height: 28px; background: var(--accent); border-radius: 2px; }
+  header h1 { font-size: 18px; font-weight: 700; }
+  header .sub { font-size: 12px; color: var(--dim); letter-spacing: .12em; }
+  header .grow { flex: 1; }
+  .stat { font-size: 12px; color: var(--muted); background: #0b1220; border: 1px solid var(--line);
+    border-radius: 8px; padding: 5px 10px; font-variant-numeric: tabular-nums; }
+  .stat b { color: var(--accent); font-weight: 600; }
+
+  /* ---------- 通用控件 ---------- */
+  button {
+    font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--panel2); color: var(--text); padding: 7px 14px; transition: .15s;
+  }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: rgba(47,210,245,.16); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.danger { color: var(--danger); }
+  button.danger:hover { border-color: var(--danger); background: rgba(255,107,107,.12); }
+  button.ghost { background: transparent; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button.icon { padding: 5px 10px; font-size: 13px; }
+
+  input[type=text], input[type=password], input[type=number], select, textarea {
+    font: inherit; width: 100%; color: var(--text); background: #0b1220;
+    border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; outline: none;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+  input[type=color] { width: 42px; height: 34px; padding: 2px; background: #0b1220;
+    border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
+  label.field { display: block; margin-bottom: 12px; }
+  label.field > span { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+  label.field > span i { color: var(--danger); font-style: normal; }
+  .hint { font-size: 11.5px; color: var(--dim); margin-top: 4px; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  .check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); margin-bottom: 10px; }
+  .check input { width: 16px; height: 16px; accent-color: var(--accent); }
+
+  /* ---------- 卡片 ---------- */
+  section.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; margin-bottom: 18px; }
+  section.card > h2 { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+  section.card > .desc { font-size: 12px; color: var(--dim); margin-bottom: 16px; }
+  .card-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .card-head h2 { font-size: 15px; }
+  .card-head .grow { flex: 1; }
+
+  /* ---------- 列表 ---------- */
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 10px 10px; border-bottom: 1px solid #1a2740; vertical-align: middle; }
+  th { font-size: 12px; color: var(--muted); font-weight: 500; white-space: nowrap; }
+  td { font-size: 13px; }
+  tbody tr:hover { background: #101c30; }
+  td.idx { color: var(--dim); font-variant-numeric: tabular-nums; width: 40px; }
+  td.title { font-weight: 600; }
+  td.url { color: var(--muted); font-size: 12px; word-break: break-all; max-width: 320px; }
+  .swatch { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .swatch i { width: 14px; height: 14px; border-radius: 4px; display: inline-block; border: 1px solid rgba(255,255,255,.18); }
+  .tag { display: inline-block; font-size: 11px; padding: 2px 7px; border-radius: 999px;
+    border: 1px solid var(--line); color: var(--muted); }
+  .tag.on { color: var(--ok); border-color: rgba(63,224,166,.4); background: rgba(63,224,166,.1); }
+  td.ops { white-space: nowrap; text-align: right; }
+  td.ops button { margin-left: 4px; }
+  .empty { padding: 34px 10px; text-align: center; color: var(--dim); }
+
+  /* ---------- 弹层 ---------- */
+  .mask { position: fixed; inset: 0; background: rgba(4,8,16,.72); display: none;
+    align-items: flex-start; justify-content: center; overflow: auto; padding: 40px 16px; z-index: 50; }
+  .mask.show { display: flex; }
+  .modal { width: 100%; max-width: 720px; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; padding: 22px 24px; }
+  .modal h3 { font-size: 16px; margin-bottom: 4px; }
+  .modal .desc { font-size: 12px; color: var(--dim); margin-bottom: 18px; }
+  .modal .actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px;
+    padding-top: 16px; border-top: 1px solid var(--line); }
+  fieldset { border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
+  legend { font-size: 12px; color: var(--muted); padding: 0 6px; }
+
+  /* ---------- 提示 ---------- */
+  #toasts { position: fixed; right: 20px; bottom: 20px; display: flex; flex-direction: column;
+    gap: 8px; z-index: 90; }
+  .toast { background: var(--panel2); border: 1px solid var(--line); border-left: 3px solid var(--accent);
+    border-radius: 8px; padding: 10px 14px; font-size: 13px; max-width: 420px;
+    box-shadow: 0 12px 30px rgba(0,0,0,.5); animation: slide .18s ease-out; }
+  .toast.ok { border-left-color: var(--ok); }
+  .toast.err { border-left-color: var(--danger); }
+  @keyframes slide { from { opacity: 0; transform: translateX(16px); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="bar"></div>
+    <div>
+      <h1>大屏聚合平台 · 管理后台</h1>
+      <div class="sub">DISPLAY HUB ADMIN</div>
+    </div>
+    <div class="grow"></div>
+    <span class="stat">版本 <b id="stVersion">-</b></span>
+    <span class="stat">发布代次 <b id="stEpoch">-</b></span>
+    <span class="stat">页面数 <b id="stCount">-</b></span>
+    <span class="stat">更新于 <b id="stUpdated">-</b></span>
+    <button class="ghost" id="btnRefresh">刷新</button>
+    <button id="btnBump" title="让所有电视端下次统一重新拉取全量配置">强制客户端全量刷新</button>
+  </header>
+
+  <!-- ============ 系统设置 ============ -->
+  <section class="card">
+    <h2>系统设置</h2>
+    <div class="desc">这里修改的是电视端首页的标题与提示文案，保存后立即写入服务端；电视端会在下次启动、回到前台或按【菜单】键时生效。</div>
+    <label class="field">
+      <span>系统标题 <i>*</i></span>
+      <input type="text" id="appTitle" maxlength="60" placeholder="例如：数智中心大屏聚合平台">
+      <div class="hint">电视端首页左上角主标题，建议不超过 20 字，过长会自动省略。</div>
+    </label>
+    <div class="row2">
+      <label class="field">
+        <span>副标题</span>
+        <input type="text" id="appSubtitle" maxlength="80" placeholder="例如：DIGITAL CENTER · DISPLAY HUB">
+      </label>
+      <label class="field">
+        <span>退出提示文案</span>
+        <input type="text" id="exitTip" maxlength="80" placeholder="按【返回】键将退出应用">
+      </label>
+    </div>
+    <label class="check">
+      <input type="checkbox" id="exitConfirm">
+      <span>电视端按【返回】时弹出退出确认（防止误操作）</span>
+    </label>
+    <div style="margin-top:6px">
+      <button class="primary" id="btnSaveMeta">保存系统设置</button>
+      <span class="hint" style="margin-left:10px" id="metaDirty"></span>
+    </div>
+  </section>
+
+  <!-- ============ 页面管理 ============ -->
+  <section class="card">
+    <div class="card-head">
+      <h2>页面管理</h2>
+      <div class="grow"></div>
+      <button class="primary" id="btnNew">+ 新增页面</button>
+    </div>
+    <div class="desc">顺序即电视端首页宫格的排列顺序（1080p 电视按 3 列排布，6 个页面为 2×3）。</div>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th><th>标题</th><th>地址</th><th>图标</th><th>主题色</th><th>缩放</th><th>自动登录</th><th style="text-align:right">操作</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+    <div class="empty" id="emptyTip" style="display:none">
+      还没有任何页面，点击右上角「+ 新增页面」开始添加。
+    </div>
+  </section>
+
+</div>
+
+<!-- ============ 新增/编辑弹层 ============ -->
+<div class="mask" id="mask">
+  <div class="modal">
+    <h3 id="mTitle">新增页面</h3>
+    <div class="desc" id="mDesc">填写页面信息，保存后电视端即可获取到。</div>
+
+    <div class="row2">
+      <label class="field">
+        <span>标题 <i>*</i></span>
+        <input type="text" id="fTitle" maxlength="120" placeholder="例如：数智资源中心存储集群资源监控">
+      </label>
+      <label class="field">
+        <span>标识 ID</span>
+        <input type="text" id="fId" maxlength="64" placeholder="留空自动生成；仅小写字母/数字/短横线">
+        <div class="hint" id="idHint">创建后不建议修改，客户端按 ID 识别页面。</div>
+      </label>
+    </div>
+
+    <label class="field">
+      <span>描述</span>
+      <input type="text" id="fSubtitle" maxlength="200" placeholder="例如：存储集群容量总览 / 分区视图 / 容量趋势">
+    </label>
+
+    <label class="field">
+      <span>地址 URL <i>*</i></span>
+      <input type="text" id="fUrl" maxlength="2000" placeholder="http://10.8.11.4:1111/">
+      <div class="hint">必须以 http:// 或 https:// 开头。</div>
+    </label>
+
+    <div class="row3">
+      <label class="field">
+        <span>图标</span>
+        <select id="fIcon">
+          <option value="storage">存储（storage）</option>
+          <option value="env">动环（env）</option>
+          <option value="security">安全（security）</option>
+          <option value="default">通用（default）</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>主题色</span>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="color" id="fAccentColor" value="#2FD2F5">
+          <input type="text" id="fAccent" maxlength="7" placeholder="#2FD2F5">
+        </div>
+      </label>
+      <label class="field">
+        <span>缩放</span>
+        <input type="number" id="fScale" min="0" max="200" step="1" value="0">
+        <div class="hint">0 = 自动适配，或填 50–200（百分比）。</div>
+      </label>
+    </div>
+
+    <label class="check"><input type="checkbox" id="fAutoFit" checked><span>内容超宽时自动缩小以铺满屏幕</span></label>
+    <label class="check"><input type="checkbox" id="fInsecureSsl"><span>允许忽略自签名证书错误（内网 https 场景）</span></label>
+    <label class="check"><input type="checkbox" id="fOpenOriginal"><span>强制原址打开（点击时在新标签页直接访问原地址，适用于依赖本地视频插件等无法内嵌的页面）</span></label>
+    <label class="check"><input type="checkbox" id="fSpaHistory"><span>history 路由 SPA 页面（如 Uptime Kuma）：代理打开报「未找到该页面」时勾选，启动时自动剥离代理前缀</span></label>
+    <label class="check"><input type="checkbox" id="fCompat"><span>旧内核兼容转译（电视端白屏修复）：代理转发时把 JS 降级到目标内核，并补齐缺失的运行时 API</span></label>
+    <label class="field">
+      <span>转译目标内核</span>
+      <input type="text" id="fCompatTarget" maxlength="20" placeholder="chrome66">
+      <div class="hint">留空即 chrome66（现场小米电视 WebView 内核）。仅在勾选上一项时生效；本机需已安装 esbuild（server 目录执行 npm install）。</div>
+    </label>
+
+    <fieldset id="turboBlock">
+      <legend>极速模式（截图展示）</legend>
+      <label class="check"><input type="checkbox" id="fTurboEnabled" checked><span>参与极速模式：开启后电视端/电脑端打开本页时显示服务器截图（需播放端在菜单中打开极速模式总开关）</span></label>
+      <div class="row2">
+        <label class="field">
+          <span>刷新率（秒）</span>
+          <input type="text" id="fTurboInterval" list="turboPresets" inputmode="decimal" value="2">
+          <datalist id="turboPresets">
+            <option value="0.2">0.2 秒（动画页 · 理论上限 5fps）</option>
+            <option value="0.5">0.5 秒（动画页推荐）</option>
+            <option value="1">1 秒</option>
+            <option value="2">2 秒（默认）</option>
+            <option value="3">3 秒</option>
+            <option value="5">5 秒</option>
+            <option value="10">10 秒</option>
+            <option value="30">30 秒</option>
+            <option value="60">60 秒</option>
+          </datalist>
+          <div class="hint">0.2 ~ 60 秒，支持一位小数；预置档位可直接输入其它值。动画页面建议 0.5s + 质量 85。</div>
+        </label>
+        <label class="field">
+          <span>JPEG 质量（50 ~ 95）</span>
+          <input type="number" id="fTurboQuality" min="50" max="95" step="1" value="75">
+          <div class="hint">越高越清晰、单帧体积越大；文字小的监控页建议 85 ~ 95。</div>
+        </label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>自动登录（可选）</legend>
+      <label class="check"><input type="checkbox" id="fLoginEnabled"><span>启用账号密码自动填充登录</span></label>
+      <div class="row2">
+        <label class="field"><span>账号</span><input type="text" id="fUsername" maxlength="200"></label>
+        <label class="field"><span>密码</span><input type="password" id="fPassword" maxlength="200"></label>
+      </div>
+      <div class="row2">
+        <label class="field"><span>账号输入框选择器</span><input type="text" id="fUserSel" maxlength="300" placeholder="留空自动识别"></label>
+        <label class="field"><span>密码输入框选择器</span><input type="text" id="fPwdSel" maxlength="300" placeholder="留空自动识别"></label>
+      </div>
+      <div class="row2">
+        <label class="field"><span>登录按钮选择器</span><input type="text" id="fSubmitSel" maxlength="300" placeholder="留空自动识别"></label>
+        <label class="field"><span>登录成功标志选择器</span><input type="text" id="fSuccessSel" maxlength="300" placeholder="留空则按登录框消失判断"></label>
+      </div>
+      <div class="hint">密码以明文保存在服务端数据文件中，请限制服务端的访问范围。</div>
+    </fieldset>
+
+    <div class="actions">
+      <button id="btnCancel">取消</button>
+      <button class="primary" id="btnSave">保存</button>
+    </div>
+  </div>
+</div>
+
+<div id="toasts"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var ICON_LABEL = { storage: '存储', env: '动环', security: '安全', default: '通用' };
+  var state = { data: null, editingId: null };
+
+  /* ---------------- 工具 ---------------- */
+
+  function $(id) { return document.getElementById(id); }
+
+  function toast(msg, kind) {
+    var el = document.createElement('div');
+    el.className = 'toast ' + (kind || '');
+    el.textContent = msg;
+    $('toasts').appendChild(el);
+    setTimeout(function () {
+      el.style.transition = 'opacity .25s';
+      el.style.opacity = '0';
+      setTimeout(function () { el.remove(); }, 260);
+    }, kind === 'err' ? 5200 : 2600);
+  }
+
+  async function api(method, path, body) {
+    var res;
+    try {
+      res = await fetch(path, {
+        method: method,
+        headers: body ? { 'Content-Type': 'application/json' } : undefined,
+        body: body ? JSON.stringify(body) : undefined
+      });
+    } catch (e) {
+      throw new Error('无法连接服务端：' + e.message);
+    }
+    var text = await res.text();
+    var json = null;
+    try { json = text ? JSON.parse(text) : null; } catch (e) { /* 忽略非 JSON */ }
+    if (!res.ok) throw new Error((json && json.error) || ('请求失败（HTTP ' + res.status + '）'));
+    return json;
+  }
+
+  function fmtTime(iso) {
+    if (!iso) return '-';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '-';
+    var p = function (n) { return n < 10 ? '0' + n : '' + n; };
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' +
+      p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+  }
+
+  function esc(s) {
+    return String(s === undefined || s === null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  /* ---------------- 加载 ---------------- */
+
+  async function load() {
+    var d = await api('GET', '/api/admin/config');
+    state.data = d;
+    renderStats();
+    renderMeta();
+    renderList();
+  }
+
+  function renderStats() {
+    var d = state.data;
+    $('stVersion').textContent = 'v' + d.version;
+    $('stEpoch').textContent = String(d.epoch);
+    $('stCount').textContent = String(d.entries.length);
+    $('stUpdated').textContent = fmtTime(d.updatedAt);
+  }
+
+  function renderMeta() {
+    $('appTitle').value = state.data.appTitle || '';
+    $('appSubtitle').value = state.data.appSubtitle || '';
+    $('exitTip').value = state.data.exitTip || '';
+    $('exitConfirm').checked = state.data.exitConfirm !== false;
+    $('metaDirty').textContent = '';
+  }
+
+  function renderList() {
+    var entries = state.data.entries || [];
+    var tbody = $('tbody');
+    tbody.innerHTML = '';
+    $('emptyTip').style.display = entries.length ? 'none' : 'block';
+
+    entries.forEach(function (e, i) {
+      var tr = document.createElement('tr');
+      var login = e.autoLogin && e.autoLogin.enabled;
+      tr.innerHTML =
+        '<td class="idx">' + (i + 1) + '</td>' +
+        '<td class="title">' + esc(e.title) +
+          (e.subtitle ? '<div class="hint">' + esc(e.subtitle) + '</div>' : '') + '</td>' +
+        '<td class="url">' + esc(e.url) + '</td>' +
+        '<td><span class="tag">' + esc(ICON_LABEL[e.icon] || e.icon || '通用') + '</span></td>' +
+        '<td><span class="swatch"><i style="background:' + esc(e.accent) + '"></i>' + esc(e.accent) + '</span></td>' +
+        '<td>' + (e.scale ? e.scale + '%' : '自动') + '</td>' +
+        '<td>' + (login
+          ? '<span class="tag on">' + esc(e.autoLogin.username || '已启用') + '</span>'
+          : '<span class="tag">未启用</span>') + '</td>' +
+        '<td class="ops"></td>';
+
+      var ops = tr.querySelector('.ops');
+      ops.appendChild(mkBtn('上移', i === 0, function () { move(i, -1); }));
+      ops.appendChild(mkBtn('下移', i === entries.length - 1, function () { move(i, 1); }));
+      ops.appendChild(mkBtn('编辑', false, function () { openForm(e); }));
+      ops.appendChild(mkBtn('删除', false, function () { remove(e); }, 'danger'));
+      tbody.appendChild(tr);
+    });
+  }
+
+  function mkBtn(text, disabled, onClick, cls) {
+    var b = document.createElement('button');
+    b.className = 'icon' + (cls ? ' ' + cls : '');
+    b.textContent = text;
+    b.disabled = !!disabled;
+    b.addEventListener('click', onClick);
+    return b;
+  }
+
+  /* ---------------- 系统设置 ---------------- */
+
+  ['appTitle', 'appSubtitle', 'exitTip', 'exitConfirm'].forEach(function (id) {
+    $(id).addEventListener('input', function () { $('metaDirty').textContent = '有未保存的修改'; });
+    $(id).addEventListener('change', function () { $('metaDirty').textContent = '有未保存的修改'; });
+  });
+
+  $('btnSaveMeta').addEventListener('click', async function () {
+    var btn = this;
+    btn.disabled = true;
+    try {
+      await api('PUT', '/api/admin/meta', {
+        appTitle: $('appTitle').value,
+        appSubtitle: $('appSubtitle').value,
+        exitTip: $('exitTip').value,
+        exitConfirm: $('exitConfirm').checked
+      });
+      await load();
+      toast('系统设置已保存', 'ok');
+    } catch (e) {
+      toast(e.message, 'err');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  /* ---------------- 排序 ---------------- */
+
+  async function move(index, delta) {
+    var ids = state.data.entries.map(function (e) { return e.id; });
+    var target = index + delta;
+    if (target < 0 || target >= ids.length) return;
+    var tmp = ids[index];
+    ids[index] = ids[target];
+    ids[target] = tmp;
+    try {
+      await api('POST', '/api/admin/entries/reorder', { ids: ids });
+      await load();
+      toast('顺序已更新', 'ok');
+    } catch (e) {
+      toast(e.message, 'err');
+    }
+  }
+
+  /* ---------------- 删除 ---------------- */
+
+  async function remove(entry) {
+    if (!confirm('确定要删除页面「' + entry.title + '」吗？\n删除后电视端将不再显示该入口。')) return;
+    try {
+      await api('DELETE', '/api/admin/entries/' + encodeURIComponent(entry.id));
+      await load();
+      toast('已删除「' + entry.title + '」', 'ok');
+    } catch (e) {
+      toast(e.message, 'err');
+    }
+  }
+
+  /* ---------------- 新增 / 编辑 ---------------- */
+
+  function openForm(entry) {
+    state.editingId = entry ? entry.id : null;
+    $('mTitle').textContent = entry ? '编辑页面' : '新增页面';
+    $('mDesc').textContent = entry
+      ? 'ID：' + entry.id + '（保存后电视端会在下次同步时更新）'
+      : '填写页面信息，保存后电视端即可获取到。';
+
+    $('fTitle').value = entry ? entry.title : '';
+    $('fId').value = entry ? entry.id : '';
+    $('fId').disabled = !!entry;
+    $('idHint').textContent = entry ? 'ID 创建后不可修改（客户端按 ID 识别页面）。' : '留空自动生成；仅小写字母/数字/短横线。';
+    $('fSubtitle').value = entry ? (entry.subtitle || '') : '';
+    $('fUrl').value = entry ? entry.url : '';
+    $('fIcon').value = entry ? entry.icon : 'storage';
+    $('fAccent').value = entry ? entry.accent : '#2FD2F5';
+    $('fAccentColor').value = entry ? entry.accent : '#2FD2F5';
+    $('fScale').value = entry ? (entry.scale || 0) : 0;
+    $('fAutoFit').checked = entry ? entry.autoFit !== false : true;
+    $('fInsecureSsl').checked = entry ? entry.allowInsecureSsl === true : false;
+    $('fOpenOriginal').checked = entry ? entry.openOriginal === true : false;
+    $('fSpaHistory').checked = entry ? entry.spaHistory === true : false;
+    $('fCompat').checked = entry ? entry.compatTranspile === true : false;
+    $('fCompatTarget').value = entry ? (entry.compatTarget || '') : '';
+
+    // 极速模式（截图展示）：画面墙入口不参与，隐藏整个区块
+    var isCamera = !!(entry && entry.type === 'camera');
+    $('turboBlock').style.display = isCamera ? 'none' : '';
+    $('fTurboEnabled').checked = entry ? entry.turboEnabled !== false : true;
+    $('fTurboInterval').value = entry && entry.turboIntervalSec !== undefined ? entry.turboIntervalSec : 2;
+    $('fTurboQuality').value = entry ? (entry.turboQuality || 75) : 75;
+
+    var al = (entry && entry.autoLogin) || {};
+    $('fLoginEnabled').checked = !!al.enabled;
+    $('fUsername').value = al.username || '';
+    $('fPassword').value = al.password || '';
+    $('fUserSel').value = al.usernameSelector || '';
+    $('fPwdSel').value = al.passwordSelector || '';
+    $('fSubmitSel').value = al.submitSelector || '';
+    $('fSuccessSel').value = al.successSelector || '';
+
+    $('mask').classList.add('show');
+    setTimeout(function () { $('fTitle').focus(); }, 30);
+  }
+
+  function closeForm() {
+    $('mask').classList.remove('show');
+    state.editingId = null;
+  }
+
+  $('fAccentColor').addEventListener('input', function () { $('fAccent').value = this.value.toUpperCase(); });
+  $('fAccent').addEventListener('input', function () {
+    if (/^#[0-9a-fA-F]{6}$/.test(this.value)) $('fAccentColor').value = this.value;
+  });
+
+  $('btnNew').addEventListener('click', function () { openForm(null); });
+  $('btnCancel').addEventListener('click', closeForm);
+  $('mask').addEventListener('click', function (ev) { if (ev.target === $('mask')) closeForm(); });
+  document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape' && $('mask').classList.contains('show')) closeForm(); });
+
+  $('btnSave').addEventListener('click', async function () {
+    var btn = this;
+    var payload = {
+      title: $('fTitle').value,
+      subtitle: $('fSubtitle').value,
+      url: $('fUrl').value,
+      accent: $('fAccent').value,
+      icon: $('fIcon').value,
+      scale: Number($('fScale').value) || 0,
+      autoFit: $('fAutoFit').checked,
+      allowInsecureSsl: $('fInsecureSsl').checked,
+      openOriginal: $('fOpenOriginal').checked,
+      spaHistory: $('fSpaHistory').checked,
+      compatTranspile: $('fCompat').checked,
+      compatTarget: $('fCompatTarget').value
+    };
+    // 极速模式参数仅普通网页入口提交（画面墙不参与）
+    if (!(state.editingId)) {
+      payload.turboEnabled = $('fTurboEnabled').checked;
+      payload.turboIntervalSec = $('fTurboInterval').value;
+      payload.turboQuality = Number($('fTurboQuality').value) || 75;
+    } else {
+      var camEntry = null;
+      (state.data.entries || []).forEach(function (e) { if (e.id === state.editingId) camEntry = e; });
+      if (!camEntry || camEntry.type !== 'camera') {
+        payload.turboEnabled = $('fTurboEnabled').checked;
+        payload.turboIntervalSec = $('fTurboInterval').value;
+        payload.turboQuality = Number($('fTurboQuality').value) || 75;
+      }
+    }
+    if (!state.editingId) payload.id = $('fId').value;
+    if ($('fLoginEnabled').checked) {
+      payload.autoLogin = {
+        enabled: true,
+        username: $('fUsername').value,
+        password: $('fPassword').value,
+        usernameSelector: $('fUserSel').value,
+        passwordSelector: $('fPwdSel').value,
+        submitSelector: $('fSubmitSel').value,
+        successSelector: $('fSuccessSel').value
+      };
+    }
+
+    btn.disabled = true;
+    try {
+      if (state.editingId) {
+        await api('PUT', '/api/admin/entries/' + encodeURIComponent(state.editingId), payload);
+        toast('已保存修改', 'ok');
+      } else {
+        await api('POST', '/api/admin/entries', payload);
+        toast('新页面已创建', 'ok');
+      }
+      closeForm();
+      await load();
+    } catch (e) {
+      toast(e.message, 'err');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  /* ---------------- 顶栏操作 ---------------- */
+
+  $('btnRefresh').addEventListener('click', async function () {
+    try { await load(); toast('已刷新', 'ok'); } catch (e) { toast(e.message, 'err'); }
+  });
+
+  $('btnBump').addEventListener('click', async function () {
+    if (!confirm('强制所有电视端下次同步时重新拉取全量配置？\n用于担心某台设备数据不一致时。')) return;
+    try {
+      var r = await api('POST', '/api/admin/epoch/bump');
+      await load();
+      toast('已发布新代次 epoch=' + r.epoch + '，电视端下次同步将拉取全量', 'ok');
+    } catch (e) {
+      toast(e.message, 'err');
+    }
+  });
+
+  load().catch(function (e) { toast('加载配置失败：' + e.message, 'err'); });
+})();
+</script>
+</body>
+</html>

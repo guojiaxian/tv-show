@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 背景 / 基础 -->
+    <color name="bg_deep">#FF060A13</color>
+    <color name="bg_deep_2">#FF0D1729</color>
+    <color name="card_bg">#FF121C2E</color>
+    <color name="card_bg_focused">#FF17253C</color>
+    <color name="card_stroke">#FF22314A</color>
+    <color name="accent">#FF2FD2F5</color>
+
+    <!-- 文本 -->
+    <color name="text_primary">#FFE8F1FF</color>
+    <color name="text_secondary">#FF8FA6C4</color>
+    <color name="text_tertiary">#FF5F7796</color>
+    <color name="text_focused">#FFFFFFFF</color>
+
+    <!-- 控件 -->
+    <color name="divider">#1A2FD2F5</color>
+    <color name="chip_bg">#FF0E1728</color>
+    <color name="dialog_bg">#FF101A2B</color>
+    <color name="dialog_stroke">#FF24334D</color>
+    <color name="icon_bg">#FF0B1220</color>
+    <color name="danger">#FFFF6B6B</color>
+    <color name="ok">#FF3FE0A6</color>
+    <color name="warn">#FFFFB020</color>
+</resources>

@@ -1,0 +1,8 @@
+node_modules/
+.gradle/
+build/
+app/build/
+local.properties
+server/server.log
+server/.cache/
+dist/*.apk

@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 机房监控画面墙：视频层 + 3×3 选格浮层，内容由代码创建（摄像头数量/布局可变） -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/cameraRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/black">
+
+    <!-- 视频层：3×3 时竖排 3 条按行合成的画面，1×1 时单个画面 -->
+    <FrameLayout
+        android:id="@+id/wallContainer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- 选格浮层：3×3 透明网格，仅作高亮与通道标题，不拦截按键 -->
+    <LinearLayout
+        android:id="@+id/overlayGrid"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical" />
+
+    <!-- 右上角当前模式 -->
+    <TextView
+        android:id="@+id/modeChip"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:layout_margin="24dp"
+        android:background="@drawable/bg_hint_bar"
+        android:paddingStart="20dp"
+        android:paddingTop="10dp"
+        android:paddingEnd="20dp"
+        android:paddingBottom="10dp"
+        android:textColor="@color/text_secondary"
+        android:textSize="14sp" />
+
+    <!-- 无摄像头 / 未启用时的提示 -->
+    <TextView
+        android:id="@+id/emptyText"
+        android:layout_width="720dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:gravity="center"
+        android:lineSpacingExtra="6dp"
+        android:text="@string/camera_empty"
+        android:textColor="@color/text_secondary"
+        android:textSize="18sp"
+        android:visibility="gone" />
+
+    <!-- 底部按键提示 -->
+    <TextView
+        android:id="@+id/hintBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:background="#CC0C1524"
+        android:gravity="center"
+        android:paddingTop="14dp"
+        android:paddingBottom="14dp"
+        android:text="@string/camera_hint"
+        android:textColor="@color/text_tertiary"
+        android:textSize="13sp" />
+
+</FrameLayout>

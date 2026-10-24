@@ -1,0 +1,30 @@
+{
+  "cookies": [],
+  "origins": [
+    {
+      "origin": "http://10.8.15.208:3001",
+      "localStorage": [
+        {
+          "name": "theme",
+          "value": "auto"
+        },
+        {
+          "name": "heartbeatBarTheme",
+          "value": "normal"
+        },
+        {
+          "name": "token",
+          "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6ImdqeCIsImgiOiJjZTU3MWExYThkNDAxYTcxNDc2NzI3NGE5ZDBhNTU2MiIsImlhdCI6MTc5MTM4NDQ2NH0.G_mqPUR8YeZqPoQ1LdNeEmGwVnIiK5ake3NC_9TKqW0"
+        },
+        {
+          "name": "styleElapsedTime",
+          "value": "no-line"
+        },
+        {
+          "name": "locale",
+          "value": "zh-CN"
+        }
+      ]
+    }
+  ]
+}

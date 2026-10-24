@@ -1,0 +1,2640 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>数智中心大屏聚合平台 · 电脑端</title>
+<style>
+:root {
+  /* 页面底色贴近目标稿的近黑深蓝；文字保持高亮度，卡片自身再用深灰蓝分层 */
+  --bg: #0b1016;
+  --bg2: #0f151d;
+  --panel: #1a2432;
+  --panel2: #223048;
+  --line: rgba(255,255,255,.14);
+  --text: #f3f7ff;
+  --muted: #a9bdd8;
+  --accent: #2FD2F5;
+  --ok: #3FE0A6;
+  --warn: #FFB020;
+  --danger: #FF5C7A;
+  --radius: 10px;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", "Noto Sans CJK SC", system-ui, -apple-system, "Segoe UI", sans-serif;
+  overflow: hidden;
+}
+button, a.btn, select, input { font-family: inherit; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,.16); border-radius: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ---------------- 顶栏 ---------------- */
+#topbar {
+  height: 58px; display: flex; align-items: center; gap: 16px;
+  padding: 0 18px; background: var(--bg2); border-bottom: 1px solid var(--line);
+}
+.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.logo {
+  width: 28px; height: 28px; border-radius: 8px; flex: none;
+  background: linear-gradient(135deg, var(--accent), #1667c8);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 13px; color: #04121d;
+}
+.brand-text { min-width: 0; }
+#brandTitle { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#brandSub { font-size: 11px; color: var(--muted); letter-spacing: .08em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tools { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; position: relative; }
+.btn {
+  height: 34px; padding: 0 13px; border-radius: 8px; cursor: pointer;
+  background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+  font-size: 13.5px; display: inline-flex; align-items: center; gap: 6px;
+  text-decoration: none; white-space: nowrap; transition: background .15s, border-color .15s;
+}
+.btn:hover { background: #35507f; border-color: rgba(47,210,245,.55); }
+.btn:active { transform: translateY(1px); }
+.btn.primary { background: rgba(47,210,245,.16); border-color: rgba(47,210,245,.45); color: #cfeeff; }
+.btn.on { background: rgba(63,224,166,.16); border-color: rgba(63,224,166,.5); color: #d6fff0; }
+.btn[disabled] { opacity: .45; cursor: not-allowed; }
+.src-chip {
+  height: 26px; padding: 0 10px; border-radius: 13px; font-size: 12px;
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--line); background: rgba(255,255,255,.07); color: var(--muted);
+}
+/* 顶栏「更多」二级菜单：低频入口（电视端预览 / 设置）收在这里，
+   把主页面空间完全让给卡片 */
+.menu {
+  position: absolute; right: 0; top: 42px; z-index: 40; min-width: 248px;
+  display: flex; flex-direction: column; gap: 2px; padding: 8px;
+  background: #1d2c48; border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 18px 44px rgba(0,0,0,.55);
+}
+.menu[hidden] { display: none; }
+.menu-item {
+  display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 0 10px; border-radius: 8px;
+  background: transparent; border: 0; color: var(--text); font-size: 13.5px;
+  cursor: pointer; text-decoration: none; text-align: left;
+}
+.menu-item:hover { background: rgba(255,255,255,.1); }
+.menu-sep { height: 1px; background: var(--line); margin: 6px 4px; }
+
+/* ---------------- 舞台 ---------------- */
+#stage { position: relative; height: calc(100vh - 58px); }
+.screen { position: absolute; inset: 0; display: flex; flex-direction: column; }
+.screen[hidden] { display: none; }
+
+/* ---------------- 首页 ---------------- */
+.hero { padding: 20px 28px 10px; text-align: center; flex: none; }
+.hero h1 { margin: 0; font-size: 30px; letter-spacing: .04em; font-weight: 700; text-align: center; color: #ffffff; }
+.hero p { margin: 6px 0 0; color: var(--muted); font-size: 13px; letter-spacing: .18em; text-transform: uppercase; }
+.clock { margin-top: 8px; display: flex; align-items: baseline; justify-content: center; gap: 14px; }
+#clockTime { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; color: #ffffff; }
+#clockDate { font-size: 14px; color: var(--muted); }
+.grid {
+  flex: 1; overflow: auto; padding: 14px 28px 22px;
+  display: grid; gap: 18px;
+  /* 卡片固定 3 列 × 2 行宫格（同电视端），高度按两行均分铺满可用空间 */
+  align-content: stretch;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(2, minmax(220px, 1fr));
+}
+.tile {
+  position: relative; overflow: hidden; cursor: pointer; text-align: left;
+  color: var(--text);
+  background: linear-gradient(165deg, #121c27, #0e161f);
+  border: 1px solid rgba(255,255,255,.07); border-radius: 14px; padding: 22px 22px 20px;
+  display: flex; flex-direction: column; gap: 12px; min-height: 200px;
+  transition: transform .16s, border-color .16s, box-shadow .16s;
+}
+.tile:hover, .tile.focused {
+  transform: translateY(-3px);
+  border-color: color-mix(in srgb, var(--accent, #2FD2F5) 70%, transparent);
+  box-shadow: 0 12px 30px rgba(0,0,0,.5), 0 0 14px color-mix(in srgb, var(--accent, #2FD2F5) 28%, transparent);
+}
+.tile-icon {
+  width: 46px; height: 46px; flex: none; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--accent, #2FD2F5) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent, #2FD2F5) 30%, transparent);
+  color: var(--accent, #2FD2F5);
+}
+.tile-icon svg { width: 22px; height: 22px; }
+.tile-title { font-size: 17.5px; font-weight: 700; line-height: 1.45; color: #ffffff; }
+.tile-sub { font-size: 13.5px; color: #93a4b8; line-height: 1.6; flex: 1; }
+.tile-foot { display: flex; align-items: center; min-width: 0; }
+.tile-url {
+  font-size: 12px; color: #8fa1b5; word-break: break-all;
+  background: rgba(255,255,255,.06); border-radius: 8px; padding: 6px 11px;
+}
+.tile:hover .tile-url, .tile.focused .tile-url { color: var(--accent, #2FD2F5); }
+
+/* ---------------- 摄像头画面墙 ---------------- */
+/* 服务端把 RTSP(H.265) 转成 MJPEG，这里只用 <img> 承载，天然支持电视端 WebView */
+#cameraScreen { background: #05080f; }
+#camGrid { flex: 1; position: relative; display: grid; gap: 8px; padding: 10px; min-height: 0; }
+#camGrid.layout-1 { grid-template-columns: 1fr; grid-auto-rows: 1fr; }
+#camGrid.layout-3 { display: block; }
+/*
+ * 3×3 墙面：浏览器对同一域名只并发 6 条 HTTP/1.1 连接，8 路 MJPEG 长连接会把
+ * 队列占满、剩下几路永远拿不到连接（表现为随机几格黑屏）。因此每行 3 路由服务端
+ * 拼成一条画面，整面墙只用 3 条连接；这里放 3 张行图 + 一层可点选的高亮浮层。
+ */
+/*
+ * 行高必须写 minmax(0, 1fr)：1fr 等价于 minmax(auto, 1fr)，而 auto 的最小值会取到
+ * 图片的固有高度（1920×360 按容器宽缩放后约 356px），三行合计比容器还高——画面行
+ * 被撑大、与下面的标签浮层逐行错位，第三行还会溢出到屏幕外（表现为「画面有重叠」）。
+ */
+#camRows { position: absolute; inset: 10px; display: grid; grid-template-columns: 1fr; grid-template-rows: repeat(3, minmax(0, 1fr)); overflow: hidden; }
+#camRows img { width: 100%; height: 100%; min-height: 0; object-fit: fill; display: block; background: #05080f; }
+#camSlots { position: absolute; inset: 10px; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, minmax(0, 1fr)); overflow: hidden; }
+.cam-cell {
+  position: relative; overflow: hidden; cursor: pointer;
+  background: #0a1220; border: 1px solid var(--line); border-radius: 10px;
+}
+.cam-cell img { width: 100%; height: 100%; object-fit: contain; display: block; background: #05080f; }
+.cam-slot {
+  position: relative; overflow: hidden; cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(120, 150, 190, .18);
+}
+/* 品牌格：纯黑底 + 居中 logo。用 contain 让浏览器按原素材比例缩放，
+   不随墙面 object-fit:fill 的横向拉伸变形；尺寸取格子的 60%。 */
+.cam-slot.is-logo { background: #000; }
+.cam-logo {
+  position: absolute; inset: 0; margin: auto; width: 60%; height: 60%;
+  object-fit: contain; display: block;
+}
+.cam-name {
+  position: absolute; left: 0; right: 0; bottom: 0; padding: 6px 10px;
+  font-size: 13px; color: #eaf3ff;
+  background: linear-gradient(transparent, rgba(4, 9, 18, .92));
+}
+.cam-badge {
+  position: absolute; right: 8px; top: 8px; font-size: 12px; padding: 2px 9px;
+  border-radius: 999px; background: rgba(63, 224, 166, .16); color: #3FE0A6;
+  border: 1px solid rgba(63, 224, 166, .38);
+}
+.offline .cam-badge {
+  background: rgba(255, 86, 86, .16); color: #ff8080; border-color: rgba(255, 86, 86, .4);
+}
+.cam-cell.offline img { display: none; }
+.cam-off {
+  position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+  color: #6c7f96; font-size: 14px; letter-spacing: .06em;
+}
+.offline .cam-off { display: flex; }
+.cam-cell.focused, .cam-slot.focused { outline: 2px solid var(--accent, #2FD2F5); outline-offset: -2px; }
+.cam-hint {
+  grid-column: 1 / -1; display: flex; align-items: center; justify-content: center;
+  color: #8fa1b5; font-size: 15px; letter-spacing: .04em;
+}
+
+/* ---------------- 展示页 ---------------- */
+#displayScreen { background: #05080f; }
+.tool-group { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
+.tool-group[hidden] { display: none; }
+.spacer { flex: 1; }
+#frameBox { position: relative; flex: 1; overflow: hidden; }
+#frameViewport { position: absolute; left: 50%; top: 50%; width: 1920px; height: 1080px; transform-origin: center center; }
+#frameViewport iframe { width: 1920px; height: 1080px; border: 0; display: block; background: var(--bg2); }
+#progress {
+  position: absolute; left: 0; top: 0; height: 2px; width: 0;
+  background: linear-gradient(90deg, var(--accent), #8ef0ff); transition: width .35s ease; z-index: 6;
+}
+#infoOverlay {
+  position: absolute; left: 16px; bottom: 16px; z-index: 7; max-width: 46%;
+  background: rgba(6,12,22,.86); border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px 13px; font-size: 12px; color: #cbdcf4; line-height: 1.6;
+  opacity: 0; transform: translateY(8px); transition: opacity .25s, transform .25s;
+  pointer-events: none; backdrop-filter: blur(6px);
+}
+#infoOverlay.show { opacity: 1; transform: translateY(0); }
+#rotationChip {
+  position: absolute; right: 16px; top: 14px; z-index: 7; display: none;
+  align-items: center; gap: 10px; height: 32px; padding: 0 6px 0 12px;
+  background: rgba(6,12,22,.9); border: 1px solid rgba(47,210,245,.4); border-radius: 16px;
+  font-size: 12px; color: #cfeeff;
+}
+#rotationChip.show { display: inline-flex; }
+.cover {
+  position: absolute; inset: 0; z-index: 8; display: flex; align-items: center; justify-content: center;
+  background: rgba(5,8,15,.92); backdrop-filter: blur(2px);
+}
+.cover[hidden] { display: none; }
+.cover .panel {
+  text-align: center; padding: 28px 34px; border: 1px solid var(--line);
+  border-radius: 14px; background: var(--panel); max-width: 560px;
+}
+.cover .panel h3 { margin: 0 0 10px; font-size: 18px; }
+.cover .panel p { margin: 0 0 16px; color: var(--muted); font-size: 13px; line-height: 1.7; }
+.spinner {
+  width: 34px; height: 34px; margin: 0 auto 14px; border-radius: 50%;
+  border: 3px solid rgba(47,210,245,.25); border-top-color: var(--accent);
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.cover .actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+
+/* ---------------- 分区页 ---------------- */
+.zone-bar {
+  height: 48px; flex: none; display: flex; align-items: center; gap: 12px;
+  padding: 0 16px; background: var(--bg2); border-bottom: 1px solid var(--line);
+  font-size: 13px; color: var(--muted);
+}
+#zoneGrid {
+  flex: 1; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
+  gap: 10px; padding: 10px 14px 14px; min-height: 0;
+}
+.zone-cell {
+  position: relative; display: flex; flex-direction: column; overflow: hidden;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+}
+.zone-cell.active { border-color: rgba(47,210,245,.55); }
+.zone-label {
+  height: 34px; flex: none; display: flex; align-items: center; gap: 8px;
+  padding: 0 10px; cursor: pointer; background: rgba(255,255,255,.03);
+  border-bottom: 1px solid var(--line); font-size: 12px; color: var(--muted);
+}
+.zone-label:hover { background: rgba(47,210,245,.08); }
+.zone-label b { color: var(--text); }
+.zone-label .zname { color: #cfe0f7; max-width: 42%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.zone-label .zpos { margin-left: auto; display: flex; gap: 6px; }
+.zone-label .zbtn {
+  height: 22px; padding: 0 8px; font-size: 11px; border-radius: 6px; cursor: pointer;
+  background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+}
+.zone-label .zbtn:hover { border-color: rgba(47,210,245,.5); }
+.zone-body { position: relative; flex: 1; overflow: hidden; min-height: 0; }
+.zone-viewport { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; }
+.zone-viewport iframe { width: 1920px; height: 1080px; border: 0; display: block; background: #0b1220; pointer-events: none; }
+.zone-placeholder {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  color: var(--muted); font-size: 14px; gap: 8px;
+}
+.zone-flash {
+  position: absolute; inset: 0; border: 3px solid var(--accent); border-radius: 10px;
+  opacity: 0; transition: opacity .32s ease; pointer-events: none;
+}
+.zone-flash.on { opacity: 1; transition: none; }
+
+/* ---------------- 设置页 ---------------- */
+#settingsScreen { background: rgba(4,8,15,.96); }
+.settings-wrap { flex: 1; overflow: auto; padding: 22px 28px; }
+.settings-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.settings-head h2 { margin: 0; font-size: 20px; }
+.settings-card {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  padding: 14px 16px; margin-bottom: 14px; max-width: 980px;
+}
+.settings-card > h3 { margin: 0 0 4px; font-size: 14px; }
+.settings-card > .desc { margin: 0 0 12px; color: var(--muted); font-size: 12px; }
+.row {
+  display: flex; align-items: center; gap: 12px; padding: 9px 10px; border-radius: 8px;
+  border: 1px solid transparent; cursor: default;
+}
+.row + .row { margin-top: 4px; }
+.row.focused { background: rgba(47,210,245,.1); border-color: rgba(47,210,245,.4); }
+.row .rlabel { flex: 1; font-size: 13px; }
+.row .rlabel small { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
+.switch {
+  width: 46px; height: 25px; border-radius: 13px; cursor: pointer; position: relative; flex: none;
+  background: rgba(255,255,255,.14); border: 1px solid var(--line); transition: background .18s;
+}
+.switch::after {
+  content: ''; position: absolute; top: 2px; left: 2px; width: 19px; height: 19px;
+  border-radius: 50%; background: #b9cbe6; transition: transform .18s, background .18s;
+}
+.switch.on { background: rgba(63,224,166,.35); border-color: rgba(63,224,166,.6); }
+.switch.on::after { transform: translateX(21px); background: #eafff8; }
+select {
+  height: 30px; border-radius: 7px; background: var(--panel2); color: var(--text);
+  border: 1px solid var(--line); padding: 0 8px; font-size: 13px;
+}
+.mini-btn {
+  height: 24px; min-width: 26px; padding: 0 7px; font-size: 12px; border-radius: 6px; cursor: pointer;
+  background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+}
+.mini-btn:hover { border-color: rgba(47,210,245,.5); }
+.mini-btn[disabled] { opacity: .35; cursor: not-allowed; }
+.saved-chip { font-size: 12px; color: var(--ok); min-width: 48px; }
+
+/* ---------------- 弹层与提示 ---------------- */
+#dialogLayer {
+  position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center;
+  background: rgba(3,6,12,.7); backdrop-filter: blur(3px);
+}
+#dialogLayer[hidden] { display: none; }
+.dialog {
+  width: min(560px, 88vw); max-height: 80vh; display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(0,0,0,.6); overflow: hidden;
+}
+.dialog header { padding: 16px 18px 10px; }
+.dialog header h3 { margin: 0; font-size: 16px; }
+.dialog header p { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
+.dialog .list { overflow: auto; padding: 6px 12px 12px; }
+.dialog .item {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px;
+  cursor: pointer; font-size: 13px; border: 1px solid transparent;
+}
+.dialog .item:hover, .dialog .item.focused { background: rgba(47,210,245,.1); border-color: rgba(47,210,245,.4); }
+.dialog .item.primary { background: rgba(47,210,245,.14); }
+.dialog .item .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none; opacity: 0; }
+.dialog .item.primary .dot { opacity: 1; }
+.dialog footer { padding: 10px 18px 14px; color: var(--muted); font-size: 11px; border-top: 1px solid var(--line); }
+#toast {
+  position: fixed; left: 50%; bottom: 34px; transform: translate(-50%, 14px); z-index: 60;
+  background: rgba(9,16,28,.96); border: 1px solid rgba(47,210,245,.4); color: #ddf2ff;
+  padding: 11px 18px; border-radius: 10px; font-size: 13px; max-width: 74vw;
+  opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s;
+}
+#toast.show { opacity: 1; transform: translate(-50%, 0); }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div class="brand">
+    <div class="logo">数</div>
+    <div class="brand-text">
+      <div id="brandTitle">数智中心大屏聚合平台</div>
+      <div id="brandSub">DIGITAL CENTER · DISPLAY HUB</div>
+    </div>
+  </div>
+  <div class="tools">
+    <div class="tool-group" id="homeTools">
+      <button class="btn" id="btnRotation" title="按设定间隔自动轮换页面">轮询展示</button>
+      <button class="btn" id="btnZones" title="2×2 拼接，同时看四路">分区展示</button>
+      <button class="btn" id="btnFullscreen" title="全屏演示（F）">全屏</button>
+      <button class="btn" id="btnMore" aria-haspopup="true" aria-expanded="false" title="更多：本机设置 / 同步 / 电视端预览 / 设置">更多 ▾</button>
+
+      <!-- 二级菜单：低频操作与入口收在这里，高频功能按钮全部直达 -->
+      <div class="menu" id="moreMenu" hidden>
+        <button class="menu-item" id="btnSettings" title="本机展示设置：轮询间隔、参与页面、电脑端偏好">本机设置</button>
+        <button class="menu-item" id="btnSync" title="立即从服务器拉取最新配置">立即同步配置</button>
+        <button class="menu-item" id="btnTurbo" title="极速模式：播放服务端定时截图（刷新率/质量在管理后台逐页配置）">极速模式：关</button>
+        <div class="menu-sep"></div>
+        <a class="menu-item" id="btnPreview" href="/preview" target="_blank" rel="noopener" title="打开电视端 1:1 预览页面">电视端预览</a>
+        <a class="menu-item" id="btnAdmin" href="/setting" target="_blank" rel="noopener" title="打开设置页面：页面增删改查、系统标题">设置</a>
+      </div>
+    </div>
+    <!-- 展示页模式：原展示页工具条融入顶栏，省出整行空间给大屏画面 -->
+    <div class="tool-group" id="displayTools" hidden>
+      <button class="btn" id="btnBack">← 返回首页</button>
+      <button class="btn" id="btnZoomOut" title="缩小（-）">−</button>
+      <span class="src-chip" id="zoomChip">100%</span>
+      <button class="btn" id="btnZoomIn" title="放大（+）">＋</button>
+      <button class="btn" id="btnZoomReset" title="重置缩放（0）">重置</button>
+      <button class="btn" id="btnMode" title="直连 / 代理 切换">直连</button>
+      <button class="btn" id="btnOpenTab" title="在浏览器新标签打开原地址">原址打开</button>
+      <button class="btn" id="btnMenu" title="控制菜单（M）">菜单</button>
+    </div>
+    <!-- 画面墙模式：只需要返回、布局切换与刷新，点开即看 -->
+    <div class="tool-group" id="cameraTools" hidden>
+      <button class="btn" id="btnCamBack">← 返回首页</button>
+      <button class="btn" id="btnCamLayout" title="在 3×3 与 1×1 之间切换（M）">布局：3×3</button>
+      <button class="btn" id="btnCamRefresh" title="重新连接全部画面">刷新</button>
+    </div>
+  </div>
+</div>
+
+<main id="stage">
+
+  <!-- ======================= 首页 ======================= -->
+  <section id="homeScreen" class="screen">
+    <header class="hero">
+      <h1 id="appTitle"></h1>
+      <p id="appSubtitle"></p>
+      <div class="clock"><span id="clockTime">--:--:--</span><span id="clockDate"></span></div>
+    </header>
+    <div class="grid" id="grid"></div>
+    <!-- 原底部键盘提示行已收进顶栏「更多」二级菜单，主页面空间全部留给卡片 -->
+  </section>
+
+  <!-- ======================= 展示页（操作按钮已融入顶栏，整行空间让给画面） ======================= -->
+  <section id="displayScreen" class="screen" hidden>
+    <div id="frameBox">
+      <div id="frameViewport"></div>
+      <div id="progress"></div>
+      <div id="rotationChip">
+        <span id="rotationText"></span>
+        <button class="mini-btn" id="btnRotationToggle">暂停</button>
+      </div>
+      <div id="infoOverlay"></div>
+      <div class="cover" id="loadingPanel">
+        <div class="panel">
+          <div class="spinner"></div>
+          <p id="loadingText">正在加载大屏页面…</p>
+        </div>
+      </div>
+      <div class="cover" id="errorPanel" hidden>
+        <div class="panel">
+          <h3>页面加载失败</h3>
+          <p id="errorMessage">无法连接到大屏服务，请检查网络与地址配置</p>
+          <div class="actions">
+            <button class="btn primary" id="btnRetry">重新加载</button>
+            <button class="btn" id="btnUseProxy">用代理方式打开</button>
+            <button class="btn" id="btnOpenTab2">原址打开</button>
+            <button class="btn" id="btnBack2">返回首页</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= 摄像头画面墙（内置页面，不经过 iframe/插件） ======================= -->
+  <section id="cameraScreen" class="screen" hidden>
+    <div id="camGrid" class="layout-3"></div>
+  </section>
+
+  <!-- ======================= 分区页 ======================= -->
+  <section id="zoneScreen" class="screen" hidden>
+    <div class="zone-bar">
+      <button class="btn" id="btnZoneBack">← 返回首页</button>
+      <span id="zoneHint"></span>
+      <div class="spacer"></div>
+      <button class="btn" id="btnZoneRefresh">刷新全部</button>
+    </div>
+    <div id="zoneGrid"></div>
+  </section>
+
+  <!-- ======================= 设置页 ======================= -->
+  <section id="settingsScreen" class="screen" hidden>
+    <div class="settings-wrap">
+      <div class="settings-head">
+        <button class="btn" id="btnSettingsBack">← 返回</button>
+        <h2>设置</h2>
+        <span class="saved-chip" id="settingsState"></span>
+      </div>
+      <div id="settingsList"></div>
+    </div>
+  </section>
+
+</main>
+
+<div id="dialogLayer" hidden></div>
+<div id="toast"></div>
+
+<script id="bootstrap" type="application/json">{
+  "serverBaseUrl": "http://10.8.11.4:18080",
+  "sync": {
+    "connectTimeoutMs": 3000,
+    "readTimeoutMs": 5000,
+    "pollIntervalSec": 0,
+    "minSyncIntervalMs": 15000
+  },
+  "fallback": {
+    "appTitle": "数智中心大屏聚合平台",
+    "appSubtitle": "DIGITAL CENTER · DISPLAY HUB",
+    "exitConfirm": true,
+    "exitTip": "按【返回】键将退出应用",
+    "entries": [
+      {
+        "id": "storage-monitor",
+        "type": "url",
+        "title": "数智资源中心存储集群资源监控",
+        "subtitle": "存储集群容量总览 / 分区视图 / 容量趋势",
+        "url": "http://10.8.11.4:1111/",
+        "accent": "#2FD2F5",
+        "icon": "storage",
+        "turboEnabled": true,
+        "turboIntervalSec": 2,
+        "turboQuality": 75
+      },
+      {
+        "id": "env-monitor",
+        "type": "url",
+        "title": "数智资源中心机房动环监控",
+        "subtitle": "机房动力环境运行状态实时监控",
+        "url": "http://10.8.12.130/#/index",
+        "accent": "#3FE0A6",
+        "icon": "env",
+        "turboEnabled": true,
+        "turboIntervalSec": 2,
+        "turboQuality": 75,
+        "autoLogin": {
+          "enabled": true,
+          "username": "show",
+          "password": "wtzx@2026"
+        }
+      },
+      {
+        "id": "security-cockpit",
+        "type": "url",
+        "title": "物探中心网络安全监控与自动化运维平台",
+        "subtitle": "网络安全态势监测与自动化运维驾驶舱",
+        "url": "http://10.8.11.3/cockpit",
+        "accent": "#FFB020",
+        "icon": "security",
+        "turboEnabled": true,
+        "turboIntervalSec": 2,
+        "turboQuality": 75,
+        "autoLogin": {
+          "enabled": true,
+          "username": "admin",
+          "password": "admin",
+          "usernameSelector": "#username",
+          "passwordSelector": "#password",
+          "submitSelector": "#loginBtn"
+        }
+      },
+      {
+        "id": "entry-7f1eb4",
+        "type": "url",
+        "title": "虚拟化集群资源监控",
+        "subtitle": "虚拟机资源总览",
+        "url": "https://10.8.16.10:30000/monitor-screen/#/monitor-screen",
+        "accent": "#0AADD1",
+        "icon": "storage",
+        "allowInsecureSsl": true,
+        "compatTranspile": true,
+        "turboEnabled": true,
+        "turboIntervalSec": 2,
+        "turboQuality": 75,
+        "autoLogin": {
+          "enabled": true,
+          "username": "show",
+          "password": "Gjx@gec2023"
+        }
+      },
+      {
+        "id": "entry-a7ab1b",
+        "type": "camera",
+        "title": "机房监控",
+        "subtitle": "内置画面墙 · 直接观看摄像机实时画面",
+        "url": "",
+        "accent": "#2FD2F5",
+        "icon": "storage"
+      },
+      {
+        "id": "entry-7c64f6",
+        "type": "url",
+        "title": "AI大模型服务状态监控",
+        "subtitle": "",
+        "url": "http://10.8.15.208:3001/dashboard",
+        "accent": "#2FD2F5",
+        "icon": "storage",
+        "allowInsecureSsl": true,
+        "compatTranspile": true,
+        "turboEnabled": true,
+        "turboIntervalSec": 2,
+        "turboQuality": 75,
+        "autoLogin": {
+          "enabled": true,
+          "username": "gjx",
+          "password": "Gjx@gec2023"
+        }
+      }
+    ]
+  }
+}</script>
+<script id="autoLoginSrc" type="text/plain">/* ==========================================================================
+ * auto_login.js —— 大屏页面账号密码自动填充登录
+ * --------------------------------------------------------------------------
+ * 由 WebDisplayActivity 在页面加载完成后注入。
+ * 配置来源：window.__TV_AUTOLOGIN__
+ *   {
+ *     enabled:          true,
+ *     username:         'show',
+ *     password:         'wtzx@2026',
+ *     usernameSelector: '',    // 可选，精确选择器，留空则自动识别
+ *     passwordSelector: '',    // 可选，留空则匹配 input[type=password]
+ *     submitSelector:   '',    // 可选，留空则自动识别登录按钮
+ *     successSelector:  '',    // 可选，命中则认为已登录，无需填充
+ *     maxAttempts:      3,     // 可选，单次页面加载内最多提交几次
+ *     maxTotalAttempts: 3      // 可选，跨页面重载累计最多提交几次（防无限重复登录）
+ *   }
+ * 兼容：原生 form 提交、Vue/React 受控组件（使用原生 value setter + input 事件）
+ * ========================================================================== */
+(function () {
+  'use strict';
+
+  var cfg = window.__TV_AUTOLOGIN__;
+  if (!cfg || cfg.enabled === false) return;
+  if (!cfg.password) return;
+  if (window.__TV_AUTOLOGIN_DONE__) return;
+  window.__TV_AUTOLOGIN_DONE__ = true;
+
+  var INTERVAL = cfg.interval || 700;
+  var MAX_WAIT_TICKS = Math.ceil((cfg.maxWaitMs || 45000) / INTERVAL);
+  var MAX_FILL_ATTEMPTS = cfg.maxAttempts || 3;
+  var RETRY_DELAY_TICKS = Math.ceil(5000 / INTERVAL);
+  /**
+   * 跨「页面重载」累计的提交上限。
+   * 站点登录成功后通常整页跳转，页面重载会把本脚本的完成标记清零；
+   * 若凭据无效或被拒，就会变成「重载 → 再提交 → 再重载」的无限重复登录。
+   * 次数记在 sessionStorage（同源页面重载后仍在），命中上限即彻底停手。
+   */
+  var MAX_TOTAL_ATTEMPTS = cfg.maxTotalAttempts || 3;
+  /** 提交后允许的最长挂起时间：期间页面一直显示「登录中…」则判定卡死并放弃 */
+  var MAX_PENDING_TICKS = Math.ceil((cfg.maxPendingMs || 25000) / INTERVAL);
+  /** 页面一直不出现密码框时，多长时间后判定「当前不是登录页」 */
+  var SETTLE_TICKS = Math.ceil(20000 / INTERVAL);
+  /** 「登录请求在途」的文案特征：命中期间绝不重复点击，否则会打断在途请求 */
+  var PENDING_RE = /(登\s*录\s*中|登\s*陆\s*中|登\s*入\s*中|提\s*交\s*中|验\s*证\s*中|加\s*载\s*中|请\s*稍\s*候|signing|logging|loading|please\s*wait)/i;
+  var STORE_KEY = '__tv_autologin_attempts__:' + location.host + location.pathname + ':' + cfg.username;
+
+  var ticks = 0;
+  var fillAttempts = 0;
+  var lastFillTick = -999;
+  var submitted = false;
+  var finished = false;
+  var seenPassword = false;
+  var pendingSince = 0;
+  var timer = null;
+
+  /* ---------------- 基础工具 ---------------- */
+
+  function log() {
+    try {
+      if (window.console && console.log) {
+        console.log.apply(console, ['[TVAutoLogin]'].concat(Array.prototype.slice.call(arguments)));
+      }
+    } catch (e) { /* 忽略 */ }
+  }
+
+  function query(selector, root) {
+    if (!selector) return null;
+    try {
+      return (root || document).querySelector(selector);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function visible(el) {
+    if (!el || !el.getBoundingClientRect) return false;
+    var r = el.getBoundingClientRect();
+    if (r.width < 4 || r.height < 4) return false;
+    var cs = window.getComputedStyle(el);
+    if (!cs) return false;
+    return cs.display !== 'none' && cs.visibility !== 'hidden' && parseFloat(cs.opacity || '1') > 0.05;
+  }
+
+  /* ---------------- 表单填充（兼容受控组件） ---------------- */
+
+  function setValue(el, value) {
+    try {
+      var proto = Object.getPrototypeOf(el);
+      var desc = Object.getOwnPropertyDescriptor(proto, 'value') ||
+                 Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
+      if (desc && desc.set) {
+        desc.set.call(el, value);
+      } else {
+        el.value = value;
+      }
+    } catch (e) {
+      el.value = value;
+    }
+    // 触发框架（Vue/React）的双向绑定
+    try {
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'a', keyCode: 65 }));
+      el.dispatchEvent(new Event('blur', { bubbles: true }));
+    } catch (e2) { /* 忽略 */ }
+  }
+
+  function textOf(el) {
+    return ((el.textContent || '') + ' ' + (el.value || '') + ' ' + (el.getAttribute && (el.getAttribute('aria-label') || '') || '')).trim();
+  }
+
+  /* ---------------- 跨重载的提交次数（sessionStorage） ---------------- */
+
+  function usedAttempts() {
+    try { return parseInt(sessionStorage.getItem(STORE_KEY), 10) || 0; } catch (e) { return 0; }
+  }
+
+  function noteAttempt() {
+    try { sessionStorage.setItem(STORE_KEY, String(usedAttempts() + 1)); } catch (e) { /* 忽略 */ }
+  }
+
+  function resetAttempts() {
+    try { sessionStorage.removeItem(STORE_KEY); } catch (e) { /* 忽略 */ }
+  }
+
+  /* ---------------- 字段识别 ---------------- */
+
+  function findPassword(root) {
+    var el = query(cfg.passwordSelector, root);
+    if (el && visible(el)) return el;
+    var list = root.querySelectorAll('input[type=password]');
+    for (var i = 0; i < list.length; i++) {
+      if (visible(list[i])) return list[i];
+    }
+    return null;
+  }
+
+  function findUsername(root, pwd) {
+    var el = query(cfg.usernameSelector, root);
+    if (el && visible(el)) return el;
+
+    var scope = (pwd && pwd.form) || root;
+    var inputs = scope.querySelectorAll('input');
+    var fallback = null;
+    var KEY_RE = /(user|account|login|email|mobile|phone|账|用|户|名|邮箱|手机)/i;
+
+    for (var i = 0; i < inputs.length; i++) {
+      var it = inputs[i];
+      var type = (it.type || 'text').toLowerCase();
+      if (type === 'password' || type === 'hidden' || type === 'checkbox' || type === 'radio' ||
+          type === 'submit' || type === 'button' || type === 'file') {
+        continue;
+      }
+      if (!visible(it)) continue;
+
+      var hint = it.name + ' ' + it.id + ' ' + (it.placeholder || '') + ' ' + (it.getAttribute('aria-label') || '');
+      if (KEY_RE.test(hint)) return it;
+      if (!fallback) fallback = it;
+    }
+    // 找不到明确字段时，取密码框之前最近的可见输入框
+    if (fallback) return fallback;
+
+    // 再退一步：全局第一个可见文本输入框
+    var all = root.querySelectorAll('input');
+    for (var j = 0; j < all.length; j++) {
+      var t = (all[j].type || 'text').toLowerCase();
+      if (t === 'text' || t === 'email' || t === 'tel' || t === '') {
+        if (visible(all[j])) return all[j];
+      }
+    }
+    return null;
+  }
+
+  function findSubmit(root, pwd) {
+    var el = query(cfg.submitSelector, root);
+    if (el && visible(el)) return el;
+
+    // 优先同表单内的提交按钮
+    if (pwd && pwd.form) {
+      var inForm = pwd.form.querySelector('button[type=submit],input[type=submit],button');
+      if (inForm && visible(inForm)) return inForm;
+    }
+
+    var RE = /(登\s*录|登\s*陆|登入|签\s*入|确\s*定|login|log\s*in|sign\s*in|submit|进入)/i;
+    var list = root.querySelectorAll('button,a,[role=button],input[type=button],input[type=submit],[class*="btn"],[class*="button"]');
+    for (var i = 0; i < list.length; i++) {
+      var it = list[i];
+      if (!visible(it)) continue;
+      if (RE.test(textOf(it))) return it;
+    }
+    // 文本关键词匹配不到时的兜底：
+    //   a) class/id 自带 login/signin 字样 —— 图标按钮无文本的典型场景（如海康 .login-btn）
+    for (var j = 0; j < list.length; j++) {
+      var it2 = list[j];
+      if (!visible(it2)) continue;
+      if (/(login|log[-_]?in|sign[-_]?in|submit)/i.test(it2.className + ' ' + it2.id)) return it2;
+    }
+    //   b) 密码框向上最多 4 层容器内的第一个可见按钮（同属登录面板的提交键）
+    var box = pwd;
+    for (var k = 0; k < 4 && box; k++) {
+      box = box.parentElement;
+      if (!box) break;
+      var near = box.querySelectorAll('button,[role=button],input[type=button],input[type=submit]');
+      for (var m = 0; m < near.length; m++) {
+        if (visible(near[m])) return near[m];
+      }
+    }
+    return null;
+  }
+
+  /* ---------------- 主循环 ---------------- */
+
+  function alreadyLoggedIn(root) {
+    return !!(cfg.successSelector && query(cfg.successSelector, root));
+  }
+
+  /**
+   * 页面是否处于「登录请求在途」状态（提交按钮变成“登录中…”、按钮被禁用等）。
+   * 只在已经提交过一次之后才判定，避免登录页自身常驻的“加载中”造成误判。
+   */
+  function isSubmitting(root, pwd) {
+    var btn = findSubmit(root, pwd);
+    if (btn) {
+      if (btn.disabled === true) return true;
+      if (btn.getAttribute && btn.getAttribute('aria-busy') === 'true') return true;
+      if (PENDING_RE.test(textOf(btn))) return true;
+    }
+    // 部分站点把「登录中」放在遮罩/加载层上，按钮本身文案不变
+    var marks = root.querySelectorAll('[class*="loading"],[class*="spinner"],[class*="mask"]');
+    for (var i = 0; i < marks.length && i < 30; i++) {
+      if (!visible(marks[i])) continue;
+      if (PENDING_RE.test((marks[i].textContent || '').trim().slice(0, 20))) return true;
+    }
+    return false;
+  }
+
+  function doFill(root) {
+    var pwd = findPassword(root);
+    if (!pwd) return false;
+
+    var user = findUsername(root, pwd);
+    if (!user) {
+      log('未识别到用户名输入框，跳过');
+      return false;
+    }
+
+    var needUser = user.value !== cfg.username;
+    var needPwd = pwd.value !== cfg.password;
+
+    if (needUser) setValue(user, cfg.username);
+    if (needPwd) setValue(pwd, cfg.password);
+
+    fillAttempts++;
+    lastFillTick = ticks;
+    noteAttempt();
+    log('已填充账号密码（本次第 ' + fillAttempts + ' 次 / 累计第 ' + usedAttempts() + ' 次）');
+
+    var btn = findSubmit(root, pwd);
+    if (btn) {
+      log('提交登录：' + (textOf(btn) || btn.tagName));
+      btn.click();
+    } else if (pwd.form) {
+      log('提交登录：form.requestSubmit');
+      try {
+        if (typeof pwd.form.requestSubmit === 'function') {
+          pwd.form.requestSubmit();
+        } else {
+          pwd.form.submit();
+        }
+      } catch (e) {
+        log('form 提交失败：' + e);
+      }
+    } else {
+      // 无表单无按钮：模拟回车
+      log('提交登录：模拟 Enter');
+      try {
+        ['keydown', 'keypress', 'keyup'].forEach(function (t) {
+          pwd.dispatchEvent(new KeyboardEvent(t, {
+            bubbles: true, cancelable: true, key: 'Enter', keyCode: 13, which: 13
+          }));
+        });
+      } catch (e2) { /* 忽略 */ }
+    }
+
+    submitted = true;
+    return true;
+  }
+
+  timer = setInterval(function () {
+    if (finished) return;
+    ticks++;
+    if (ticks > MAX_WAIT_TICKS) {
+      clearInterval(timer);
+      log('等待超时，停止自动登录');
+      return;
+    }
+
+    var root = document;
+
+    if (alreadyLoggedIn(root)) {
+      finished = true;
+      clearInterval(timer);
+      resetAttempts();
+      log('检测到已登录状态，结束');
+      return;
+    }
+
+    var pwd = findPassword(root);
+    if (!pwd) {
+      // 页面没有密码框：可能已登录，或登录页尚未渲染
+      if (submitted && ticks - lastFillTick > RETRY_DELAY_TICKS * 2) {
+        finished = true;
+        clearInterval(timer);
+        resetAttempts();
+        log('登录框已消失，判定登录成功');
+        return;
+      }
+      // 等了足够久仍不见密码框且从未提交过 → 当前页不是登录页（已登录/非登录页），
+      // 把跨重载计数清零，避免以后会话过期再回到登录页时被历史计数挡住
+      if (!seenPassword && ticks > SETTLE_TICKS) {
+        finished = true;
+        clearInterval(timer);
+        resetAttempts();
+        log('当前页面无登录表单，结束');
+      }
+      return;
+    }
+    seenPassword = true;
+
+    if (fillAttempts === 0) {
+      if (usedAttempts() >= MAX_TOTAL_ATTEMPTS) {
+        finished = true;
+        clearInterval(timer);
+        log('累计提交已达 ' + MAX_TOTAL_ATTEMPTS + ' 次仍未通过，停止自动登录（重新进入该入口可再次尝试）');
+        return;
+      }
+      doFill(root);
+      return;
+    }
+
+    // 已提交：先看是否处于「登录中…」的挂起态。挂起期间绝不重复点击，
+    // 否则每 5 秒重启一次在途的登录请求，页面会永远停在“登录中”。
+    if (isSubmitting(root, pwd)) {
+      if (!pendingSince) pendingSince = ticks;
+      if (ticks - pendingSince > MAX_PENDING_TICKS) {
+        finished = true;
+        clearInterval(timer);
+        log('登录请求长时间无响应，停止自动登录');
+      }
+      return;
+    }
+    pendingSince = 0;
+
+    // 已提交但登录框仍在、也不在挂起态：
+    //  1) 字段被页面清空 → 说明真的提交过一次且被判失败，不再重试
+    //  2) 字段还在原值 → 大概率是点击被页面初始化吞掉（Angular/加密握手未就绪），重试
+    if (ticks - lastFillTick >= RETRY_DELAY_TICKS) {
+      var user = findUsername(root, pwd);
+      var cleared = !user || user.value !== cfg.username || pwd.value !== cfg.password;
+      if (cleared) {
+        finished = true;
+        clearInterval(timer);
+        log('账号密码已被页面清空（提交未生效或被拒绝），停止自动登录');
+        return;
+      }
+      if (fillAttempts >= MAX_FILL_ATTEMPTS || usedAttempts() >= MAX_TOTAL_ATTEMPTS) {
+        finished = true;
+        clearInterval(timer);
+        log('已达最大重试次数，停止自动登录');
+        return;
+      }
+      doFill(root);
+    }
+  }, INTERVAL);
+})();
+</script>
+<script>
+(function () {
+  'use strict';
+
+  /* ==========================================================================
+   * 电脑浏览器客户端
+   *   - 复刻电视端的全部「内容与展示策略」能力，去掉遥控器概念
+   *   - 数据来源与增量同步协议与电视端完全一致（/api/config，同源相对路径）
+   *   - 轮询 / 分区是「本机展示策略」，存在 localStorage（键与预览页一致）
+   *   - 自动登录：直连 iframe 跨域无法注入脚本，只有切到「代理」模式下同源才能注入
+   * ========================================================================== */
+
+  var LS_KEY = 'tvshow.localSettings';
+  var ZONE_MIN = { width: 1920, height: 1080 };
+  var INTERVAL_PRESETS = [5, 10, 15, 20, 30, 45, 60, 120, 300];
+  var LOAD_TIMEOUT_MS = 12000;
+
+  var el = {};
+  ['appTitle','appSubtitle','brandTitle','brandSub','clockTime','clockDate','grid',
+   'btnSync','btnRotation','btnZones','btnSettings','btnFullscreen','btnAdmin',
+   'btnMore','moreMenu','btnTurbo',
+   'homeScreen','displayScreen','cameraScreen','zoneScreen','settingsScreen',
+   'cameraTools','camGrid','btnCamBack','btnCamLayout','btnCamRefresh',
+   'homeTools','displayTools','frameViewport','frameBox','progress','infoOverlay','loadingPanel','loadingText',
+   'errorPanel','errorMessage','rotationChip','rotationText','btnRotationToggle','zoomChip','btnMode',
+   'btnBack','btnBack2','btnRetry','btnUseProxy','btnOpenTab','btnOpenTab2','btnZoomIn',
+   'btnZoomOut','btnZoomReset','btnMenu','zoneGrid','zoneHint','btnZoneBack','btnZoneRefresh',
+   'settingsList','btnSettingsBack','settingsState','dialogLayer','toast'
+  ].forEach(function (id) { el[id] = document.getElementById(id); });
+
+  var AUTO_LOGIN_SRC = document.getElementById('autoLoginSrc').textContent;
+
+  /* ---------------- 引导配置：先渲染兜底内容，不阻塞于网络 ---------------- */
+  var boot = {};
+  try { boot = JSON.parse(document.getElementById('bootstrap').textContent) || {}; } catch (e) { boot = {}; }
+  var fallback = boot.fallback || boot;
+  var servedOverHttp = /^https?:$/.test(location.protocol);
+  // 页面由服务端自身托管时用同源相对路径；直接打开本地文件时才回退到引导里的地址
+  var SERVER_BASE = servedOverHttp ? '' : String(boot.serverBaseUrl || '').replace(/\/+$/, '');
+
+  var CFG = {
+    appTitle: String(fallback.appTitle || '数智中心大屏聚合平台'),
+    appSubtitle: String(fallback.appSubtitle || ''),
+    exitConfirm: fallback.exitConfirm !== false,
+    exitTip: String(fallback.exitTip || '确定要退出客户端吗？'),
+    entries: Array.isArray(fallback.entries) ? fallback.entries.slice() : [],
+    version: 0,
+    epoch: 0
+  };
+  var ENTRIES = CFG.entries;
+  var source = 'fallback';
+  var clockOffset = 0;
+
+  /** 本地展示策略（对应电视端 LocalSettings） */
+  var local = {
+    rotation: { enabled: false, intervalSec: 15, items: [], startedAt: 0 },
+    zones: [0, 1, 2, 3].map(function (p) { return { position: p, entryId: '' }; }),
+    // 每个入口的打开方式：'auto' | 'proxy' | 'direct'
+    proxyModes: {},
+    // 极速模式本机总开关（默认关）；各页刷新率/是否参与由服务端配置统一下发
+    turboEnabled: false,
+    exitGuard: true
+  };
+
+  var state = { mode: 'home', entry: null, focusNodes: [], focus: null, zoomPercent: 100, loadingTimer: null };
+  var rotation = { active: false, paused: false, index: 0, advanceTimer: null, tickTimer: null };
+  var zones = { active: 0, flashTimer: null };
+  var dialog = { open: false, items: [], focus: 0, onCancel: null };
+  var settingsTimer = null;
+
+  /* ============================ 小工具 ============================ */
+
+  function toast(msg) {
+    el.toast.textContent = msg;
+    el.toast.classList.add('show');
+    clearTimeout(el.toast._t);
+    el.toast._t = setTimeout(function () { el.toast.classList.remove('show'); }, 2200);
+  }
+
+  function entryOf(id) {
+    for (var i = 0; i < ENTRIES.length; i++) if (ENTRIES[i].id === id) return ENTRIES[i];
+    return null;
+  }
+
+  function correctedNow() { return Date.now() + clockOffset; }
+
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+
+  function tickClock() {
+    var d = new Date();
+    el.clockTime.textContent = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+    var week = ['日', '一', '二', '三', '四', '五', '六'][d.getDay()];
+    el.clockDate.textContent = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' 星期' + week;
+  }
+  setInterval(tickClock, 1000);
+  tickClock();
+
+  /** 用服务端 Date 头校正本机时钟：轮询位置由时钟推导，多端才能一致 */
+  async function syncClockOffset() {
+    if (!SERVER_BASE && !servedOverHttp) return;
+    try {
+      var res = await fetch(SERVER_BASE + '/api/version', { cache: 'no-store' });
+      var dateHeader = res.headers.get('date');
+      if (dateHeader) clockOffset = new Date(dateHeader).getTime() - Date.now();
+    } catch (e) { /* 离线也无妨：用本机时钟 */ }
+  }
+
+  function iconSvg(kind) {
+    if (kind === 'storage') {
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><ellipse cx="12" cy="6" rx="7.5" ry="3"/><path d="M4.5 6v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3V6"/><path d="M4.5 12v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-6"/></svg>';
+    }
+    if (kind === 'env') {
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 20h18"/><path d="M6 20V9l6-4 6 4v11"/><path d="M10 20v-5h4v5"/></svg>';
+    }
+    if (kind === 'security') {
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 3l7 3v6c0 4.4-3 8-7 9-4-1-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>';
+    }
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 16l4.5-4.5 3.5 3.5 3-3L21 16"/></svg>';
+  }
+
+  /* ============================ 本机设置持久化 ============================ */
+
+  function loadLocalSettings() {
+    var raw = null;
+    try { raw = localStorage.getItem(LS_KEY); } catch (e) { raw = null; }
+    if (!raw) return;
+    try {
+      var obj = JSON.parse(raw) || {};
+      var r = obj.rotation || {};
+      var iv = parseInt(r.intervalSec, 10);
+      local.rotation = {
+        enabled: r.enabled === true,
+        intervalSec: isFinite(iv) ? Math.min(3600, Math.max(1, iv)) : 15,
+        items: Array.isArray(r.items) ? r.items.filter(function (x) { return typeof x === 'string' && x; }) : [],
+        startedAt: Number(r.startedAt) || 0
+      };
+      if (Array.isArray(obj.zones)) {
+        local.zones = [0, 1, 2, 3].map(function (p) {
+          var hit = obj.zones.filter(function (z) { return z && Number(z.position) === p; })[0];
+          return { position: p, entryId: hit && typeof hit.entryId === 'string' ? hit.entryId : '' };
+        });
+      }
+      local.proxyModes = obj.proxyModes && typeof obj.proxyModes === 'object' ? obj.proxyModes : {};
+      local.turboEnabled = obj.turboEnabled === true;
+      local.exitGuard = obj.exitGuard !== false;
+    } catch (e) { /* 脏数据就用默认值 */ }
+  }
+
+  function saveLocalSettings() {
+    try { localStorage.setItem(LS_KEY, JSON.stringify(local)); } catch (e) { toast('本机设置保存失败：' + e.message); }
+  }
+
+  /* ============================ 增量同步（协议与电视端一致） ============================ */
+
+  function mergeDelta(delta) {
+    if (!delta || typeof delta.version !== 'number') return null;
+    if (!delta.full && CFG.epoch && Number(delta.epoch) !== Number(CFG.epoch)) return null; // 代次变化 → 全量
+    if (!delta.full && Number(delta.version) < Number(CFG.version)) return null;            // 版本回退 → 全量
+
+    var map = new Map();
+    ENTRIES.forEach(function (e) { map.set(e.id, e); });
+    (delta.upserted || []).forEach(function (e) { if (e && e.id) map.set(e.id, e); });
+    (delta.deletedIds || []).forEach(function (id) { map.delete(id); });
+
+    var ordered = [];
+    if (Array.isArray(delta.order) && delta.order.length) {
+      // 顺序必须显式下发：仅凭 upserted 无法表达「整体重排」
+      delta.order.forEach(function (id) { if (map.has(id)) { ordered.push(map.get(id)); map.delete(id); } });
+    }
+    map.forEach(function (e) { ordered.push(e); });
+
+    var meta = delta.meta;
+    return {
+      appTitle: meta ? meta.appTitle : CFG.appTitle,
+      appSubtitle: meta ? meta.appSubtitle : CFG.appSubtitle,
+      exitConfirm: meta ? meta.exitConfirm : CFG.exitConfirm,
+      exitTip: meta ? meta.exitTip : CFG.exitTip,
+      entries: ordered,
+      version: delta.version,
+      epoch: delta.epoch
+    };
+  }
+
+  function applyConfig(cfg, fromServer) {
+    var changed = cfg.version !== CFG.version ||
+      JSON.stringify(cfg.entries) !== JSON.stringify(CFG.entries) ||
+      cfg.appTitle !== CFG.appTitle ||
+      cfg.appSubtitle !== CFG.appSubtitle;
+    CFG = cfg;
+    ENTRIES = CFG.entries;
+    if (fromServer) source = 'server';
+    el.appTitle.textContent = CFG.appTitle;
+    el.appSubtitle.textContent = CFG.appSubtitle;
+    el.brandTitle.textContent = CFG.appTitle;
+    el.brandSub.textContent = CFG.appSubtitle;
+    document.title = CFG.appTitle + ' · 电脑端';
+    if (!changed) return false;
+    renderHome();
+    // 展示页内的内容变化不即时生效（与电视端一致：下次进入生效）
+    if (state.mode === 'home') focusFirst();
+    if (state.mode === 'zones') renderZones();
+    return true;
+  }
+
+  async function syncFromServer(force) {
+    if (!SERVER_BASE && !servedOverHttp) {
+      if (force) toast('未配置服务器地址，无法同步');
+      return;
+    }
+    try {
+      var res = await fetch(SERVER_BASE + '/api/config?since=' + CFG.version + '&epoch=' + CFG.epoch, {
+        headers: { 'Accept': 'application/json' }, cache: 'no-store'
+      });
+      if (res.status === 304) {
+        source = 'server';
+        if (force) toast('已是最新配置（v' + CFG.version + '）');
+        return;
+      }
+      if (!res.ok) throw new Error('服务端返回 HTTP ' + res.status);
+      var body = await res.json();
+
+      if (body.full) {
+        var full = body.full;
+        applyConfig({
+          appTitle: full.appTitle, appSubtitle: full.appSubtitle,
+          exitConfirm: full.exitConfirm, exitTip: full.exitTip,
+          entries: full.entries || [], version: body.version, epoch: body.epoch
+        }, true);
+      } else {
+        var merged = mergeDelta(body);
+        if (!merged) {
+          // 代次变化 / 版本回退 → 降级全量重拉（与电视端一致）
+          var r2 = await fetch(SERVER_BASE + '/api/config?full=1', { cache: 'no-store' });
+          if (!r2.ok) throw new Error('全量重拉失败 HTTP ' + r2.status);
+          var full2 = await r2.json();
+          applyConfig({
+            appTitle: full2.full.appTitle, appSubtitle: full2.full.appSubtitle,
+            exitConfirm: full2.full.exitConfirm, exitTip: full2.full.exitTip,
+            entries: full2.full.entries || [], version: full2.version, epoch: full2.epoch
+          }, true);
+        } else {
+          applyConfig(merged, true);
+        }
+      }
+      toast('已从服务器同步到 v' + CFG.version);
+    } catch (e) {
+      if (force) toast('同步失败，继续使用' + (source === 'server' ? '上次同步的内容' : '内置兜底内容'));
+    }
+  }
+
+  /* ============================ 首页 ============================ */
+
+  function renderHome() {
+    el.grid.innerHTML = '';
+    if (!ENTRIES.length) {
+      var empty = document.createElement('div');
+      empty.style.cssText = 'color:var(--muted);font-size:14px;padding:20px';
+      empty.textContent = '暂无页面，请先在管理后台添加。';
+      el.grid.appendChild(empty);
+      state.focusNodes = [];
+      state.focus = null;
+      return;
+    }
+    ENTRIES.forEach(function (entry) {
+      var tile = document.createElement('button');
+      tile.className = 'tile';
+      tile.style.setProperty('--accent', entry.accent || '#2FD2F5');
+      tile.setAttribute('data-id', entry.id);
+
+      var ic = document.createElement('div');
+      ic.className = 'tile-icon';
+      ic.innerHTML = iconSvg(entry.icon);
+      var t = document.createElement('div');
+      t.className = 'tile-title';
+      t.textContent = entry.title;
+
+      var sub = document.createElement('div');
+      sub.className = 'tile-sub';
+      sub.textContent = entry.subtitle || '';
+
+      var foot = document.createElement('div');
+      foot.className = 'tile-foot';
+      var urlTag = document.createElement('span');
+      urlTag.className = 'tile-url';
+      // 画面墙没有外部网址，用一句说明代替，避免卡片出现空白条
+      urlTag.textContent = entry.type === 'camera' ? '内置画面墙 · 点击直接观看' : entry.url;
+      foot.appendChild(urlTag);
+
+      tile.appendChild(ic);
+      tile.appendChild(t);
+      tile.appendChild(sub);
+      tile.appendChild(foot);
+      tile.addEventListener('mouseenter', function () { applyFocus(tile); });
+      tile.addEventListener('click', function () { openEntry(entry); });
+      el.grid.appendChild(tile);
+    });
+    cacheFocusNodes();
+  }
+
+  function cacheFocusNodes() {
+    state.focusNodes = Array.prototype.slice.call(el.grid.querySelectorAll('.tile'));
+  }
+
+  function applyFocus(node) {
+    state.focusNodes.forEach(function (n) { n.classList.remove('focused'); });
+    state.focus = node || null;
+    if (node) node.classList.add('focused');
+  }
+
+  function focusFirst() {
+    cacheFocusNodes();
+    applyFocus(state.focusNodes[0] || null);
+  }
+
+  /** 按几何位置推断栅格列数，方向键才能「上下左右」移动 */
+  function gridColumns() {
+    if (!state.focusNodes.length) return 1;
+    var tops = {};
+    state.focusNodes.forEach(function (n) { tops[n.offsetTop] = 1; });
+    var first = state.focusNodes[0].offsetTop;
+    var sameRow = state.focusNodes.filter(function (n) { return n.offsetTop === first; }).length;
+    return Math.max(1, sameRow);
+  }
+
+  function moveFocus(dx, dy) {
+    if (!state.focusNodes.length) return;
+    var cur = state.focusNodes.indexOf(state.focus);
+    if (cur < 0) return applyFocus(state.focusNodes[0]);
+    var cols = gridColumns();
+    var next = cur + dx + dy * cols;
+    if (next < 0 || next >= state.focusNodes.length) return;
+    applyFocus(state.focusNodes[next]);
+    if (state.focusNodes[next].scrollIntoView) {
+      state.focusNodes[next].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }
+
+  /* ============================ 展示页：直连 / 代理 ============================ */
+
+  function openModeOf(entry) {
+    var pref = local.proxyModes[entry.id];
+    if (pref === 'proxy' || pref === 'direct') return pref;
+    // auto：配了自动登录的页面走代理才有意义（跨域 iframe 无法注入脚本）
+    return (entry.autoLogin && entry.autoLogin.enabled !== false && entry.autoLogin.password) ? 'proxy' : 'direct';
+  }
+
+  function directSrcOf(entry) { return entry.url; }
+
+  /* ---------------- 极速模式：本机总开关 + 服务端截图包装页 ---------------- */
+
+  /** 极速模式是否对该页生效：本机开关开 且 页面在服务端配置为参与（camera 不参与） */
+  function turboOn(entry) {
+    return local.turboEnabled && entry && entry.type !== 'camera' && entry.turboEnabled !== false;
+  }
+
+  /** 极速模式地址：服务端包装页，刷新率/质量由服务端按该页配置内联注入 */
+  function turboSrcOf(entry) {
+    return '/shot/' + encodeURIComponent(entry.id) + '/view';
+  }
+
+  /** 极速模式开关按钮文案 */
+  function renderTurboButton() {
+    el.btnTurbo.textContent = '极速模式：' + (local.turboEnabled ? '开' : '关');
+    el.btnTurbo.classList.toggle('on', local.turboEnabled);
+  }
+
+  function toggleTurbo() {
+    local.turboEnabled = !local.turboEnabled;
+    saveLocalSettings();
+    renderTurboButton();
+    toast(local.turboEnabled
+      ? '已开启极速模式（各页面刷新率见后台设置）'
+      : '已关闭极速模式，恢复真实页面');
+    // 正在展示的页面立即按新地址重载；分区页 4 格全部重载
+    if (state.mode === 'display' && state.entry) mountFrame(state.entry);
+    if (zones.active) renderZones();
+  }
+
+  /** 代理地址：/proxy/<id> + 上游 pathname + search + hash（路径 1:1 镜像） */
+  function proxySrcOf(entry) {
+    try {
+      var u = new URL(entry.url, location.href);
+      return '/proxy/' + encodeURIComponent(entry.id) + u.pathname + u.search + u.hash;
+    } catch (e) {
+      return '/proxy/' + encodeURIComponent(entry.id) + '/';
+    }
+  }
+
+  function srcOf(entry) {
+    // 画面墙：内嵌服务端画面墙网页（三条按行合成 MJPEG 铺满 1920×1080）
+    if (entry && entry.type === 'camera') return SERVER_BASE + '/cam/view';
+    if (turboOn(entry)) return turboSrcOf(entry);
+    return openModeOf(entry) === 'proxy' ? proxySrcOf(entry) : directSrcOf(entry);
+  }
+
+  function renderModeButton() {
+    if (!state.entry) return;
+    var mode = openModeOf(state.entry);
+    el.btnMode.textContent = mode === 'proxy' ? '代理模式' : '直连模式';
+    el.btnMode.className = 'btn' + (mode === 'proxy' ? ' on' : '');
+    el.btnMode.title = mode === 'proxy'
+      ? '当前经服务端反向代理（同源，可自动登录）；点击改为直连'
+      : '当前直连目标地址；点击改为代理（同源，可自动登录）';
+  }
+
+  function openEntry(entry, opts) {
+    opts = opts || {};
+    // 摄像头画面墙：客户端内置页面，直接播放服务端转码后的 MJPEG，不走 iframe。
+    // 轮询播放中的画面墙例外：走展示模式内嵌服务端 /cam/view 画面墙网页
+    if (entry.type === 'camera' && !opts.rotation) {
+      stopRotation();
+      openCameraWall(entry);
+      return;
+    }
+    // 「强制原址打开」：原生视频插件等页面无法内嵌，点击时直接在新标签访问。
+    // 配了自动登录的入口走代理地址——独立标签页里由服务端代理注入自动登录脚本
+    if (entry.openOriginal === true) {
+      if (!opts.rotation) stopRotation();
+      var useProxy = entry.autoLogin && entry.autoLogin.enabled !== false && entry.autoLogin.password;
+      toast('正在新标签页打开「' + entry.title + '」' + (useProxy ? '（含自动登录）' : ''));
+      window.open(useProxy ? proxySrcOf(entry) : entry.url, '_blank', 'noopener');
+      return;
+    }
+    if (!opts.rotation) stopRotation();
+    if (state.mode === 'camera') closeCameraWall();
+    state.mode = 'display';
+    state.entry = entry;
+    el.homeScreen.hidden = true;
+    el.zoneScreen.hidden = true;
+    el.settingsScreen.hidden = true;
+    el.cameraScreen.hidden = true;
+    el.displayScreen.hidden = false;
+    syncToolGroups();
+    state.zoomPercent = 100;
+    renderModeButton();
+    mountFrame(entry);
+    showInfo();
+  }
+
+  function mountFrame(entry) {
+    var src = srcOf(entry);
+    el.frameViewport.innerHTML = '';
+    var frame = document.createElement('iframe');
+    frame.setAttribute('data-for', entry.id);
+    // 正式客户端必须允许鼠标点击页面内部（预览页那种 pointer-events:none 是测试台专属）
+    frame.setAttribute('allow', 'fullscreen');
+    frame.src = src;
+    el.frameViewport.appendChild(frame);
+
+    el.errorPanel.hidden = true;
+    el.loadingPanel.hidden = false;
+    el.loadingText.textContent = '正在加载大屏页面…';
+    el.progress.style.width = '8%';
+
+    var settled = false;
+    clearTimeout(state.loadingTimer);
+    state.loadingTimer = setTimeout(function () {
+      if (settled) return;
+      settled = true;
+      showError('页面在 ' + Math.round(LOAD_TIMEOUT_MS / 1000) + ' 秒内没有加载完成。\n' +
+        '若目标页面禁止被嵌入（X-Frame-Options）或需要登录，请尝试「用代理方式打开」。');
+    }, LOAD_TIMEOUT_MS);
+
+    frame.addEventListener('load', function () {
+      settled = true;
+      clearTimeout(state.loadingTimer);
+      el.loadingPanel.hidden = true;
+      el.progress.style.width = '100%';
+      setTimeout(function () { el.progress.style.width = '0%'; }, 450);
+      applyZoom();
+      // 同源（代理模式）才能注入自动登录脚本；跨域时静默跳过
+      tryAutoLogin(frame, entry);
+    });
+    applyZoom();
+  }
+
+  /** 代理模式下被代理页与客户端同源，可注入与电视端完全相同的 auto_login.js */
+  function tryAutoLogin(frame, entry) {
+    var al = entry.autoLogin;
+    if (!al || al.enabled === false || !al.password) return;
+    var win, doc;
+    try { win = frame.contentWindow; doc = frame.contentDocument; } catch (e) { return; }
+    if (!win || !doc || !doc.head) {
+      if (openModeOf(entry) === 'direct') {
+        showInfo('该页面需要登录：直连模式下浏览器不允许注入脚本，请手动登录一次；' +
+          '或点击「代理模式」由服务端代理后自动填充账号密码。');
+      }
+      return;
+    }
+    // 代理已在 HTML 里注入过自动登录（服务端注入），客户端不再重复注入
+    if (win.__TV_AUTOLOGIN_SERVER__) {
+      showInfo('已注入自动登录脚本（账号 ' + (al.username || '—') + '）');
+      return;
+    }
+    try {
+      win.__TV_AUTOLOGIN__ = {
+        enabled: true,
+        username: String(al.username || ''),
+        password: String(al.password || ''),
+        usernameSelector: String(al.usernameSelector || ''),
+        passwordSelector: String(al.passwordSelector || ''),
+        submitSelector: String(al.submitSelector || ''),
+        successSelector: String(al.successSelector || '')
+      };
+      win.__TV_AUTOLOGIN_DONE__ = false; // 每次导航后都允许重新注入
+      var s = doc.createElement('script');
+      s.textContent = AUTO_LOGIN_SRC;
+      doc.head.appendChild(s);
+      showInfo('已注入自动登录脚本（账号 ' + (al.username || '—') + '）');
+    } catch (e) { /* 跨域或页面异常，忽略 */ }
+  }
+
+  function showInfo(extra) {
+    if (!state.entry) return;
+    var mode = openModeOf(state.entry) === 'proxy' ? '代理（同源）' : '直连';
+    el.infoOverlay.textContent =
+      state.entry.title + ' · ' + mode + ' · 缩放 ' + state.zoomPercent + '%' +
+      (rotation.active ? ' · 轮询第 ' + (rotation.index + 1) + ' 页' : '') +
+      (extra ? '\n' + extra : '');
+    el.infoOverlay.style.whiteSpace = 'pre-line';
+    el.infoOverlay.classList.add('show');
+    clearTimeout(el.infoOverlay._t);
+    el.infoOverlay._t = setTimeout(function () { el.infoOverlay.classList.remove('show'); }, 5200);
+  }
+
+  /** 虚拟 1920×1080 视口 + 等比缩放：与电视端「重写 WebView density」等价 */
+  function applyZoom() {
+    var box = el.frameBox.getBoundingClientRect();
+    if (!box.width || !box.height) return;
+    var autoFit = !state.entry || state.entry.autoFit !== false;
+    var base = autoFit ? Math.min(box.width / ZONE_MIN.width, box.height / ZONE_MIN.height) : 1;
+    var manual = state.entry && Number(state.entry.scale) > 0 ? Number(state.entry.scale) / 100 : 1;
+    var k = base * manual * (state.zoomPercent / 100);
+    el.frameViewport.style.transform = 'translate(-50%, -50%) scale(' + k + ')';
+    el.zoomChip.textContent = Math.round(k * 100) + '%';
+  }
+
+  function changeZoom(delta) {
+    state.zoomPercent = Math.min(400, Math.max(25, state.zoomPercent + delta));
+    applyZoom();
+    showInfo();
+  }
+
+  function showError(message) {
+    el.loadingPanel.hidden = true;
+    el.errorMessage.textContent = message;
+    el.errorPanel.hidden = false;
+  }
+
+  /**
+   * 顶栏按钮组按模式切换：首页显示高频功能组，展示页显示画面控制组。
+   * 原展示页独立工具条已取消，整行空间让给大屏画面。
+   */
+  function syncToolGroups() {
+    var onDisplay = state.mode === 'display';
+    var onCamera = state.mode === 'camera';
+    el.homeTools.hidden = onDisplay || onCamera;
+    el.displayTools.hidden = !onDisplay;
+    el.cameraTools.hidden = !onCamera;
+    if (onDisplay || onCamera) setMoreMenu(false);
+  }
+
+  function reloadPage() {
+    if (!state.entry) return;
+    mountFrame(state.entry);
+    toast('正在重新加载…');
+  }
+
+  /* ============================ 摄像头画面墙 ============================ */
+  /*
+   * 画面来源：服务端 /cam/<编号>.mjpg（ffmpeg 把 RTSP 的 H.265 转成 MJPEG）。
+   * 选 MJPEG 是为了让 <img> 直接承载——浏览器与电视端 WebView 都原生支持，
+   * 客户端不需要引入任何第三方播放库，也不会有本地插件的原生窗口错位问题。
+   * 只给「当前可见」的画面发起连接；切布局时立即断开，服务端随即回收转码进程。
+   */
+  // cells：画面墙 9 格的排布（摄像头编号 / 'logo' / null），由服务端下发，
+  // 与服务端按行合成的画面共用同一套顺序
+  var camWall = { entry: null, list: [], cells: [], layout: 3, focus: 0, gen: 0 };
+  /** 画面墙固定 3 列 × 3 行，与服务端 hstack 的每行路数保持一致 */
+  var CAM_COLS = 3;
+  var CAM_ROWS = 3;
+
+  /** 点播地址；gen 每次切换布局自增，用于强制重连而不复用旧连接 */
+  function camStreamUrl(id, high) {
+    return SERVER_BASE + '/cam/' + id + '.mjpg' + (high ? '?q=high&' : '?') + 't=' + camWall.gen;
+  }
+
+  /** 一整行 3 路的合成画面地址（服务端 hstack）；3×3 墙面只用 3 条连接 */
+  function camRowUrl(row) {
+    return SERVER_BASE + '/cam/wall.mjpg?row=' + row + '&t=' + camWall.gen;
+  }
+
+  async function openCameraWall(entry) {
+    camWall.entry = entry;
+    state.mode = 'camera';
+    state.entry = entry;
+    el.homeScreen.hidden = true;
+    el.displayScreen.hidden = true;
+    el.zoneScreen.hidden = true;
+    el.settingsScreen.hidden = true;
+    el.cameraScreen.hidden = false;
+    el.camGrid.className = 'layout-3';
+    el.camGrid.innerHTML = '<div class="cam-hint">正在连接摄像头…</div>';
+    syncToolGroups();
+    camWall.layout = 3;
+    camWall.focus = 0;
+    camWall.gen++;
+    await loadCameras();
+    renderCamGrid();
+    toast('方向键选择画面，【确定】放大，【M】切换 3×3 / 1×1');
+  }
+
+  async function loadCameras() {
+    try {
+      var res = await fetch(SERVER_BASE + '/api/cameras', { cache: 'no-store' });
+      var data = await res.json();
+      camWall.list = data && Array.isArray(data.cameras) ? data.cameras : [];
+      camWall.cells = data && Array.isArray(data.cells) && data.cells.length
+        ? data.cells
+        // 服务端未下发排布时按顺序平铺，保证旧接口下依然能渲染
+        : camWall.list.map(function (c) { return c.id; });
+    } catch (e) {
+      camWall.list = [];
+      camWall.cells = [];
+    }
+  }
+
+  function renderCamGrid() {
+    var grid = el.camGrid;
+    grid.innerHTML = '';
+    grid.className = camWall.layout === 1 ? 'layout-1' : 'layout-3';
+    if (!camWall.list.length) {
+      grid.innerHTML = '<div class="cam-hint">没有可用的摄像头，请检查服务端 cameras 配置</div>';
+      state.focusNodes = [];
+      state.focus = null;
+      return;
+    }
+    if (camWall.layout === 1) renderCamSingle();
+    else renderCamWall();
+    updateCamFocus();
+    updateCamLayoutButton();
+  }
+
+  /** 当前高亮格对应的摄像头；品牌格/空位返回 null */
+  function camAtFocus() {
+    var cellId = camWall.cells[camWall.focus];
+    for (var k = 0; typeof cellId === 'number' && k < camWall.list.length; k++) {
+      if (camWall.list[k].id === cellId) return camWall.list[k];
+    }
+    return null;
+  }
+
+  /** 单画面：直接点播该摄像头的 MJPEG，取主码流看清细节 */
+  function renderCamSingle() {
+    // camWall.focus 是格子序号，品牌格占了位之后不能再直接当摄像头下标用
+    var cam = camAtFocus() || camWall.list[0];
+    var cell = document.createElement('div');
+    cell.className = 'cam-cell' + (cam.online ? '' : ' offline');
+    cell.setAttribute('data-id', String(cam.id));
+
+    var img = document.createElement('img');
+    img.alt = cam.title;
+    // MJPEG 是长连接：服务端回收或网络抖动后需要重新点播才能续播
+    img.addEventListener('error', function () {
+      if (!img.isConnected) return;
+      setTimeout(function () {
+        if (img.isConnected) img.src = camStreamUrl(cam.id, true);
+      }, 3000);
+    });
+    img.src = camStreamUrl(cam.id, true);
+    cell.appendChild(img);
+
+    var off = document.createElement('div');
+    off.className = 'cam-off';
+    off.textContent = '信号丢失';
+    cell.appendChild(off);
+
+    var badge = document.createElement('span');
+    badge.className = 'cam-badge';
+    badge.textContent = cam.online ? '在线' : '离线';
+    cell.appendChild(badge);
+
+    var name = document.createElement('div');
+    name.className = 'cam-name';
+    name.textContent = cam.title;
+    cell.appendChild(name);
+
+    cell.addEventListener('click', function () { setCameraLayout(3); });
+    el.camGrid.appendChild(cell);
+
+    state.focusNodes = [cell];
+    state.focus = cell;
+  }
+
+  /**
+   * 3×3 墙面：每行 3 路已由服务端拼成一条画面，这里叠一层 9 格浮层做
+   * 名称/在线角标/高亮/点击放大，浮层本身透明，所以不会挡住画面。
+   */
+  function renderCamWall() {
+    var rows = document.createElement('div');
+    rows.id = 'camRows';
+    for (var r = 1; r <= CAM_ROWS; r++) {
+      var im = document.createElement('img');
+      im.alt = '画面墙第 ' + r + ' 行';
+      im.addEventListener('error', function () {
+        var node = this;
+        setTimeout(function () {
+          if (node.isConnected) node.src = node.getAttribute('data-url');
+        }, 3000);
+      });
+      im.setAttribute('data-url', camRowUrl(r));
+      im.src = camRowUrl(r);
+      rows.appendChild(im);
+    }
+    el.camGrid.appendChild(rows);
+
+    var slots = document.createElement('div');
+    slots.id = 'camSlots';
+    for (var i = 0; i < CAM_ROWS * CAM_COLS; i++) {
+      var cam = null;
+      var cellId = camWall.cells[i];
+      for (var k = 0; typeof cellId === 'number' && k < camWall.list.length; k++) {
+        if (camWall.list[k].id === cellId) { cam = camWall.list[k]; break; }
+      }
+      var slot = document.createElement('div');
+      slot.className = 'cam-slot' + (!cam ? '' : cam.online ? '' : ' offline');
+      if (cam) slot.setAttribute('data-id', String(cam.id));
+      // 品牌格：黑底 + 居中 logo，没有名称与在线角标（图片不在视频流里，见服务端注释）
+      if (cellId === 'logo') {
+        slot.className = 'cam-slot is-logo';
+        var logo = document.createElement('img');
+        logo.className = 'cam-logo';
+        logo.alt = '中心标识';
+        logo.src = SERVER_BASE + '/cam/logo.png';
+        slot.appendChild(logo);
+      }
+      if (cam) {
+        var off = document.createElement('div');
+        off.className = 'cam-off';
+        off.textContent = '信号丢失';
+        slot.appendChild(off);
+
+        var badge = document.createElement('span');
+        badge.className = 'cam-badge';
+        badge.textContent = cam.online ? '在线' : '离线';
+        slot.appendChild(badge);
+
+        var name = document.createElement('div');
+        name.className = 'cam-name';
+        // 带上序号，方便对着遥控器定位
+        name.textContent = cam.id + '. ' + cam.title;
+        slot.appendChild(name);
+      }
+      (function (target, entry, cellIndex) {
+        if (entry) {
+          target.addEventListener('click', function () {
+            // 存格子序号：切回 3×3 时高亮才能落回原格（品牌格占了位，
+            // 格子序号与 camWall.list 下标不再一一对应）
+            camWall.focus = cellIndex;
+            setCameraLayout(1);
+          });
+        }
+        target.addEventListener('mouseenter', function () {
+          state.focus = target;
+          updateCamFocus();
+        });
+      })(slot, cam, i);
+      slots.appendChild(slot);
+    }
+    el.camGrid.appendChild(slots);
+
+    var nodes = Array.prototype.slice.call(slots.querySelectorAll('.cam-slot'));
+    state.focusNodes = nodes;
+    state.focus = nodes[Math.min(camWall.focus, nodes.length - 1)] || null;
+  }
+
+  /** 切换 3×3 / 1×1：先断开旧连接，服务端空闲回收后 CPU 立刻回落 */
+  function setCameraLayout(n) {
+    camWall.layout = n === 1 ? 1 : 3;
+    camWall.gen++;
+    Array.prototype.forEach.call(el.camGrid.querySelectorAll('img'), function (img) {
+      img.removeAttribute('src');
+      img.src = '';
+    });
+    renderCamGrid();
+  }
+
+  function updateCamFocus() {
+    state.focusNodes.forEach(function (node) {
+      node.classList.toggle('focused', node === state.focus);
+    });
+  }
+
+  function updateCamLayoutButton() {
+    if (el.btnCamLayout) el.btnCamLayout.textContent = '布局：' + (camWall.layout === 1 ? '1×1' : '3×3');
+  }
+
+  function moveCamFocus(dx, dy) {
+    if (camWall.layout === 1) return;
+    var i = state.focusNodes.indexOf(state.focus);
+    if (i < 0) i = 0;
+    var col = (i % 3) + dx;
+    var row = Math.floor(i / 3) + dy;
+    if (col < 0 || col > 2) return;
+    var next = row * 3 + col;
+    if (next < 0 || next >= state.focusNodes.length) return;
+    camWall.focus = next;
+    state.focus = state.focusNodes[next];
+    updateCamFocus();
+  }
+
+  /** 【确定】键：宫格 → 放大单画面；单画面 → 回到宫格 */
+  function activateCamFocus() {
+    // 高亮在品牌格/空位上时没有可放大的画面，保持宫格不动
+    if (camWall.layout === 3 && !camAtFocus()) return;
+    setCameraLayout(camWall.layout === 1 ? 3 : 1);
+  }
+
+  async function refreshCameraWall() {
+    camWall.gen++;
+    Array.prototype.forEach.call(el.camGrid.querySelectorAll('img'), function (img) {
+      img.removeAttribute('src');
+      img.src = '';
+    });
+    await loadCameras();
+    renderCamGrid();
+    toast('画面已重新连接');
+  }
+
+  function closeCameraWall() {
+    Array.prototype.forEach.call(el.camGrid.querySelectorAll('img'), function (img) {
+      img.removeAttribute('src');
+      img.src = '';
+    });
+    el.camGrid.innerHTML = '';
+    el.cameraScreen.hidden = true;
+    camWall.entry = null;
+    camWall.list = [];
+    camWall.cells = [];
+  }
+
+  function backToHome() {
+    stopRotation();
+    if (state.mode === 'camera') closeCameraWall();
+    state.mode = 'home';
+    state.entry = null;
+    el.frameViewport.innerHTML = '';
+    el.displayScreen.hidden = true;
+    el.zoneScreen.hidden = true;
+    el.cameraScreen.hidden = true;
+    el.settingsScreen.hidden = true;
+    el.homeScreen.hidden = false;
+    syncToolGroups();
+    renderHome();
+    focusFirst();
+  }
+
+  function toggleMode() {
+    if (!state.entry) return;
+    var entry = state.entry;
+    local.proxyModes[entry.id] = openModeOf(entry) === 'proxy' ? 'direct' : 'proxy';
+    saveLocalSettings();
+    renderModeButton();
+    mountFrame(entry);
+    toast('已切换为「' + (openModeOf(entry) === 'proxy' ? '代理模式' : '直连模式') + '」');
+  }
+
+  function openInTab() {
+    if (!state.entry) return;
+    window.open(state.entry.url, '_blank', 'noopener');
+  }
+
+  /* ============================ 轮询展示 ============================ */
+
+  function rotationIntervalMs() {
+    return Math.max(1, Number(local.rotation.intervalSec) || 15) * 1000;
+  }
+
+  function rotationEntries() {
+    // 配了「强制原址打开」的入口无法内嵌轮播（会不停弹新标签），跳过；
+    // 画面墙经服务端 /cam/view 画面墙网页同样参与轮播
+    return local.rotation.items.map(function (id) { return entryOf(id); })
+      .filter(function (e) { return e && e.openOriginal !== true; });
+  }
+
+  /** 由本机时钟起点推导当前是第几页：退出重进不跳页，多端一致 */
+  function rotationIndexFromClock(n) {
+    if (n <= 0) return 0;
+    var start = Number(local.rotation.startedAt) || 0;
+    if (!start) return 0;
+    var elapsed = Math.max(0, correctedNow() - start);
+    return Math.floor(elapsed / rotationIntervalMs()) % n;
+  }
+
+  function startRotation() {
+    if (!ENTRIES.length) { toast('暂无可轮询的页面，请先在管理后台添加页面'); return; }
+    var usable = local.rotation.items.filter(function (id) { return !!entryOf(id); });
+    if (!usable.length) {
+      // 进入即播放：首次没选过就让全部页面参与
+      local.rotation.items = ENTRIES.map(function (e) { return e.id; });
+      local.rotation.startedAt = correctedNow();
+      saveLocalSettings();
+    }
+    var list = rotationEntries();
+    if (!list.length) { toast('暂无可轮询的页面，请先在管理后台添加页面'); return; }
+    rotation.active = true;
+    rotation.paused = false;
+    rotation.index = rotationIndexFromClock(list.length);
+    el.rotationChip.classList.add('show');
+    openEntry(list[rotation.index], { rotation: true });
+    renderRotationChip();
+    scheduleRotation();
+    toast('轮询播放中：共 ' + list.length + ' 页，每页 ' + (rotationIntervalMs() / 1000) + ' 秒');
+  }
+
+  function stopRotation() {
+    rotation.active = false;
+    rotation.paused = false;
+    clearTimeout(rotation.advanceTimer);
+    clearInterval(rotation.tickTimer);
+    el.rotationChip.classList.remove('show');
+  }
+
+  function scheduleRotation() {
+    clearTimeout(rotation.advanceTimer);
+    clearInterval(rotation.tickTimer);
+    if (!rotation.active) return;
+    rotation.tickTimer = setInterval(renderRotationChip, 1000);
+    if (rotation.paused) return;
+    var list = rotationEntries();
+    if (list.length < 1) return;
+    var iv = rotationIntervalMs();
+    var start = Number(local.rotation.startedAt) || correctedNow();
+    var remain = iv - ((correctedNow() - start) % iv);
+    rotation.advanceTimer = setTimeout(function () {
+      rotation.index = (rotation.index + 1) % list.length;
+      openEntry(list[rotation.index], { rotation: true });
+      scheduleRotation();
+    }, remain);
+  }
+
+  function toggleRotationPause() {
+    if (!rotation.active) return;
+    if (rotation.paused) {
+      rotation.paused = false;
+      // 恢复时把时钟起点对齐到当前页，避免「暂停期间时间仍在走」导致跳页
+      local.rotation.startedAt = correctedNow() - rotation.index * rotationIntervalMs();
+      saveLocalSettings();
+      scheduleRotation();
+      toast('已继续轮询');
+    } else {
+      rotation.paused = true;
+      clearTimeout(rotation.advanceTimer);
+      clearInterval(rotation.tickTimer);
+      el.btnRotationToggle.textContent = '继续';
+      toast('已暂停轮询');
+    }
+    renderRotationChip();
+  }
+
+  function renderRotationChip() {
+    if (!rotation.active) return;
+    var list = rotationEntries();
+    var iv = rotationIntervalMs();
+    var start = Number(local.rotation.startedAt) || correctedNow();
+    var remain = rotation.paused ? 0 : (iv - ((correctedNow() - start) % iv));
+    el.btnRotationToggle.textContent = rotation.paused ? '继续' : '暂停';
+    el.rotationText.textContent = '轮询播放中 · 第 ' + (rotation.index + 1) + '/' + list.length + ' 页' +
+      (rotation.paused ? '（已暂停）' : ' · ' + Math.max(0, Math.ceil(remain / 1000)) + 's 后切换');
+  }
+
+  /* ============================ 分区展示 2×2 ============================ */
+
+  function zoneEntries() {
+    return [0, 1, 2, 3].map(function (pos) {
+      var z = local.zones.filter(function (x) { return x.position === pos; })[0];
+      return z && z.entryId ? entryOf(z.entryId) : null;
+    });
+  }
+
+  /** 构建单格（抽出以便「只重建一格」，避免其余三格 iframe 重新加载） */
+  function buildZoneCell(entry, position) {
+    var cell = document.createElement('div');
+    cell.className = 'zone-cell';
+    cell.setAttribute('data-pos', String(position));
+
+    var label = document.createElement('div');
+    label.className = 'zone-label';
+    var idx = document.createElement('b');
+    idx.textContent = String(position + 1);
+    var name = document.createElement('span');
+    name.className = 'zname';
+    name.textContent = entry ? entry.title : '未配置';
+    var pos = document.createElement('span');
+    pos.className = 'zpos';
+    var pick = document.createElement('button');
+    pick.className = 'zbtn';
+    pick.textContent = '选择页面';
+    pick.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      zones.active = position;
+      updateZoneActive();
+      pickZoneEntry(position);
+    });
+    var openBtn = document.createElement('button');
+    openBtn.className = 'zbtn';
+    openBtn.textContent = '单独打开';
+    openBtn.disabled = !entry;
+    openBtn.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      if (entry) openEntry(entry);
+    });
+    pos.appendChild(pick);
+    pos.appendChild(openBtn);
+    label.appendChild(idx);
+    label.appendChild(name);
+    label.appendChild(pos);
+    label.addEventListener('click', function () {
+      zones.active = position;
+      updateZoneActive();
+      pickZoneEntry(position);
+    });
+    cell.appendChild(label);
+
+    var body = document.createElement('div');
+    body.className = 'zone-body';
+    if (!entry) {
+      var ph = document.createElement('div');
+      ph.className = 'zone-placeholder';
+      ph.textContent = '未配置 · 点击「选择页面」为该格指定大屏';
+      body.appendChild(ph);
+    } else {
+      var vp = document.createElement('div');
+      vp.className = 'zone-viewport';
+      var frame = document.createElement('iframe');
+      frame.src = srcOf(entry);
+      // 不设 referrerpolicy：代理模式下服务端要靠 Referer 兜底「脚本跳转丢前缀」的情况
+      vp.appendChild(frame);
+      body.appendChild(vp);
+    }
+    cell.appendChild(body);
+
+    var flash = document.createElement('div');
+    flash.className = 'zone-flash';
+    cell.appendChild(flash);
+    return cell;
+  }
+
+  /** 只切换「当前分区」的逻辑状态，不重建 DOM —— 否则每次移动都会重载四个页面 */
+  function updateZoneActive() {
+    Array.prototype.forEach.call(el.zoneGrid.querySelectorAll('.zone-cell'), function (cell) {
+      var p = Number(cell.getAttribute('data-pos'));
+      cell.className = 'zone-cell' + (p === zones.active ? ' active' : '');
+    });
+  }
+
+  /** 高亮某格：立即点亮，holdMs 后淡出（position < 0 表示全部熄灭） */
+  function flashZone(position, holdMs) {
+    if (holdMs === undefined) holdMs = 600;
+    clearTimeout(zones.flashTimer);
+    zones.flashTimer = null;
+    Array.prototype.forEach.call(el.zoneGrid.querySelectorAll('.zone-cell'), function (cell) {
+      var glow = cell.querySelector('.zone-flash');
+      if (!glow) return;
+      if (Number(cell.getAttribute('data-pos')) === position) glow.classList.add('on');
+      else glow.classList.remove('on');
+    });
+    if (position < 0 || holdMs <= 0) return;
+    zones.flashTimer = setTimeout(function () { flashZone(-1, 0); }, holdMs);
+  }
+
+  function scaleZoneCells() {
+    Array.prototype.forEach.call(el.zoneGrid.querySelectorAll('.zone-cell'), function (cell) {
+      var body = cell.querySelector('.zone-body');
+      var vp = cell.querySelector('.zone-viewport');
+      if (!body || !vp) return;
+      var r = body.getBoundingClientRect();
+      if (!r.width) return;
+      var k = r.width / ZONE_MIN.width;
+      vp.style.transform = 'scale(' + k + ')';
+    });
+  }
+
+  function renderZones() {
+    el.zoneGrid.innerHTML = '';
+    zoneEntries().forEach(function (entry, position) {
+      el.zoneGrid.appendChild(buildZoneCell(entry, position));
+    });
+    updateZoneActive();
+    updateZoneHint();
+    scaleZoneCells();
+    flashZone(zones.active);
+  }
+
+  /** 只有该格内容真的变了才调用：其余三格的 iframe 保持不动 */
+  function renderZoneCell(position) {
+    var old = el.zoneGrid.querySelector('.zone-cell[data-pos="' + position + '"]');
+    if (!old) return;
+    el.zoneGrid.replaceChild(buildZoneCell(zoneEntries()[position] || null, position), old);
+    updateZoneHint();
+    updateZoneActive();
+    scaleZoneCells();
+    flashZone(position);
+  }
+
+  function updateZoneHint() {
+    var configured = zoneEntries().filter(Boolean).length;
+    el.zoneHint.textContent = configured
+      ? '点击分区或按 Enter 为该格选择页面　方向键移动高亮　每格按 ' + ZONE_MIN.width + '×' + ZONE_MIN.height + ' 渲染'
+      : '点击任一格「选择页面」开始配置 2×2 拼接';
+  }
+
+  function moveZone(rowDelta, colDelta) {
+    var row = Math.min(1, Math.max(0, Math.floor(zones.active / 2) + rowDelta));
+    var col = Math.min(1, Math.max(0, (zones.active % 2) + colDelta));
+    var next = row * 2 + col;
+    if (next === zones.active) return;
+    zones.active = next;
+    updateZoneActive();   // 仅换逻辑状态，不重载四个页面
+    flashZone(next);      // 目标格亮一下即淡出
+    var entry = zoneEntries()[next];
+    toast('当前分区：' + (entry ? entry.title : '第 ' + (next + 1) + ' 格（未配置）'));
+  }
+
+  function pickZoneEntry(position) {
+    flashZone(position);
+    // 画面墙经服务端 /cam/view 画面墙网页同样可在分格内嵌播放
+    var items = ENTRIES.map(function (e) {
+      var cur = local.zones.filter(function (z) { return z.position === position; })[0];
+      return {
+        text: e.title,
+        primary: !!(cur && cur.entryId === e.id),
+        run: function () { setZoneEntry(position, e.id); }
+      };
+    });
+    items.push({ text: '不使用（清空该格）', run: function () { setZoneEntry(position, ''); } });
+    openDialog('选择第 ' + (position + 1) + ' 格的页面',
+      '2×2 拼接，每格按 ' + ZONE_MIN.width + '×' + ZONE_MIN.height + ' 渲染', items, 'Esc 取消');
+  }
+
+  function setZoneEntry(position, entryId) {
+    local.zones = local.zones.map(function (z) {
+      return z.position === position ? { position: position, entryId: entryId } : z;
+    });
+    saveLocalSettings();
+    renderZoneCell(position);
+    var entry = entryId ? entryOf(entryId) : null;
+    toast('第 ' + (position + 1) + ' 格已设为：' + (entry ? entry.title : '不使用'));
+  }
+
+  function openZones() {
+    stopRotation();
+    state.mode = 'zones';
+    state.entry = null;
+    el.homeScreen.hidden = true;
+    el.displayScreen.hidden = true;
+    el.settingsScreen.hidden = true;
+    el.zoneScreen.hidden = false;
+    renderZones();
+  }
+
+  /* ============================ 设置 ============================ */
+
+  function openSettings() {
+    stopRotation();
+    state.mode = 'settings';
+    el.homeScreen.hidden = true;
+    el.displayScreen.hidden = true;
+    el.zoneScreen.hidden = true;
+    el.settingsScreen.hidden = false;
+    renderSettings();
+  }
+
+  function renderSettings() {
+    var host = el.settingsList;
+    host.innerHTML = '';
+
+    /* --- 轮询 --- */
+    var c1 = card('轮询展示', '进入「轮询展示」即开始播放；这里设置是否开机自动播放、停留时间与参与页面。改动后从第 1 页重新计时。');
+    c1.appendChild(rowSwitch('开机自动播放', '打开客户端后自动进入轮询播放', local.rotation.enabled, function (v) {
+      local.rotation.enabled = v;
+      afterRotationChange();
+    }));
+    c1.appendChild(rowInterval());
+    c1.appendChild(rowSection('参与轮询的页面（勾选加入，↑↓ 调整播放顺序）'));
+    if (!ENTRIES.length) c1.appendChild(rowNote('暂无页面，请先在管理后台添加。'));
+    ENTRIES.forEach(function (e, i) {
+      c1.appendChild(rowRotationPage(e, i));
+    });
+    host.appendChild(c1);
+
+    /* --- 电脑端 --- */
+    var c2 = card('电脑端偏好', '这些设置只影响本机浏览器，不会同步到服务端与电视端。');
+    c2.appendChild(rowSwitch('关闭页面时确认', '对应电视端的「退出确认」，关闭标签页时浏览器会再问一次', local.exitGuard, function (v) {
+      local.exitGuard = v;
+      saveLocalSettings();
+      markSettingsSaved();
+    }));
+    c2.appendChild(rowNote('退出确认文案（由服务端下发）：' + (CFG.exitTip || '—')));
+    c2.appendChild(rowButton('清除本机展示设置', '仅清空本机的轮询与分区配置，不影响服务端内容', '清除', function () {
+      local.rotation = { enabled: false, intervalSec: 15, items: [], startedAt: 0 };
+      local.zones = [0, 1, 2, 3].map(function (p) { return { position: p, entryId: '' }; });
+      local.proxyModes = {};
+      saveLocalSettings();
+      renderSettings();
+      markSettingsSaved();
+      toast('已清除本机展示设置');
+    }));
+    host.appendChild(c2);
+
+    /* --- 关于 --- */
+    var c3 = card('关于', '电脑浏览器客户端与电视端共用同一份服务端内容，展示策略各自保存在本机。');
+    c3.appendChild(rowNote('服务端地址：' + (SERVER_BASE || location.origin)));
+    c3.appendChild(rowNote('配置来源：' + (source === 'server' ? '服务器 v' + CFG.version + '（epoch ' + CFG.epoch + '）' : '内置兜底内容')));
+    c3.appendChild(rowNote('页面数：' + ENTRIES.length + '　轮询页数：' + rotationEntries().length));
+    c3.appendChild(rowNote('同步协议：GET /api/config?since=<version>&epoch=<epoch>，无变更返回 304；代次变化自动降级全量。'));
+    host.appendChild(c3);
+  }
+
+  function card(title, desc) {
+    var c = document.createElement('div');
+    c.className = 'settings-card';
+    var h = document.createElement('h3');
+    h.textContent = title;
+    var p = document.createElement('p');
+    p.className = 'desc';
+    p.textContent = desc;
+    c.appendChild(h);
+    c.appendChild(p);
+    return c;
+  }
+
+  function rowSection(text) {
+    var d = document.createElement('div');
+    d.style.cssText = 'color:var(--muted);font-size:12px;margin:14px 0 6px';
+    d.textContent = text;
+    return d;
+  }
+
+  function rowNote(text) {
+    var d = document.createElement('div');
+    d.style.cssText = 'color:var(--muted);font-size:12px;line-height:1.7;padding:4px 10px';
+    d.textContent = text;
+    return d;
+  }
+
+  function rowSwitch(label, hint, value, onChange) {
+    var r = document.createElement('div');
+    r.className = 'row';
+    var l = document.createElement('div');
+    l.className = 'rlabel';
+    l.textContent = label;
+    var small = document.createElement('small');
+    small.textContent = hint;
+    l.appendChild(small);
+    var sw = document.createElement('div');
+    sw.className = 'switch' + (value ? ' on' : '');
+    sw.addEventListener('click', function () {
+      var next = !sw.classList.contains('on');
+      sw.classList.toggle('on', next);
+      onChange(next);
+    });
+    r.appendChild(l);
+    r.appendChild(sw);
+    return r;
+  }
+
+  function rowInterval() {
+    var r = document.createElement('div');
+    r.className = 'row';
+    var l = document.createElement('div');
+    l.className = 'rlabel';
+    l.textContent = '每页停留时间';
+    var sel = document.createElement('select');
+    INTERVAL_PRESETS.forEach(function (s) {
+      var o = document.createElement('option');
+      o.value = String(s);
+      o.textContent = s + ' 秒';
+      if (s === local.rotation.intervalSec) o.selected = true;
+      sel.appendChild(o);
+    });
+    if (INTERVAL_PRESETS.indexOf(local.rotation.intervalSec) < 0) {
+      var o2 = document.createElement('option');
+      o2.value = String(local.rotation.intervalSec);
+      o2.textContent = local.rotation.intervalSec + ' 秒（自定义）';
+      o2.selected = true;
+      sel.appendChild(o2);
+    }
+    sel.addEventListener('change', function () {
+      local.rotation.intervalSec = Math.min(3600, Math.max(1, parseInt(sel.value, 10) || 15));
+      afterRotationChange();
+    });
+    r.appendChild(l);
+    r.appendChild(sel);
+    return r;
+  }
+
+  function rowRotationPage(entry, index) {
+    var r = document.createElement('div');
+    r.className = 'row';
+    var l = document.createElement('div');
+    l.className = 'rlabel';
+    l.textContent = entry.title;
+    var small = document.createElement('small');
+    var at = local.rotation.items.indexOf(entry.id);
+    small.textContent = at >= 0 ? ('第 ' + (at + 1) + ' 位 / 共 ' + local.rotation.items.length + ' 页') : '未加入轮询';
+    l.appendChild(small);
+
+    var up = document.createElement('button');
+    up.className = 'mini-btn';
+    up.textContent = '↑';
+    up.disabled = at <= 0;
+    up.addEventListener('click', function () { reorderRotation(entry.id, -1); });
+
+    var down = document.createElement('button');
+    down.className = 'mini-btn';
+    down.textContent = '↓';
+    down.disabled = at < 0 || at >= local.rotation.items.length - 1;
+    down.addEventListener('click', function () { reorderRotation(entry.id, 1); });
+
+    var toggle = document.createElement('button');
+    toggle.className = 'mini-btn';
+    toggle.style.minWidth = '52px';
+    toggle.textContent = at >= 0 ? '移出' : '加入';
+    toggle.addEventListener('click', function () {
+      var items = local.rotation.items.slice();
+      var i = items.indexOf(entry.id);
+      if (i >= 0) items.splice(i, 1);
+      else items.push(entry.id);
+      local.rotation.items = items;
+      afterRotationChange();
+    });
+
+    r.appendChild(l);
+    r.appendChild(up);
+    r.appendChild(down);
+    r.appendChild(toggle);
+    return r;
+  }
+
+  function rowButton(label, hint, btnText, onClick) {
+    var r = document.createElement('div');
+    r.className = 'row';
+    var l = document.createElement('div');
+    l.className = 'rlabel';
+    l.textContent = label;
+    var small = document.createElement('small');
+    small.textContent = hint;
+    l.appendChild(small);
+    var b = document.createElement('button');
+    b.className = 'btn';
+    b.textContent = btnText;
+    b.addEventListener('click', onClick);
+    r.appendChild(l);
+    r.appendChild(b);
+    return r;
+  }
+
+  function reorderRotation(id, dir) {
+    var items = local.rotation.items.slice();
+    var from = items.indexOf(id);
+    if (from < 0) return;
+    var to = Math.min(items.length - 1, Math.max(0, from + dir));
+    if (to === from) return;
+    items.splice(from, 1);
+    items.splice(to, 0, id);
+    local.rotation.items = items;
+    afterRotationChange();
+  }
+
+  /** 轮询设置变化后重置本机时钟起点并立即生效（对应电视端 saveRotation 的 restartClock） */
+  function afterRotationChange() {
+    local.rotation.startedAt = correctedNow();
+    saveLocalSettings();
+    renderSettings();
+    markSettingsSaved();
+    if (rotation.active) { rotation.index = 0; scheduleRotation(); renderRotationChip(); }
+  }
+
+  function markSettingsSaved() {
+    el.settingsState.textContent = '已保存';
+    clearTimeout(settingsTimer);
+    settingsTimer = setTimeout(function () { el.settingsState.textContent = ''; }, 1600);
+  }
+
+  /* ============================ 通用弹层 ============================ */
+
+  function openDialog(title, subtitle, items, footer, onCancel) {
+    dialog.open = true;
+    dialog.items = items || [];
+    dialog.focus = Math.max(0, items.findIndex ? items.findIndex(function (i) { return i.primary; }) : -1);
+    if (dialog.focus < 0) dialog.focus = 0;
+    dialog.onCancel = onCancel || null;
+
+    el.dialogLayer.innerHTML = '';
+    var box = document.createElement('div');
+    box.className = 'dialog';
+    var head = document.createElement('header');
+    var h = document.createElement('h3');
+    h.textContent = title;
+    head.appendChild(h);
+    if (subtitle) {
+      var p = document.createElement('p');
+      p.textContent = subtitle;
+      head.appendChild(p);
+    }
+    var list = document.createElement('div');
+    list.className = 'list';
+    box.appendChild(head);
+    box.appendChild(list);
+    if (footer) {
+      var f = document.createElement('footer');
+      f.textContent = footer;
+      box.appendChild(f);
+    }
+    el.dialogLayer.appendChild(box);
+    el.dialogLayer.hidden = false;
+    renderDialogItems(list);
+  }
+  function renderDialogItems(list) {
+    list.innerHTML = '';
+    dialog.items.forEach(function (item, i) {
+      var d = document.createElement('div');
+      d.className = 'item' + (i === dialog.focus ? ' focused' : '') + (item.primary ? ' primary' : '');
+      var dot = document.createElement('span');
+      dot.className = 'dot';
+      var t = document.createElement('span');
+      t.textContent = item.text;
+      d.appendChild(dot);
+      d.appendChild(t);
+      d.addEventListener('mouseenter', function () {
+        dialog.focus = i;
+        setDialogFocus(list, i);   // 只换高亮：重建 DOM 会让 mousedown/mouseup 落在不同节点上，click 就不再派发到条目上
+      });
+      d.addEventListener('click', function () { closeDialog(); item.run && item.run(); });
+      list.appendChild(d);
+    });
+  }
+
+  function setDialogFocus(list, index) {
+    Array.prototype.forEach.call(list.children, function (n, k) {
+      n.classList.toggle('focused', k === index);
+    });
+  }
+
+  function closeDialog() {
+    dialog.open = false;
+    dialog.items = [];
+    el.dialogLayer.hidden = true;
+    el.dialogLayer.innerHTML = '';
+  }
+
+  /* ============================ 全屏演示模式 ============================ */
+
+  function isFullscreen() { return !!document.fullscreenElement; }
+
+  function toggleFullscreen() {
+    if (isFullscreen()) {
+      document.exitFullscreen().catch(function () { /* 忽略 */ });
+    } else if (document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen().catch(function (e) {
+        toast('浏览器拒绝了全屏请求：' + e.message);
+      });
+    } else {
+      toast('当前浏览器不支持全屏 API，可用 F11');
+    }
+  }
+
+  function syncFullscreenButton() {
+    el.btnFullscreen.textContent = isFullscreen() ? '退出全屏' : '全屏';
+    el.btnFullscreen.classList.toggle('on', isFullscreen());
+    setTimeout(applyZoom, 120); // 全屏切换后容器尺寸变了，重算缩放
+    setTimeout(scaleZoneCells, 120);
+  }
+  document.addEventListener('fullscreenchange', syncFullscreenButton);
+
+  window.addEventListener('beforeunload', function (e) {
+    if (CFG.exitConfirm && local.exitGuard) {
+      e.preventDefault();
+      e.returnValue = CFG.exitTip || '';
+      return CFG.exitTip || '';
+    }
+    return undefined;
+  });
+
+  /* ============================ 菜单（对应电视端【菜单】键） ============================ */
+
+  function showHomeMenu() {
+    openDialog('主菜单', '内容由服务端维护，展示策略保存在本机', [
+      { text: '立即同步配置', run: function () { syncFromServer(true); } },
+      { text: '轮询展示', run: function () { startRotation(); } },
+      { text: '分区展示（2×2 拼接）', run: function () { openZones(); } },
+      { text: '设置', run: function () { openSettings(); } },
+      { text: '全屏演示模式', run: function () { toggleFullscreen(); } },
+      { text: '关闭', primary: true, run: function () { } }
+    ], 'M 打开菜单　Enter 确认　Esc 关闭');
+  }
+
+  function showDisplayMenu() {
+    /* 只保留顶栏画面控制组没有的功能（缩放/模式切换/原址打开/返回首页均与顶栏按钮重复，已删除） */
+    var items = [];
+    if (rotation.active) items.push({ text: '暂停 / 继续轮询', run: function () { toggleRotationPause(); } });
+    items.push({ text: '轮询设置', run: function () { openSettings(); } });
+    items.push({ text: '刷新页面', run: function () { reloadPage(); } });
+    openDialog('控制菜单 · ' + state.entry.title, null, items, 'M 打开菜单　Esc 关闭');
+  }
+
+  function showZoneMenu() {
+    openDialog('分区展示 · 2×2 拼接', null, [
+      { text: '刷新全部页面', run: function () { renderZones(); toast('已刷新全部页面'); } },
+      { text: '在单页模式打开当前分区', run: function () {
+        var e = zoneEntries()[zones.active];
+        if (e) openEntry(e); else toast('该分区尚未配置页面');
+      } },
+      { text: '返回首页', run: function () { backToHome(); } }
+    ], '方向键 移动高亮　Enter 为该格选页　每格按 ' + ZONE_MIN.width + '×' + ZONE_MIN.height + ' 渲染');
+  }
+
+  /* ============================ 键盘 ============================ */
+
+  document.addEventListener('keydown', function (e) {
+    var key = e.key;
+
+    if (dialog.open) {
+      if (key === 'Escape') { e.preventDefault(); var cb = dialog.onCancel; closeDialog(); cb && cb(); return; }
+      if (key === 'ArrowDown' || key === 'ArrowUp') {
+        e.preventDefault();
+        dialog.focus = Math.min(dialog.items.length - 1, Math.max(0, dialog.focus + (key === 'ArrowDown' ? 1 : -1)));
+        var list = el.dialogLayer.querySelector('.list');
+        if (list) setDialogFocus(list, dialog.focus);
+        return;
+      }
+      if (key === 'Enter') {
+        e.preventDefault();
+        var item = dialog.items[dialog.focus];
+        closeDialog();
+        item && item.run && item.run();
+        return;
+      }
+      return;
+    }
+
+    if (key === 'F11') return; // 交给浏览器
+
+    if (key === 'f' || key === 'F') { e.preventDefault(); toggleFullscreen(); return; }
+    if (key === 'm' || key === 'M') {
+      e.preventDefault();
+      if (state.mode === 'display') showDisplayMenu();
+      else if (state.mode === 'zones') showZoneMenu();
+      else if (state.mode === 'camera') setCameraLayout(camWall.layout === 1 ? 3 : 1);
+      else if (state.mode === 'home') showHomeMenu();
+      return;
+    }
+    if (key === 'Escape') {
+      e.preventDefault();
+      // 二级菜单打开时，Esc 只收菜单，不改变当前页面
+      if (!el.moreMenu.hidden) { setMoreMenu(false); return; }
+      if (state.mode === 'settings') backToHome();
+      else if (state.mode !== 'home') backToHome();
+      return;
+    }
+
+    if (state.mode === 'home') {
+      if (key === 'ArrowLeft') { e.preventDefault(); moveFocus(-1, 0); }
+      else if (key === 'ArrowRight') { e.preventDefault(); moveFocus(1, 0); }
+      else if (key === 'ArrowUp') { e.preventDefault(); moveFocus(0, -1); }
+      else if (key === 'ArrowDown') { e.preventDefault(); moveFocus(0, 1); }
+      else if (key === 'Enter') {
+        e.preventDefault();
+        var node = state.focus;
+        if (node) {
+          var entry = entryOf(node.getAttribute('data-id'));
+          if (entry) openEntry(entry);
+        }
+      }
+      return;
+    }
+
+    if (state.mode === 'zones') {
+      if (key === 'ArrowLeft') { e.preventDefault(); moveZone(0, -1); }
+      else if (key === 'ArrowRight') { e.preventDefault(); moveZone(0, 1); }
+      else if (key === 'ArrowUp') { e.preventDefault(); moveZone(-1, 0); }
+      else if (key === 'ArrowDown') { e.preventDefault(); moveZone(1, 0); }
+      else if (key === 'Enter') { e.preventDefault(); pickZoneEntry(zones.active); }
+      return;
+    }
+
+    if (state.mode === 'camera') {
+      if (key === 'ArrowLeft') { e.preventDefault(); moveCamFocus(-1, 0); }
+      else if (key === 'ArrowRight') { e.preventDefault(); moveCamFocus(1, 0); }
+      else if (key === 'ArrowUp') { e.preventDefault(); moveCamFocus(0, -1); }
+      else if (key === 'ArrowDown') { e.preventDefault(); moveCamFocus(0, 1); }
+      else if (key === 'Enter') { e.preventDefault(); activateCamFocus(); }
+      else if (key === 'r' || key === 'R') { e.preventDefault(); refreshCameraWall(); }
+      return;
+    }
+
+    if (state.mode === 'display') {
+      if (key === 'r' || key === 'R') { e.preventDefault(); reloadPage(); }
+      else if (key === '+' || key === '=') { e.preventDefault(); changeZoom(10); }
+      else if (key === '-' || key === '_') { e.preventDefault(); changeZoom(-10); }
+      else if (key === '0') { e.preventDefault(); state.zoomPercent = 100; applyZoom(); showInfo(); }
+      else if (key === ' ') { e.preventDefault(); if (rotation.active) toggleRotationPause(); }
+    }
+  });
+
+  /* ============================ 事件绑定 ============================ */
+
+  el.btnSync.addEventListener('click', function () { syncFromServer(true); });
+  el.btnTurbo.addEventListener('click', toggleTurbo);
+  el.btnRotation.addEventListener('click', startRotation);
+  el.btnZones.addEventListener('click', openZones);
+  el.btnSettings.addEventListener('click', openSettings);
+  el.btnFullscreen.addEventListener('click', toggleFullscreen);
+
+  /* 「更多」二级菜单：点击开合；点菜单项后自动收起；点页面别处或按 Esc 也收起 */
+  function setMoreMenu(open) {
+    el.moreMenu.hidden = !open;
+    el.btnMore.setAttribute('aria-expanded', open ? 'true' : 'false');
+    el.btnMore.classList.toggle('on', open);
+  }
+  el.btnMore.addEventListener('click', function (e) {
+    e.stopPropagation();
+    setMoreMenu(el.moreMenu.hidden);
+  });
+  el.moreMenu.addEventListener('click', function (e) {
+    // 菜单里的链接/按钮被点中后收起（链接是新标签打开，不影响当前页）
+    if (e.target.closest('.menu-item')) setMoreMenu(false);
+  });
+  document.addEventListener('click', function (e) {
+    if (!el.moreMenu.hidden && !el.moreMenu.contains(e.target) && e.target !== el.btnMore) setMoreMenu(false);
+  });
+  el.btnBack.addEventListener('click', backToHome);
+  el.btnBack2.addEventListener('click', backToHome);
+  el.btnZoneBack.addEventListener('click', backToHome);
+  el.btnSettingsBack.addEventListener('click', backToHome);
+  el.btnRetry.addEventListener('click', reloadPage);
+  el.btnMenu.addEventListener('click', showDisplayMenu);
+  el.btnUseProxy.addEventListener('click', function () {
+    if (!state.entry) return;
+    local.proxyModes[state.entry.id] = 'proxy';
+    saveLocalSettings();
+    renderModeButton();
+    mountFrame(state.entry);
+    toast('已切换为代理模式并重新加载');
+  });
+  el.btnOpenTab.addEventListener('click', openInTab);
+  el.btnOpenTab2.addEventListener('click', openInTab);
+  el.btnZoomIn.addEventListener('click', function () { changeZoom(10); });
+  el.btnZoomOut.addEventListener('click', function () { changeZoom(-10); });
+  el.btnZoomReset.addEventListener('click', function () { state.zoomPercent = 100; applyZoom(); showInfo(); });
+  el.btnMode.addEventListener('click', toggleMode);
+  el.btnRotationToggle.addEventListener('click', toggleRotationPause);
+  el.btnZoneRefresh.addEventListener('click', function () { renderZones(); toast('已刷新全部页面'); });
+  el.btnCamBack.addEventListener('click', backToHome);
+  el.btnCamLayout.addEventListener('click', function () { setCameraLayout(camWall.layout === 1 ? 3 : 1); });
+  el.btnCamRefresh.addEventListener('click', refreshCameraWall);
+  window.addEventListener('resize', function () { applyZoom(); scaleZoneCells(); });
+
+  /* ============================ 启动 ============================ */
+
+  loadLocalSettings();
+  renderTurboButton();
+  applyConfig(CFG, false);
+  syncClockOffset();
+  // 启动不阻塞于网络：先用兜底内容渲染首屏，再后台增量同步
+  syncFromServer(false);
+  setTimeout(function () { if (!rotation.active) applyZoom(); }, 200);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,113 @@
+{
+  "serverBaseUrl": "http://10.8.11.4:18080",
+  "sync": {
+    "connectTimeoutMs": 3000,
+    "readTimeoutMs": 5000,
+    "pollIntervalSec": 0,
+    "minSyncIntervalMs": 15000
+  },
+  "fallback": {
+    "appTitle": "数智中心大屏聚合平台",
+    "appSubtitle": "DIGITAL CENTER · DISPLAY HUB",
+    "exitConfirm": true,
+    "exitTip": "按【返回】键将退出应用",
+    "entries": [
+      {
+        "id": "storage-monitor",
+        "type": "url",
+        "title": "数智资源中心存储集群资源监控",
+        "subtitle": "存储集群容量总览 / 分区视图 / 容量趋势",
+        "url": "http://10.8.11.4:1111/",
+        "accent": "#2FD2F5",
+        "icon": "storage",
+        "turboEnabled": true,
+        "turboIntervalSec": 2,
+        "turboQuality": 75
+      },
+      {
+        "id": "env-monitor",
+        "type": "url",
+        "title": "数智资源中心机房动环监控",
+        "subtitle": "机房动力环境运行状态实时监控",
+        "url": "http://10.8.12.130/#/index",
+        "accent": "#3FE0A6",
+        "icon": "env",
+        "turboEnabled": true,
+        "turboIntervalSec": 2,
+        "turboQuality": 75,
+        "autoLogin": {
+          "enabled": true,
+          "username": "show",
+          "password": "wtzx@2026"
+        }
+      },
+      {
+        "id": "security-cockpit",
+        "type": "url",
+        "title": "物探中心网络安全监控与自动化运维平台",
+        "subtitle": "网络安全态势监测与自动化运维驾驶舱",
+        "url": "http://10.8.11.3/cockpit",
+        "accent": "#FFB020",
+        "icon": "security",
+        "turboEnabled": true,
+        "turboIntervalSec": 2,
+        "turboQuality": 75,
+        "autoLogin": {
+          "enabled": true,
+          "username": "admin",
+          "password": "admin",
+          "usernameSelector": "#username",
+          "passwordSelector": "#password",
+          "submitSelector": "#loginBtn"
+        }
+      },
+      {
+        "id": "entry-7f1eb4",
+        "type": "url",
+        "title": "虚拟化集群资源监控",
+        "subtitle": "虚拟机资源总览",
+        "url": "https://10.8.16.10:30000/monitor-screen/#/monitor-screen",
+        "accent": "#0AADD1",
+        "icon": "storage",
+        "allowInsecureSsl": true,
+        "compatTranspile": true,
+        "turboEnabled": true,
+        "turboIntervalSec": 2,
+        "turboQuality": 75,
+        "autoLogin": {
+          "enabled": true,
+          "username": "show",
+          "password": "Gjx@gec2023"
+        }
+      },
+      {
+        "id": "entry-a7ab1b",
+        "type": "camera",
+        "title": "机房监控",
+        "subtitle": "内置画面墙 · 直接观看摄像机实时画面",
+        "url": "",
+        "accent": "#2FD2F5",
+        "icon": "storage"
+      },
+      {
+        "id": "entry-7c64f6",
+        "type": "url",
+        "title": "AI大模型服务状态监控",
+        "subtitle": "",
+        "url": "http://10.8.15.208:3001/dashboard",
+        "accent": "#2FD2F5",
+        "icon": "storage",
+        "allowInsecureSsl": true,
+        "compatTranspile": true,
+        "turboEnabled": true,
+        "turboIntervalSec": 2,
+        "turboQuality": 75,
+        "autoLogin": {
+          "enabled": true,
+          "username": "gjx",
+          "password": "Gjx@gec2023"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,211 @@
+{
+  "version": 168,
+  "epoch": 9,
+  "metaRev": 168,
+  "orderRev": 86,
+  "prunedBeforeRev": 0,
+  "updatedAt": "2026-10-07T14:50:26.089Z",
+  "appTitle": "数智资源中心大屏聚合平台",
+  "appSubtitle": "DIGITAL CENTER · DISPLAY HUB",
+  "exitConfirm": true,
+  "exitTip": "按【返回】键将退出应用",
+  "entries": [
+    {
+      "id": "storage-monitor",
+      "type": "url",
+      "title": "数智资源中心存储集群资源监控",
+      "subtitle": "存储集群容量总览 / 分区视图 / 容量趋势",
+      "url": "http://10.8.11.4:1111/",
+      "accent": "#2FD2F5",
+      "icon": "storage",
+      "scale": 0,
+      "autoFit": true,
+      "allowInsecureSsl": false,
+      "openOriginal": false,
+      "spaHistory": false,
+      "compatTranspile": false,
+      "compatTarget": "",
+      "turboEnabled": true,
+      "turboIntervalSec": 0.5,
+      "turboQuality": 75,
+      "rev": 163
+    },
+    {
+      "id": "env-monitor",
+      "type": "url",
+      "title": "数智资源中心机房动环监控",
+      "subtitle": "机房动力环境运行状态实时监控",
+      "url": "http://10.8.12.130/#/index",
+      "accent": "#3FE0A6",
+      "icon": "env",
+      "scale": 0,
+      "autoFit": true,
+      "allowInsecureSsl": false,
+      "openOriginal": false,
+      "spaHistory": false,
+      "compatTranspile": false,
+      "compatTarget": "",
+      "turboEnabled": true,
+      "turboIntervalSec": 0.5,
+      "turboQuality": 75,
+      "autoLogin": {
+        "enabled": true,
+        "username": "show",
+        "password": "wtzx@2026",
+        "usernameSelector": "",
+        "passwordSelector": "",
+        "submitSelector": "",
+        "successSelector": ""
+      },
+      "rev": 164
+    },
+    {
+      "id": "security-cockpit",
+      "type": "url",
+      "title": "物探中心网络安全监控与自动化运维平台",
+      "subtitle": "网络安全态势监测与自动化运维驾驶舱",
+      "url": "http://10.8.11.3/cockpit",
+      "accent": "#FFB020",
+      "icon": "security",
+      "scale": 0,
+      "autoFit": true,
+      "allowInsecureSsl": false,
+      "openOriginal": false,
+      "spaHistory": false,
+      "compatTranspile": false,
+      "compatTarget": "",
+      "turboEnabled": true,
+      "turboIntervalSec": 0.5,
+      "turboQuality": 75,
+      "autoLogin": {
+        "enabled": true,
+        "username": "admin",
+        "password": "admin",
+        "usernameSelector": "#username",
+        "passwordSelector": "#password",
+        "submitSelector": "#loginBtn",
+        "successSelector": ""
+      },
+      "rev": 165
+    },
+    {
+      "id": "entry-7f1eb4",
+      "type": "url",
+      "title": "虚拟化集群资源监控",
+      "subtitle": "虚拟机资源总览",
+      "url": "https://10.8.16.10:30000/monitor-screen/#/monitor-screen",
+      "accent": "#0AADD1",
+      "icon": "storage",
+      "scale": 0,
+      "autoFit": true,
+      "allowInsecureSsl": true,
+      "openOriginal": false,
+      "spaHistory": false,
+      "compatTranspile": true,
+      "compatTarget": "chrome66",
+      "turboEnabled": true,
+      "turboIntervalSec": 0.5,
+      "turboQuality": 75,
+      "autoLogin": {
+        "enabled": true,
+        "username": "show",
+        "password": "Gjx@gec2023",
+        "usernameSelector": "",
+        "passwordSelector": "",
+        "submitSelector": "",
+        "successSelector": ""
+      },
+      "rev": 166
+    },
+    {
+      "id": "entry-a7ab1b",
+      "type": "camera",
+      "title": "机房监控",
+      "subtitle": "内置画面墙 · 直接观看摄像机实时画面",
+      "url": "",
+      "accent": "#2FD2F5",
+      "icon": "storage",
+      "scale": 0,
+      "autoFit": true,
+      "allowInsecureSsl": false,
+      "openOriginal": false,
+      "spaHistory": false,
+      "compatTranspile": false,
+      "compatTarget": "",
+      "turboEnabled": true,
+      "turboIntervalSec": 2,
+      "turboQuality": 75,
+      "rev": 139
+    },
+    {
+      "id": "entry-7c64f6",
+      "type": "url",
+      "title": "AI大模型服务状态监控",
+      "subtitle": "",
+      "url": "http://10.8.15.208:3001/dashboard",
+      "accent": "#2FD2F5",
+      "icon": "storage",
+      "scale": 0,
+      "autoFit": true,
+      "allowInsecureSsl": true,
+      "openOriginal": false,
+      "spaHistory": true,
+      "compatTranspile": true,
+      "compatTarget": "chrome66",
+      "turboEnabled": true,
+      "turboIntervalSec": 0.5,
+      "turboQuality": 75,
+      "autoLogin": {
+        "enabled": true,
+        "username": "gjx",
+        "password": "Gjx@gec2023",
+        "usernameSelector": "",
+        "passwordSelector": "",
+        "submitSelector": "",
+        "successSelector": ""
+      },
+      "rev": 167
+    }
+  ],
+  "cameras": {
+    "enabled": true,
+    "host": "10.8.12.131",
+    "port": 554,
+    "username": "show",
+    "password": "wtzx@2026",
+    "count": 8,
+    "titles": {},
+    "logo": "wutan-logo.png",
+    "logoCell": 5
+  },
+  "tombstones": [
+    {
+      "id": "entry-3f4946",
+      "rev": 19
+    },
+    {
+      "id": "new-dashboard",
+      "rev": 42
+    },
+    {
+      "id": "entry-904615",
+      "rev": 49
+    },
+    {
+      "id": "sync-test-a",
+      "rev": 56
+    },
+    {
+      "id": "dbg",
+      "rev": 100
+    },
+    {
+      "id": "e2e-pc-client",
+      "rev": 128
+    },
+    {
+      "id": "preview-sync-x",
+      "rev": 154
+    }
+  ]
+}

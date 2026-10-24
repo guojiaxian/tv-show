@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_app">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:paddingStart="@dimen/screen_padding_h"
+        android:paddingTop="@dimen/screen_padding_v"
+        android:paddingEnd="@dimen/screen_padding_h"
+        android:paddingBottom="@dimen/screen_padding_v">
+
+        <!-- 顶栏：标题居中 + 时钟靠右 -->
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/topbar_height">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/appTitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/app_name"
+                    android:textColor="@color/text_primary"
+                    android:textSize="@dimen/text_title_home"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/appSubtitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:letterSpacing="0.16"
+                    android:textColor="@color/text_tertiary"
+                    android:textSize="@dimen/text_title_sub" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="end|center_vertical"
+                android:gravity="end"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/clockText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/text_primary"
+                    android:textSize="@dimen/text_clock"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/dateText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="@dimen/text_date" />
+            </LinearLayout>
+        </FrameLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@color/divider" />
+
+        <!-- 入口卡片区域：由代码按屏幕宽度动态排版。
+             clipToPadding=false + 栅格内边距 → 焦点卡片放大 1.05 倍时不会被裁掉左右边缘 -->
+        <ScrollView
+            android:id="@+id/gridScroll"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:overScrollMode="never"
+            android:scrollbarAlwaysDrawVerticalTrack="false"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:id="@+id/gridContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:clipChildren="false"
+                android:clipToPadding="false"
+                android:orientation="vertical"
+                android:paddingStart="@dimen/grid_padding_h"
+                android:paddingTop="@dimen/grid_padding_v"
+                android:paddingEnd="@dimen/grid_padding_h"
+                android:paddingBottom="@dimen/grid_padding_v" />
+        </ScrollView>
+
+        <!-- 底栏：遥控器操作提示 + 同步状态（内容来自服务端，这里显示版本/离线状态） -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/bottombar_height"
+            android:background="@drawable/bg_hint_bar"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp">
+
+            <TextView
+                android:id="@+id/keyHint"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:text="@string/home_key_hint"
+                android:textColor="@color/text_secondary"
+                android:textSize="@dimen/text_hint" />
+
+            <TextView
+                android:id="@+id/syncState"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:includeFontPadding="false"
+                android:textSize="@dimen/text_hint" />
+        </LinearLayout>
+    </LinearLayout>
+
+</FrameLayout>

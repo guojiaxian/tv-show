@@ -1,0 +1,49 @@
+{
+  "cookies": [
+    {
+      "name": "appState",
+      "value": "1",
+      "domain": "10.8.16.10",
+      "path": "/global/static",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    }
+  ],
+  "origins": [
+    {
+      "origin": "https://10.8.16.10:30000",
+      "localStorage": [
+        {
+          "name": "api_header",
+          "value": "{\"Authorization\":\"Bearer eyJhbGciOiJIUzI1NiJ9.eyJjcmVhdGVkIjoxNzkyNzQxMjc5MTgzLCJhbGlhcyI6IuWkp-WxjyIsInVzZXJUeXBlIjoiYWRtaW4iLCJkZXB0X2lkIjpudWxsLCJwcm9qZWN0SWQiOiI2Y2U3YzFkNzM5ZjM0NjEwOTU3MTk5OGIxNzU4MmMzNyIsInVzZXJJZCI6Ijk1ZTAxMDM4M2IwOTQ3YTg5MGRjYWEyZThlMzk3NzhhIiwidXNlcm5hbWUiOiJzaG93In0.YcUKCTze_4gfhtfT7s3i-kGTLuvvmCWjo75m9qdyk7I\",\"user_info\":{\"created\":1792741279183,\"alias\":\"大屏\",\"userType\":\"admin\",\"dept_id\":null,\"projectId\":\"6ce7c1d739f346109571998b17582c37\",\"userId\":\"95e010383b0947a890dcaa2e8e39778a\",\"username\":\"show\"}}"
+        },
+        {
+          "name": "from_login",
+          "value": ""
+        },
+        {
+          "name": "currentLoginOut",
+          "value": "sugoncloud-monitor-screen-api"
+        },
+        {
+          "name": "loginOutServer",
+          "value": "sugoncloud-monitor-screen-api"
+        },
+        {
+          "name": "is_all_project",
+          "value": "false"
+        },
+        {
+          "name": "lockTime",
+          "value": "1792739385678"
+        },
+        {
+          "name": "regionId",
+          "value": "RegionOne"
+        }
+      ]
+    }
+  ]
+}

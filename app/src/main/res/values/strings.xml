@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">大屏聚合平台</string>
+
+    <string name="home_key_hint">方向键 移动焦点     确定 进入     菜单 轮询 / 分区 / 同步     返回 退出应用</string>
+    <string name="web_key_hint">方向键 移动焦点     确定 触发点击     菜单 控制菜单     返回 返回首页</string>
+
+    <string name="loading">正在加载…</string>
+    <string name="retry">按【确定】重新加载</string>
+    <string name="error_title">页面加载失败</string>
+    <string name="error_network">无法连接到大屏服务，请检查网络与地址配置</string>
+    <string name="error_http">服务返回异常状态码：%1$d</string>
+    <string name="error_ssl">证书校验失败，已按配置跳过（如需严格校验请关闭 allowInsecureSsl）</string>
+
+    <!-- 白屏兼容性提示：现代 SPA 需要 Chrome 80+，旧内核只会白屏且不给任何提示 -->
+    <string name="compat_old_kernel">该页面需要较新的浏览器内核，当前电视的 WebView 内核为 Chrome/%1$d，至少需要 Chrome/%2$d。\n\n请在电视上更新「Android System WebView」（或在服务器侧提供兼容版本），否则该页面无法显示。</string>
+    <string name="compat_blank">页面已加载完成，但没有可显示的内容。\n\n可按【菜单】键刷新重试，或按【返回】键退出。</string>
+    <string name="compat_title">页面无法显示</string>
+    <string name="compat_hint">菜单 刷新重试     返回 退出</string>
+    <string name="compat_last_error">最近一条脚本错误（便于定位）：\n%1$s</string>
+
+    <string name="exit_title">退出应用</string>
+    <string name="exit_message">确定要退出大屏聚合平台吗？</string>
+    <string name="exit_confirm">退出应用</string>
+    <string name="exit_cancel">取消</string>
+
+    <string name="menu_title">大屏控制菜单</string>
+    <string name="menu_refresh">刷新页面</string>
+    <string name="menu_back">网页后退</string>
+    <string name="menu_zoom_in">放大显示</string>
+    <string name="menu_zoom_out">缩小显示</string>
+    <string name="menu_zoom_reset">重置缩放</string>
+    <string name="menu_home">返回首页</string>
+    <string name="menu_cancel">关闭</string>
+    <string name="zoom_changed">当前缩放：%1$d%%</string>
+
+    <string name="config_reloaded">配置已重新加载</string>
+    <string name="config_missing">未找到有效的配置，已使用内置默认值</string>
+    <string name="entry_unavailable">该入口不存在或已禁用</string>
+    <string name="back_to_exit">再按一次【返回】键退出应用</string>
+
+    <!-- 服务端同步 -->
+    <string name="config_updated">已从服务器更新到 v%1$d</string>
+    <string name="config_offline">无法连接服务器，继续使用本地缓存内容</string>
+    <string name="config_up_to_date">当前已是最新配置</string>
+    <string name="sync_state_syncing">同步中…</string>
+    <string name="sync_state_offline">离线（使用缓存）</string>
+    <string name="sync_state_fallback">离线（内置默认内容）</string>
+    <string name="sync_state_ok">已同步 v%1$d</string>
+
+    <!-- 本机展示设置（轮询 / 分区）：入口在首页【菜单】 -->
+    <string name="rotation_chip">轮询 %1$d/%2$d · 剩余 %3$d 秒</string>
+    <string name="rotation_unavailable">暂无可轮询的页面，请先在管理后台添加页面</string>
+    <string name="menu_rotation_display">轮询展示</string>
+    <string name="menu_zone_display">分区展示（2×2 拼接）</string>
+    <string name="menu_sync_now">立即同步配置</string>
+    <string name="menu_rotation_settings">轮询设置</string>
+    <string name="menu_zone_refresh">刷新全部页面</string>
+    <string name="home_menu_title">首页控制菜单</string>
+
+    <!-- 极速模式（截图展示）：本机只有总开关，刷新率/质量由服务端配置统一下发 -->
+    <string name="menu_turbo_on">极速模式：开</string>
+    <string name="menu_turbo_off">极速模式：关</string>
+    <string name="turbo_enabled_toast">已开启极速模式（各页面刷新率见后台设置）</string>
+    <string name="turbo_disabled_toast">已关闭极速模式，恢复真实页面</string>
+    <string name="turbo_mode_label">极速模式</string>
+    <string name="turbo_frame_ago">极速模式 · 帧 %1$d 秒前</string>
+
+    <string name="state_on">已开启</string>
+    <string name="state_off">已关闭</string>
+    <string name="settings_saved">已保存</string>
+
+    <!-- 轮询设置（在轮询播放页按【菜单】进入） -->
+    <string name="rotation_settings_title">轮询设置</string>
+    <string name="rotation_settings_subtitle">本机设置，只影响这台电视（内容仍由服务器统一维护）</string>
+    <string name="rotation_settings_hint">上下 移动焦点　　确定 切换/选择　　左右 调整播放顺序　　返回 返回轮询播放</string>
+    <string name="rotation_enabled_label">开机自动播放</string>
+    <string name="rotation_interval_label">每页停留时间</string>
+    <string name="rotation_interval_value">%1$d 秒</string>
+    <string name="rotation_interval_range">取值范围 %1$d–%2$d 秒</string>
+    <string name="rotation_pages_section">参与轮询的页面（确定 加入/移出）</string>
+    <string name="rotation_page_position">第 %1$d 位 / 共 %2$d 页</string>
+    <string name="rotation_page_excluded">未加入</string>
+    <string name="rotation_order_section">提示：左右方向键可调整播放顺序；加入页面后每次改动都会从第 1 页重新开始计时</string>
+
+    <!-- 分区展示：进入后直接用方向键选格、按确定选页面 -->
+    <string name="zone_title">分区展示 · 2×2 拼接</string>
+    <string name="zone_settings_subtitle">2×2 拼接，每格按 %1$d×%2$d 渲染，四格可自由搭配页面</string>
+    <string name="zone_cell">第 %1$d 格</string>
+    <string name="zone_cell_unset">不使用</string>
+    <string name="zone_pick_title">选择第 %1$d 格的页面</string>
+    <string name="zone_empty">未配置 · 按【确定】选择页面</string>
+    <string name="zone_none">按【确定】为当前分区选择要显示的页面</string>
+    <string name="zone_hint">方向键 选择分区　　确定 为该分区选择页面　　菜单 控制菜单　　返回 返回首页</string>
+    <string name="zone_switched">当前分区：%1$s</string>
+    <string name="zone_selected">第 %1$d 格已设为：%2$s</string>
+
+    <!-- 机房监控画面墙（type=camera 入口，客户端原生拉流渲染） -->
+    <string name="camera_card_address">内置画面墙 · 点击直接观看</string>
+    <string name="camera_title">机房监控 · 画面墙</string>
+    <string name="camera_hint">方向键 选择画面　　确定 放大 / 退回　　菜单 控制菜单　　返回 返回首页</string>
+    <string name="camera_loading">正在获取摄像头列表…</string>
+    <string name="camera_empty">没有可用的摄像头。\n\n请检查服务端摄像头配置（服务端需启用摄像头模块并填写正确的录像机地址）。</string>
+    <string name="camera_offline">离线</string>
+    <string name="camera_mode_wall">3×3 画面墙</string>
+    <string name="camera_mode_single">单画面 · %1$s</string>
+    <string name="camera_menu_subtitle">共 %1$d 路摄像头</string>
+    <string name="camera_menu_single">放大当前画面（1×1）</string>
+    <string name="camera_menu_wall">返回 3×3 画面墙</string>
+    <string name="camera_menu_reconnect">重新连接</string>
+    <string name="camera_reconnecting">正在重新连接…</string>
+    <string name="camera_switched">当前画面：%1$s</string>
+</resources>

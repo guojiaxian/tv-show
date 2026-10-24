@@ -1,0 +1,1910 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>数智中心大屏聚合平台 · 电脑预览</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- 内联图标：避免浏览器请求 /favicon.ico 产生 404 -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%230a1220'/%3E%3Crect x='5' y='5' width='14' height='4' rx='1' fill='%232fd2f5'/%3E%3Crect x='5' y='10.5' width='14' height='4' rx='1' fill='%232fd2f5'/%3E%3Crect x='5' y='16' width='14' height='4' rx='1' fill='%232fd2f5'/%3E%3C/svg%3E">
+<style>
+  /* ===================== 基础 ===================== */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    background: #05070c;
+    color: #e8f1ff;
+    font-family: "PingFang SC", "Microsoft YaHei", "Source Han Sans CN", "Noto Sans CJK SC", Arial, sans-serif;
+    overflow: hidden;
+  }
+  /* ============ PC 工具条（非应用 UI） ============ */
+  #pcbar {
+    height: 46px; display: flex; align-items: center; gap: 12px;
+    padding: 0 16px; background: #0b1220; border-bottom: 1px solid #1b2740;
+    font-size: 12.5px; color: #8fa6c4; position: relative; z-index: 50; flex-wrap: nowrap;
+    overflow-x: auto; white-space: nowrap;
+  }
+  #pcbar .tag {
+    background: #12203a; border: 1px solid #22314a; color: #2fd2f5;
+    padding: 3px 8px; border-radius: 6px; font-weight: 600;
+  }
+  #pcbar .sep { width: 1px; height: 20px; background: #1b2740; }
+  #pcbar .grow { flex: 1; }
+  .pcbtn {
+    background: #16233a; border: 1px solid #24334d; color: #cfe2ff;
+    padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 12.5px;
+  }
+  .pcbtn:hover { border-color: #2fd2f5; color: #fff; }
+  .pcbtn.active { background: rgba(47,210,245,.18); border-color: #2fd2f5; color: #fff; }
+  /* 配置来源/同步状态标识（对应 App 首页底栏的同步状态） */
+  .src-chip {
+    font-size: 12px; padding: 4px 10px; border-radius: 999px; white-space: nowrap;
+    border: 1px solid #24334d; background: #0e1728; color: #8fa6c4;
+  }
+  .src-chip.server { color: #3fe0a6; border-color: rgba(63,224,166,.45); background: rgba(63,224,166,.10); }
+  .src-chip.fallback { color: #ffb020; border-color: rgba(255,176,32,.45); background: rgba(255,176,32,.10); }
+  .src-chip.offline { color: #ff6b6b; border-color: rgba(255,107,107,.45); background: rgba(255,107,107,.10); }
+  .src-chip.syncing { color: #2fd2f5; border-color: rgba(47,210,245,.45); }
+  /* 可用区域：缩放后若超出窗口则出现滚动条，保证 1:1 时也能看全 */
+  #viewport { position: absolute; inset: 46px 0 0 0; display: flex; align-items: flex-start; justify-content: flex-start; background: #05070c; overflow: auto; }
+  /* 虚拟遥控器显示时给它留出空间，避免遮挡应用界面 */
+  body.remote-visible #viewport { padding-right: 232px; }
+  /* ===================== 电视舞台 1920x1080 ===================== */
+  /* stageBox 尺寸 = 舞台 × 显示比例，由 JS 计算；用它撑开滚动区域 */
+  #stageBox { flex: none; position: relative; }
+  #stage {
+    position: absolute; left: 0; top: 0;
+    width: 1920px; height: 1080px; overflow: hidden;
+    transform-origin: 0 0;
+    background: linear-gradient(315deg, #060a13 0%, #0a1120 50%, #0d1729 100%);
+    box-shadow: 0 0 0 1px #1b2740, 0 24px 80px rgba(0,0,0,.7);
+  }
+  .screen { position: absolute; inset: 0; display: flex; flex-direction: column; padding: 56px 112px; }
+  /* 兜底：hidden 必须隐藏。用 !important 抵消 ID 选择器更高优先级带来的覆盖问题 */
+  #stage [hidden] { display: none !important; }
+
+  /* ===================== 顶栏 ===================== */
+  .topbar { height: 136px; display: flex; align-items: center; position: relative; }
+  .accentbar { width: 8px; height: 64px; background: #2fd2f5; border-radius: 4px; }
+  .titles { margin-left: 32px; }
+  /* 首页标题居中（已去掉左侧色条）；两侧留白避免压住右侧时钟，对称内边距不影响居中 */
+  #homeScreen .titles { position: absolute; left: 0; right: 0; margin-left: 0; padding: 0 180px; text-align: center; }
+  /* 与 App 端 dimens 对齐：标题 30sp、副标题 14sp（预览 1px = 1dp × 2） */
+  .titles h1 { font-size: 60px; font-weight: 700; letter-spacing: .5px; }
+  .titles p { margin-top: 6px; font-size: 28px; color: #5f7796; letter-spacing: .16em; }
+  .clock { margin-left: auto; text-align: right; }
+  .clock #clockTime { font-size: 44px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .clock #clockDate { margin-top: 2px; font-size: 22px; color: #8fa6c4; }
+  .divider { height: 2px; background: rgba(47,210,245,.10); }
+
+  /* ===================== 首页宫格 ===================== */
+  /* 栅格内边距：横向留白用于容纳焦点卡片放大 1.05 倍后的溢出，避免左右被裁 */
+  .grid { flex: 1; padding: 32px 20px; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; }
+  .grid::-webkit-scrollbar { width: 0; height: 0; }
+  /* 每行用 grid 等宽列：minmax(0,1fr) 确保列宽严格均分，不受内容影响。
+     列间距 24px 与 Android 侧 card_gap(12dp) 的合计留白一致 */
+  .grid-row { display: grid; gap: 24px; }
+  .grid-row + .grid-row { margin-top: 24px; }
+  .entry-tile {
+    min-width: 0; height: 328px; background: #121c2e; border: 2px solid #22314a;
+    border-radius: 22px; padding: 32px; cursor: pointer; position: relative;
+    transition: transform .18s cubic-bezier(.2,.7,.3,1), background .18s, border-color .18s, box-shadow .18s;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  /* 标题 / 描述各限 2 行，与 Android 侧 maxLines=2 + ellipsize=end 一致 */
+  .tile-title, .tile-sub {
+    display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tile-title { -webkit-line-clamp: 2; }
+  .entry-tile.focused {
+    transform: scale(1.05); background: #17253c; border-color: #2fd2f5;
+    box-shadow: 0 18px 40px rgba(0,0,0,.55), 0 0 0 5px rgba(47,210,245,.16);
+    z-index: 5;
+  }
+  .tile-icon {
+    width: 64px; height: 64px; border-radius: 16px; display: flex;
+    align-items: center; justify-content: center; flex: none;
+  }
+  .tile-icon svg { width: 40px; height: 40px; }
+  .tile-title { margin-top: 16px; font-size: 32px; font-weight: 700; line-height: 1.26; }
+  .tile-sub { margin-top: 6px; font-size: 24px; color: #8fa6c4; line-height: 1.4; opacity: .85; -webkit-line-clamp: 1; }
+  .tile-spacer { flex: 1; }
+  .tile-url {
+    align-self: flex-start; max-width: 100%; font-size: 24px; color: #5f7796;
+    background: #0e1728; border: 1px solid #22314a; border-radius: 12px;
+    padding: 6px 20px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .entry-tile.focused .tile-url { color: #2fd2f5; }
+  .entry-tile.focused .tile-title { color: #fff; }
+  .tile-badge {
+    position: absolute; top: 20px; right: 24px; font-size: 20px; color: #8b7cff;
+    border: 1px solid #3a2f6b; background: rgba(139,124,255,.12);
+    padding: 4px 14px; border-radius: 999px;
+  }
+  .hint {
+    height: 80px; display: flex; align-items: center; justify-content: center;
+    background: #0c1524; border: 1px solid rgba(47,210,245,.10); border-radius: 18px;
+    font-size: 26px; color: #8fa6c4; letter-spacing: .02em;
+  }
+
+  /* ===================== 本机设置（轮询 / 分区） ===================== */
+  #settingsScreen { padding: 0; }
+  #settingsScreen .topbar {
+    position: absolute; left: 0; right: 0; top: 0; height: 148px; z-index: 2;
+    display: flex; align-items: center; gap: 24px; padding: 0 56px;
+  }
+  #settingsScreen .divider { position: absolute; left: 56px; right: 56px; top: 148px; z-index: 2; }
+  .settings-list {
+    position: absolute; left: 56px; right: 56px; top: 170px; bottom: 110px;
+    overflow: hidden; display: flex; flex-direction: column; gap: 16px;
+  }
+  .settings-section { font-size: 22px; color: #5f7796; padding: 14px 16px 0; line-height: 1.6; }
+  .settings-row {
+    display: flex; align-items: center; gap: 20px; padding: 26px 32px;
+    background: #121c2e; border: 2px solid #22314a; border-radius: 12px;
+    font-size: 30px; color: #e8f1ff; flex: none;
+  }
+  .settings-row.focused {
+    background: #17253c; border-color: #2fd2f5;
+    box-shadow: 0 0 0 4px rgba(47,210,245,.16), 0 18px 40px rgba(0,0,0,.5);
+  }
+  .settings-row .label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .settings-row .value { color: #2fd2f5; font-size: 28px; flex: none; }
+  .settings-state { font-size: 24px; color: #3fe0a6; }
+
+  /* ===================== 分区展示（2×2 拼接） ===================== */
+  #zoneScreen { padding: 0; }
+  #zoneGrid {
+    position: absolute; inset: 0; display: grid;
+    grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
+  }
+  /* 每格 = 1920×1080 舞台的四分之一（960×540），内部按 0.5 缩放呈现 1920×1080 的分区视口，
+     与 App 内「按格宽重写 density」的算法等价 */
+  .zone-cell { position: relative; overflow: hidden; background: #06080e; }
+  /* .active 只表示"当前分区"这一逻辑状态（确定键作用于它），视觉上不做常驻边框 */
+  .zone-cell.active { z-index: 3; }
+  /* 高亮层：按下方向键时点亮，短暂停留后淡出——四个分区都在展示真实页面，
+     常驻边框会长期压住画面 */
+  .zone-flash {
+    position: absolute; inset: 0; z-index: 6; pointer-events: none;
+    border: 4px solid #2fd2f5; opacity: 0;
+    transition: opacity 320ms ease-out;
+  }
+  .zone-flash.on { opacity: 1; transition: none; }
+  .zone-viewport {
+    position: absolute; left: 0; top: 0; width: 1920px; height: 1080px;
+    transform-origin: 0 0; overflow: hidden;
+  }
+  .zone-placeholder {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 12px; color: #5f7796; font-size: 22px;
+  }
+  .zone-label {
+    position: absolute; left: 0; top: 0; z-index: 4; font-size: 18px; color: #cfe2ff;
+    background: rgba(12,21,36,.9); border: 1px solid #2a3f5c; border-radius: 0 0 10px 0;
+    padding: 6px 14px; line-height: 1.5; pointer-events: none;
+  }
+  .zone-label b { color: #2fd2f5; font-weight: 600; }
+  .zone-hint {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 5; height: 56px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(12,21,36,.88); color: #8fa6c4; font-size: 20px;
+  }
+
+  /* 轮询指示（右上角） */
+  #rotationChip {
+    position: absolute; right: 32px; top: 32px; z-index: 12; display: none;
+    font-size: 22px; color: #cfe2ff; background: rgba(12,21,36,.92);
+    border: 1px solid rgba(47,210,245,.35); border-radius: 12px; padding: 10px 18px;
+    pointer-events: none;
+  }
+  #rotationChip b { color: #2fd2f5; font-weight: 600; }
+
+  /* ===================== 大屏展示页外壳 ===================== */
+  #displayScreen { padding: 0; }
+  /* WebView 的 CSS 视口：与 App 内一致，真实 1920×1080（不再缩小到 960×540 再放大） */
+  #webview {
+    position: absolute; left: 0; top: 0; width: 1920px; height: 1080px;
+    background: #000; overflow: hidden;
+  }
+  #webviewInner { position: absolute; inset: 0; overflow: hidden; }
+  #realFrame { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; border: 0; background: #0b1220; }
+  #progress { position: absolute; left: 0; top: 0; height: 6px; width: 0; background: #2fd2f5; transition: width .2s; z-index: 8; }
+  .cover { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 9; }
+  #loadingPanel { background: #060a13; gap: 44px; }
+  #loadingPanel .spin {
+    width: 112px; height: 112px; border-radius: 50%; border: 10px solid rgba(47,210,245,.2);
+    border-top-color: #2fd2f5; animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #loadingPanel .txt { font-size: 36px; color: #8fa6c4; }
+  #errorPanel { background: rgba(6,10,19,.92); }
+  #errorPanel .panel {
+    background: #101a2b; border: 1px solid #24334d; border-radius: 32px;
+    padding: 52px 80px 60px; display: flex; flex-direction: column; align-items: center;
+  }
+  #errorPanel h3 { font-size: 48px; font-weight: 700; }
+  #errorPanel p { margin-top: 28px; font-size: 32px; color: #8fa6c4; text-align: center; }
+  #errorPanel .retry {
+    margin-top: 52px; width: 480px; height: 112px; display: flex; align-items: center; justify-content: center;
+    background: #16233a; border: 4px solid #24334d; border-radius: 20px; color: #2fd2f5; font-size: 36px;
+    cursor: pointer; transition: .16s;
+  }
+  #errorPanel .retry.focused { background: rgba(47,210,245,.22); border-color: #2fd2f5; color: #fff; transform: scale(1.06); }
+  /* 信息浮层置于左下角：避免遮挡页面自身的顶部标题/页签栏 */
+  #infoOverlay {
+    position: absolute; left: 32px; bottom: 32px; z-index: 10; font-size: 26px; color: #8fa6c4;
+    background: rgba(12,21,36,.94); border: 1px solid rgba(47,210,245,.14); border-radius: 16px;
+    padding: 16px 24px; opacity: 0; transition: opacity .3s; pointer-events: none; line-height: 1.5;
+  }
+  #infoOverlay.show { opacity: 1; }
+  /* 真实页面内嵌提示（跨域不可脚本化，仅作视觉参考） */
+  #frameHint {
+    position: absolute; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 11;
+    display: none; align-items: center; gap: 20px; font-size: 24px; color: #cfe2ff;
+    background: rgba(12,21,36,.94); border: 1px solid #2a3f5c; border-radius: 999px; padding: 14px 28px;
+  }
+  #frameHint.show { display: flex; }
+  #frameHint b { color: #ffb020; font-weight: 600; }
+
+  /* ===================== 演示大屏（内置示例页，按 1920×1080 设计） ===================== */
+  .demo-page { position: absolute; inset: 0; background: #071120; font-size: 26px; }
+  .demo-top {
+    height: 92px; display: flex; align-items: center; gap: 36px; padding: 0 36px;
+    background: #0c1a2e; border-bottom: 1px solid #1d3350;
+  }
+  .demo-top .brand { color: #2fd2f5; font-weight: 700; font-size: 30px; }
+  .demo-tabs { display: flex; gap: 20px; margin-left: 20px; }
+  .demo-tab {
+    font: inherit; color: #9fb6d4; background: #12233b; border: 1px solid #1f3a55;
+    border-radius: 12px; padding: 10px 28px; cursor: pointer; transition: .15s;
+  }
+  .demo-tab.active { background: rgba(47,210,245,.18); border-color: #2fd2f5; color: #fff; }
+  .demo-body { position: absolute; inset: 92px 0 0 0; padding: 32px 36px; }
+  .demo-view[hidden] { display: none; }
+  .demo-cards { display: flex; gap: 28px; }
+  .demo-card {
+    flex: 1; background: #0d1c30; border: 1px solid #1d3350; border-radius: 20px;
+    padding: 28px 32px; cursor: pointer; transition: .15s;
+  }
+  .demo-card:hover { border-color: #2a4d75; }
+  .demo-card .k { color: #7f96b5; font-size: 24px; }
+  .demo-card .v { margin-top: 16px; font-size: 52px; font-weight: 700; color: #2fd2f5; }
+  .demo-card .u { margin-top: 8px; font-size: 22px; color: #5f7796; }
+  .demo-chart {
+    margin-top: 32px; height: 380px; border: 1px solid #1d3350; border-radius: 20px;
+    background: repeating-linear-gradient(90deg, #0b1a2b 0 79px, #0d2033 79px 80px);
+    display: flex; align-items: flex-end; gap: 20px; padding: 32px; overflow: hidden;
+  }
+  .demo-bar { width: 68px; background: linear-gradient(180deg, #2fd2f5, #1d6f8c); border-radius: 8px 8px 0 0; }
+  .demo-actions { margin-top: 32px; display: flex; gap: 24px; }
+  .demo-btn {
+    font: inherit; color: #d7e7ff; background: #16294a; border: 1px solid #24456e;
+    border-radius: 16px; padding: 18px 40px; cursor: pointer; transition: .15s;
+  }
+  .demo-login {
+    position: absolute; inset: 0; background: rgba(4,9,17,.94); z-index: 6;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px;
+  }
+  .demo-login[hidden] { display: none; }
+  .demo-login h3 { font-size: 40px; font-weight: 700; }
+  .demo-login .sub { font-size: 24px; color: #7f96b5; }
+  .demo-login input {
+    width: 600px; height: 80px; padding: 0 28px; font-size: 28px; color: #e8f1ff;
+    background: #0d1c30; border: 1px solid #24456e; border-radius: 16px; outline: none;
+  }
+  .demo-login input:focus { border-color: #2fd2f5; }
+  .demo-login button {
+    width: 600px; height: 84px; margin-top: 12px; font: inherit; font-size: 30px; cursor: pointer;
+    color: #04121b; background: #2fd2f5; border: 0; border-radius: 16px; font-weight: 700;
+  }
+
+  /* ===================== 对话框 ===================== */
+  #dialogLayer {
+    position: absolute; inset: 0; z-index: 40; background: rgba(4,7,13,.72);
+    display: flex; align-items: center; justify-content: center;
+  }
+  #dialogLayer[hidden] { display: none; }
+  .dialog {
+    background: #101a2b; border: 1px solid #24334d; border-radius: 36px;
+    padding: 76px 84px 64px; min-width: 1200px; max-width: 1600px;
+    box-shadow: 0 30px 90px rgba(0,0,0,.7);
+  }
+  .dialog h2 { font-size: 48px; font-weight: 700; }
+  .dialog .line { height: 2px; background: rgba(47,210,245,.10); margin: 40px 0 0; }
+  .dialog .msg { margin-top: 48px; font-size: 36px; color: #8fa6c4; line-height: 1.5; }
+  .dialog .sub { margin-top: 20px; font-size: 28px; color: #5f7796; word-break: break-all; }
+  .dialog .row { margin-top: 68px; display: flex; justify-content: flex-end; gap: 40px; }
+  .dialog .row.col { flex-direction: column; justify-content: flex-start; gap: 28px; }
+  .dlg-key {
+    min-width: 352px; height: 116px; display: flex; align-items: center; justify-content: center;
+    background: #16233a; border: 2px solid #24334d; border-radius: 20px; font-size: 36px; color: #e8f1ff;
+    cursor: pointer; transition: transform .16s cubic-bezier(.2,.7,.3,1), background .16s, border-color .16s;
+    padding: 0 40px;
+  }
+  .dlg-key.primary { color: #2fd2f5; }
+  .dlg-key.focused {
+    background: rgba(47,210,245,.22); border-color: #2fd2f5; color: #fff; transform: scale(1.06);
+  }
+  .dialog .row.col .dlg-key { width: 100%; justify-content: flex-start; min-width: 0; }
+
+  /* ===================== 虚拟遥控器 ===================== */
+  #remote {
+    position: fixed; right: 20px; bottom: 20px; z-index: 60; width: 208px;
+    background: #0d1626; border: 1px solid #22314a; border-radius: 22px; padding: 14px;
+    box-shadow: 0 18px 50px rgba(0,0,0,.6); user-select: none;
+  }
+  #remote[hidden] { display: none; }
+  #remote .title { font-size: 11px; color: #5f7796; text-align: center; margin-bottom: 10px; letter-spacing: .1em; }
+  #remote .pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .rc-key {
+    height: 46px; display: flex; align-items: center; justify-content: center; cursor: pointer;
+    background: #16233a; border: 1px solid #24334d; border-radius: 10px; color: #cfe2ff; font-size: 15px;
+  }
+  .rc-key:hover { border-color: #2fd2f5; color: #fff; }
+  .rc-key:active { background: rgba(47,210,245,.22); }
+  .rc-key.ok { background: rgba(47,210,245,.16); border-color: #2fd2f5; color: #fff; font-weight: 700; }
+  .rc-key.ghost { background: #101c2f; }
+  #remote .full { grid-column: span 3; }
+  #remote .tip { margin-top: 10px; font-size: 10.5px; color: #52698a; line-height: 1.5; }
+
+  /* ===================== 提示条 / 脚本面板 ===================== */
+  #toast {
+    position: fixed; left: 50%; bottom: 34px; transform: translateX(-50%) translateY(20px);
+    background: #12203a; border: 1px solid #2fd2f5; color: #e8f1ff; padding: 10px 22px;
+    border-radius: 999px; font-size: 13px; opacity: 0; transition: .25s; z-index: 70; pointer-events: none;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  #codePanel {
+    position: fixed; right: 20px; top: 66px; width: 560px; max-height: 74vh; z-index: 80;
+    background: #0d1626; border: 1px solid #24334d; border-radius: 14px; padding: 14px 16px;
+    display: flex; flex-direction: column; gap: 10px; box-shadow: 0 20px 60px rgba(0,0,0,.65);
+  }
+  #codePanel[hidden] { display: none; }
+  #codePanel .hd { display: flex; align-items: center; gap: 10px; font-size: 13px; color: #cfe2ff; font-weight: 600; }
+  #codePanel .hd .grow { flex: 1; }
+  #codePanel .ds { font-size: 11.5px; color: #7f96b5; line-height: 1.7; }
+  #codePanel .ds code { color: #2fd2f5; background: #101d31; padding: 1px 5px; border-radius: 4px; }
+  #codeArea {
+    width: 100%; height: 300px; resize: vertical; background: #08101c; color: #9fe8ff;
+    border: 1px solid #1d3350; border-radius: 8px; padding: 10px; font-size: 11px;
+    font-family: ui-monospace, Consolas, Menlo, monospace; line-height: 1.5;
+  }
+  #bookmarklet { display: inline-block; background: #16233a; border: 1px dashed #2fd2f5; color: #2fd2f5;
+    padding: 7px 14px; border-radius: 8px; font-size: 12.5px; cursor: grab; }
+</style>
+</head>
+<body>
+
+<!-- ==================== PC 工具条（不属于应用界面） ==================== -->
+<div id="pcbar">
+  <span class="tag">电脑预览</span>
+  <span>方向键 = 遥控器方向键　Enter/Space = 确定　Esc/Backspace = 返回　M = 菜单</span>
+  <span class="sep"></span>
+  <span id="viewportInfo">舞台 1920×1080px（电视 960dp×540dp @2x）· WebView CSS 视口 1920×1080 · 显示 100%（1:1）</span>
+  <span class="sep"></span>
+  <span class="src-chip fallback" id="sourceChip">配置来源：内置兜底</span>
+  <span class="sep"></span>
+  <span class="grow"></span>
+  <span class="pcbtn" id="btnSync">从服务器同步</span>
+  <span class="pcbtn" id="btnRotate">轮询播放</span>
+  <span class="pcbtn" id="btnZones">分区展示</span>
+  <span class="pcbtn active" id="btnScale">1:1（1920×1080）</span>
+  <span class="pcbtn" id="btnDemo">演示大屏</span>
+  <span class="pcbtn" id="btnRemote">隐藏虚拟遥控器</span>
+  <span class="pcbtn" id="btnInject">真实页面注入脚本</span>
+</div>
+
+<div id="viewport">
+  <div id="stageBox">
+  <div id="stage">
+
+    <!-- ==================== 首页 ==================== -->
+    <div id="homeScreen" class="screen">
+      <div class="topbar">
+        <div class="titles">
+          <h1 id="appTitle"></h1>
+          <p id="appSubtitle"></p>
+        </div>
+        <div class="clock">
+          <div id="clockTime"></div>
+          <div id="clockDate"></div>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="grid" id="grid"></div>
+      <div class="hint" id="homeHint">方向键 移动焦点　　确定 进入　　菜单 重新加载配置　　返回 退出应用</div>
+    </div>
+
+    <!-- ==================== 大屏展示页 ==================== -->
+    <div id="displayScreen" class="screen" hidden>
+      <div id="webview">
+        <div id="webviewInner"></div>
+        <div id="progress"></div>
+        <div id="infoOverlay"></div>
+        <div id="frameHint">
+          内嵌显示仅作视觉参考（浏览器同源策略不允许脚本注入跨域页面）
+          <b>交互测试请用右上角「真实页面注入脚本」</b>
+        </div>
+        <div id="rotationChip"></div>
+        <div class="cover" id="loadingPanel">
+          <div class="spin"></div>
+          <div class="txt">正在加载…</div>
+        </div>
+        <div class="cover" id="errorPanel" style="display:none">
+          <div class="panel">
+            <h3>页面加载失败</h3>
+            <p id="errorMessage">无法连接到大屏服务，请检查网络与地址配置</p>
+            <div class="retry" id="retryBtn">按【确定】重新加载</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== 本机设置（轮询 / 分区） ==================== -->
+    <div id="settingsScreen" class="screen" hidden>
+      <div class="topbar">
+        <div class="accentbar"></div>
+        <div class="titles">
+          <h1 id="settingsTitle"></h1>
+          <p id="settingsSubtitle"></p>
+        </div>
+        <div class="settings-state" id="settingsState"></div>
+      </div>
+      <div class="divider"></div>
+      <div class="settings-list" id="settingsList"></div>
+      <div class="hint" id="settingsHint" style="position:absolute;left:56px;right:56px;bottom:28px"></div>
+    </div>
+
+    <!-- ==================== 分区展示（2×2 拼接） ==================== -->
+    <div id="zoneScreen" class="screen" hidden>
+      <div id="zoneGrid"></div>
+      <div id="zoneHint" class="zone-hint">按 M 切换当前分区　按 Esc 返回首页</div>
+    </div>
+
+    <!-- ==================== 对话框层 ==================== -->
+    <div id="dialogLayer" hidden></div>
+  </div>
+  </div>
+</div>
+
+<!-- ==================== 虚拟遥控器 ==================== -->
+<div id="remote">
+  <div class="title">虚拟遥控器</div>
+  <div class="pad">
+    <div></div>
+    <div class="rc-key" data-key="ArrowUp">▲</div>
+    <div></div>
+    <div class="rc-key" data-key="ArrowLeft">◀</div>
+    <div class="rc-key ok" data-key="Enter">确定</div>
+    <div class="rc-key" data-key="ArrowRight">▶</div>
+    <div></div>
+    <div class="rc-key" data-key="ArrowDown">▼</div>
+    <div></div>
+    <div class="rc-key ghost full" data-key="Escape">返回</div>
+    <div class="rc-key ghost full" data-key="m">菜单</div>
+  </div>
+  <div class="tip">用鼠标点击等同于按下遥控器按键</div>
+</div>
+
+<div id="toast"></div>
+
+<!-- ==================== 真实页面注入脚本面板 ==================== -->
+<div id="codePanel" hidden>
+  <div class="hd">
+    <span>在真实大屏页面上测试注入脚本</span>
+    <span class="grow"></span>
+    <span class="pcbtn" id="btnCopy">复制脚本</span>
+    <span class="pcbtn" id="btnCloseCode">关闭</span>
+  </div>
+  <div class="ds">
+    受浏览器同源策略限制，预览页无法向跨域 iframe 注入脚本。请在<strong>新标签页</strong>打开真实大屏地址，
+    然后任选一种方式注入（与 App 内 WebView 注入的脚本体完全一致）：
+    <br>① 按 <code>F12</code> 打开控制台，粘贴下方脚本后回车；
+    <br>② 把下面的<strong>书签脚本</strong>拖到浏览器书签栏，在真实页面上点一下即可注入。
+  </div>
+  <a id="bookmarklet" href="#">▶ 注入遥控器导航 + 自动登录</a>
+  <textarea id="codeArea" spellcheck="false" readonly></textarea>
+</div>
+
+<!-- ==================== 与工程源码同步注入的数据 ==================== -->
+<script id="bootstrap" type="application/json">__BOOTSTRAP__</script>
+<script id="tvNavSrc" type="text/plain">__TV_NAV_JS__</script>
+<script id="autoLoginSrc" type="text/plain">__AUTO_LOGIN_JS__</script>
+
+<script>
+/* ==========================================================================
+ * 电脑预览逻辑：复现 App 的首页 / 大屏展示页外壳 / 遥控器按键分发
+ * 说明：舞台固定 1920×1080 CSS px（模拟 1080p 电视，2 倍密度），
+ *      大屏区域为 960×540 CSS px 再放大 2 倍，与电视 WebView 的 CSS 视口一致。
+ * ========================================================================== */
+(function () {
+  'use strict';
+
+  /* ==========================================================================
+   * 与 App 一致的配置来源与同步逻辑
+   * --------------------------------------------------------------------------
+   * 1) 启动先用「内置兜底内容」渲染（不等待网络，对应 App 的 snapshot()）
+   * 2) 再向服务端做增量同步：since + epoch（对应 App 的 ConfigClient/ConfigRepository）
+   *    - 304            → 已是最新
+   *    - full           → 覆盖
+   *    - delta          → 删除 → 覆盖/新增 → 按 order 重排
+   * 3) 同步失败 → 保留兜底内容并显示「离线」
+   * ========================================================================== */
+  var BOOT = JSON.parse(document.getElementById('bootstrap').textContent);
+  var SERVER_BASE = (BOOT.serverBaseUrl || '').replace(/\/+$/, '');
+  // 兼容旧格式（顶层直接是配置）
+  var FALLBACK = BOOT.fallback || BOOT;
+
+  /* 当前生效配置（对应 App 的 RemoteConfig） */
+  var CFG = {
+    appTitle: FALLBACK.appTitle || '数智中心大屏聚合平台',
+    appSubtitle: FALLBACK.appSubtitle || '',
+    exitConfirm: FALLBACK.exitConfirm !== false,
+    exitTip: FALLBACK.exitTip || '',
+    entries: (FALLBACK.entries || []).slice(),
+    version: 0,
+    epoch: 0
+  };
+  /* 配置来源：fallback = 内置兜底；server = 已从服务器同步 */
+  var source = 'fallback';
+  var syncState = 'fallback'; // fallback | syncing | ok | offline
+  var NAV_SRC = document.getElementById('tvNavSrc').textContent;
+  var LOGIN_SRC = document.getElementById('autoLoginSrc').textContent;
+
+  var ICONS = {
+    storage: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M2,20h20v-4H2v4zM4,17h2v2H4v-2zM2,14h20v-4H2v4zM4,11h2v2H4v-2zM2,8h20V4H2v4zM4,5h2v2H4V5z"/></svg>',
+    env: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M15,13V5c0-1.66 -1.34,-3 -3,-3S9,3.34 9,5v8c-1.21,0.91 -2,2.37 -2,4 0,2.76 2.24,5 5,5s5,-2.24 5,-5c0,-1.63 -0.79,-3.09 -2,-4zM11,5c0,-0.55 0.45,-1 1,-1s1,0.45 1,1h-1v1h1v2h-1v1h1v2h-2V5z"/></svg>',
+    security: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12,1L3,5v6c0,5.55 3.84,10.74 9,12 5.16,-1.26 9,-6.45 9,-12V5l-9,-4zM10.94,15.54L7.4,12l1.41,-1.41 2.12,2.12 4.24,-4.24 1.41,1.41 -5.64,5.66z"/></svg>',
+    demo: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M21,3H3A2,2 0 0,0 1,5v12a2,2 0 0,0 2,2h6l-2,3h10l-2,-3h6a2,2 0 0,0 2,-2V5a2,2 0 0,0 -2,-2zM21,17H3V5h18v12z"/></svg>',
+    default: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M4,8h4V4H4v4zM10,20h4v-4h-4v4zM4,20h4v-4H4v4zM4,14h4v-4H4v4zM10,14h4v-4h-4v4zM16,4v4h4V4h-4zM10,8h4V4h-4v4zM16,14h4v-4h-4v4zM16,20h4v-4h-4v4z"/></svg>'
+  };
+
+  /* 首页入口 = 当前生效配置（对应 App 的 snapshot().entries） */
+  var ENTRIES = CFG.entries;
+
+  /* 内置演示大屏：由工具栏按钮直接打开，不占用首页宫格 */
+  var DEMO_ENTRY = {
+    id: '__demo__',
+    title: '演示大屏（内置示例页）',
+    subtitle: '在电脑上验证遥控器焦点导航与自动登录，无需连接内网大屏',
+    url: 'demo://built-in',
+    accent: '#8B7CFF',
+    icon: 'demo',
+    demo: true
+  };
+
+  var state = {
+    mode: 'home',
+    entry: null,
+    focus: null,
+    zoom: 100,
+    dialog: null,
+    loadingTimer: null,
+    navInjected: false,
+    infoTimer: null,
+    /** false = 1:1 显示（恒为 1920×1080）；true = 缩小以适应窗口 */
+    fitWindow: false
+  };
+
+  var el = {
+    home: document.getElementById('homeScreen'),
+    display: document.getElementById('displayScreen'),
+    grid: document.getElementById('grid'),
+    dialog: document.getElementById('dialogLayer'),
+    inner: document.getElementById('webviewInner'),
+    stage: document.getElementById('stage'),
+    stageBox: document.getElementById('stageBox'),
+    viewport: document.getElementById('viewport'),
+    progress: document.getElementById('progress'),
+    loading: document.getElementById('loadingPanel'),
+    error: document.getElementById('errorPanel'),
+    errorMsg: document.getElementById('errorMessage'),
+    retry: document.getElementById('retryBtn'),
+    info: document.getElementById('infoOverlay'),
+    frameHint: document.getElementById('frameHint'),
+    toast: document.getElementById('toast')
+  };
+
+  /* ---------------- 通用工具 ---------------- */
+
+  function toast(msg) {
+    el.toast.textContent = msg;
+    el.toast.classList.add('show');
+    clearTimeout(el.toast._t);
+    el.toast._t = setTimeout(function () { el.toast.classList.remove('show'); }, 1900);
+  }
+
+  function hexAlpha(hex, alpha) {
+    var h = (hex || '#2FD2F5').replace('#', '');
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    var r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+    return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+  }
+
+  /* ---------------- 焦点引擎（与 tv_nav.js 同一套就近算法） ---------------- */
+
+  function centerOf(node) {
+    var r = node.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  }
+
+  function pickBest(list, active, dir) {
+    var c = centerOf(active), best = null, bestScore = Infinity;
+    for (var i = 0; i < list.length; i++) {
+      var node = list[i];
+      if (node === active) continue;
+      var p = centerOf(node), dx = p.x - c.x, dy = p.y - c.y, primary, secondary;
+      if (dir === 'up') { if (dy > -8) continue; primary = -dy; secondary = Math.abs(dx); }
+      else if (dir === 'down') { if (dy < 8) continue; primary = dy; secondary = Math.abs(dx); }
+      else if (dir === 'left') { if (dx > -8) continue; primary = -dx; secondary = Math.abs(dy); }
+      else { if (dx < 8) continue; primary = dx; secondary = Math.abs(dy); }
+      var score = primary + secondary * 2.4;
+      if (score < bestScore) { bestScore = score; best = node; }
+    }
+    return best;
+  }
+
+  function focusList() {
+    if (state.dialog) {
+      return Array.prototype.slice.call(el.dialog.querySelectorAll('.dlg-key'));
+    }
+    if (state.mode === 'home') {
+      return Array.prototype.slice.call(el.grid.querySelectorAll('.entry-tile'));
+    }
+    if (state.mode === 'settings') {
+      return Array.prototype.slice.call(
+        document.getElementById('settingsList').querySelectorAll('.settings-row'));
+    }
+    return [];
+  }
+
+  function applyFocus(node) {
+    var list = focusList();
+    list.forEach(function (n) { n.classList.remove('focused'); });
+    state.focus = node || null;
+    if (node) {
+      node.classList.add('focused');
+      node.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+  }
+
+  function focusFirst() {
+    var list = focusList();
+    if (list.length) applyFocus(list[0]);
+  }
+
+  function moveFocus(dir) {
+    var list = focusList();
+    if (!list.length) return false;
+    if (!state.focus || list.indexOf(state.focus) < 0) { applyFocus(list[0]); return true; }
+    var best = pickBest(list, state.focus, dir);
+    if (best) { applyFocus(best); return true; }
+    return false;
+  }
+
+  /* ---------------- 首页渲染 ---------------- */
+
+  function columns() {
+    // 舞台 1920px = 960dp（2 倍密度），与 App 内 columnsForScreen() 的阈值一致
+    var widthDp = 960;
+    return widthDp >= 1280 ? 4 : (widthDp >= 940 ? 3 : (widthDp >= 620 ? 2 : 1));
+  }
+
+  function renderHome() {
+    document.getElementById('appTitle').textContent = CFG.appTitle || '数智中心大屏聚合平台';
+    document.getElementById('appSubtitle').textContent = CFG.appSubtitle || 'DISPLAY HUB';
+    document.getElementById('homeHint').textContent = '方向键 移动焦点　　确定 进入　　菜单 轮询 / 分区 / 同步　　返回 退出应用';
+
+    el.grid.innerHTML = '';
+    var rows = [], cols = columns(), gap = 24;
+    for (var i = 0; i < ENTRIES.length; i += cols) rows.push(ENTRIES.slice(i, i + cols));
+
+    // 自适应卡片高度：让 N 行正好铺满栅格可用高度（与 App 内 adaptiveCardHeight 一致）
+    var tileH = adaptiveTileHeight(rows.length, gap);
+
+    rows.forEach(function (rowEntries, rowIndex) {
+      var row = document.createElement('div');
+      row.className = 'grid-row';
+      row.style.gridTemplateColumns = 'repeat(' + cols + ', minmax(0, 1fr))';
+      if (rowIndex > 0) row.style.marginTop = gap + 'px';
+      rowEntries.forEach(function (entry) {
+        var tile = buildTile(entry);
+        tile.style.height = tileH + 'px';
+        row.appendChild(tile);
+      });
+      el.grid.appendChild(row);
+    });
+    focusFirst();
+  }
+
+  /* 与 App 内 adaptiveCardHeight 等价：下限 328px、上限 520px（164dp / 260dp @2x） */
+  function adaptiveTileHeight(rowCount, gap) {
+    var cs = getComputedStyle(el.grid);
+    var padV = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+    var boxH = el.grid.clientHeight || 774;
+    var usable = boxH - padV - 8;
+    var h = Math.floor((usable - (rowCount - 1) * gap) / Math.max(1, rowCount));
+    return Math.max(328, Math.min(520, h));
+  }
+
+  function buildTile(entry) {
+    var accent = entry.accent || '#2FD2F5';
+    var tile = document.createElement('div');
+    tile.className = 'entry-tile';
+
+    var iconHtml = '<div class="tile-icon" style="background:' + hexAlpha(accent, .16) +
+      ';color:' + accent + '">' + (ICONS[entry.icon] || ICONS.default) + '</div>';
+
+    tile.innerHTML = iconHtml +
+      (entry.demo ? '<div class="tile-badge">测试入口</div>' : '') +
+      '<div class="tile-title"></div>' +
+      '<div class="tile-sub"></div>' +
+      '<div class="tile-spacer"></div>' +
+      '<div class="tile-url"></div>';
+    tile.querySelector('.tile-title').textContent = entry.title;
+    tile.querySelector('.tile-sub').textContent = entry.subtitle || '';
+    tile.querySelector('.tile-url').textContent = entry.url;
+    tile.addEventListener('click', function () { activateTile(entry); });
+    return tile;
+  }
+
+  function activateTile(entry) {
+    state.entry = entry;
+    state.zoom = entry.scale > 0 ? entry.scale : 100;
+    state.mode = 'display';
+    el.home.hidden = true;
+    el.display.hidden = false;
+    state.focus = null;
+    openEntryPage(entry);
+    showInfo();
+  }
+
+  /* ---------------- 大屏展示页 ---------------- */
+
+  function openEntryPage(entry) {
+    clearTimeout(state.loadingTimer);
+    el.error.style.display = 'none';
+    el.loading.style.display = 'flex';
+    el.progress.style.width = '0%';
+    el.frameHint.classList.remove('show');
+    el.inner.innerHTML = '';
+
+    var progress = 0;
+    var tick = setInterval(function () {
+      progress = Math.min(92, progress + 9);
+      el.progress.style.width = progress + '%';
+    }, 90);
+
+    state.loadingTimer = setTimeout(function () {
+      clearInterval(tick);
+      el.progress.style.width = '100%';
+      el.loading.style.display = 'none';
+      if (entry.demo) mountDemoPage();
+      else mountRealFrame(entry);
+      setTimeout(function () { el.progress.style.width = '0%'; }, 400);
+    }, 700);
+  }
+
+  function mountRealFrame(entry) {
+    var frame = document.createElement('iframe');
+    frame.id = 'realFrame';
+    frame.src = entry.url;
+    frame.setAttribute('referrerpolicy', 'no-referrer');
+    // 跨域页面无法脚本化，禁止指针交互以保证窗口仍在预览页接收按键
+    frame.style.pointerEvents = 'none';
+    frame.style.zoom = (state.zoom / 100);
+    frame.addEventListener('load', function () { el.frameHint.classList.add('show'); });
+    el.inner.appendChild(frame);
+  }
+
+  /* ---------------- 内置演示大屏 ---------------- */
+
+  var DEMO_PAGE = '' +
+    '<div class="demo-page">' +
+      '<div class="demo-top">' +
+        '<span class="brand">演示大屏 · 示例页面</span>' +
+        '<div class="demo-tabs">' +
+          '<button class="demo-tab active" data-view="overview">容量总览</button>' +
+          '<button class="demo-tab" data-view="parts">分区视图</button>' +
+          '<button class="demo-tab" data-view="trend">容量趋势</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="demo-body">' +
+        '<div class="demo-view" data-view="overview">' +
+          '<div class="demo-cards">' +
+            '<div class="demo-card" role="button" tabindex="0"><div class="k">总容量</div><div class="v">2.35 PB</div><div class="u">按【确定】查看明细</div></div>' +
+            '<div class="demo-card" role="button" tabindex="0"><div class="k">已使用</div><div class="v">607 TB</div><div class="u">按【确定】查看明细</div></div>' +
+            '<div class="demo-card" role="button" tabindex="0"><div class="k">使用率</div><div class="v">25.9%</div><div class="u">按【确定】查看明细</div></div>' +
+          '</div>' +
+          '<div class="demo-chart">' +
+            '<div class="demo-bar" style="height:42%"></div><div class="demo-bar" style="height:66%"></div>' +
+            '<div class="demo-bar" style="height:31%"></div><div class="demo-bar" style="height:78%"></div>' +
+            '<div class="demo-bar" style="height:54%"></div><div class="demo-bar" style="height:88%"></div>' +
+            '<div class="demo-bar" style="height:36%"></div><div class="demo-bar" style="height:61%"></div>' +
+            '<div class="demo-bar" style="height:73%"></div><div class="demo-bar" style="height:49%"></div>' +
+          '</div>' +
+          '<div class="demo-actions">' +
+            '<button class="demo-btn" id="demoAlert">模拟加载失败</button>' +
+            '<button class="demo-btn" id="demoReload">刷新页面</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="demo-view" data-view="parts" hidden><div class="demo-cards">' +
+          '<div class="demo-card" role="button" tabindex="0"><div class="k">分区 A</div><div class="v">512 TB</div><div class="u">使用率 31%</div></div>' +
+          '<div class="demo-card" role="button" tabindex="0"><div class="k">分区 B</div><div class="v">768 TB</div><div class="u">使用率 44%</div></div>' +
+          '<div class="demo-card" role="button" tabindex="0"><div class="k">分区 C</div><div class="v">1024 TB</div><div class="u">使用率 18%</div></div>' +
+        '</div></div>' +
+        '<div class="demo-view" data-view="trend" hidden><div class="demo-chart" style="height:660px;margin-top:0">' +
+          '<div class="demo-bar" style="height:30%"></div><div class="demo-bar" style="height:45%"></div>' +
+          '<div class="demo-bar" style="height:58%"></div><div class="demo-bar" style="height:72%"></div>' +
+          '<div class="demo-bar" style="height:86%"></div><div class="demo-bar" style="height:96%"></div>' +
+        '</div></div>' +
+      '</div>' +
+      '<div class="demo-login" id="demoLogin">' +
+        '<h3>演示大屏登录</h3>' +
+        '<div class="sub">本页用于验证 App 的账号密码自动填充（注入 auto_login.js 后自动完成）</div>' +
+        '<input id="demoUser" placeholder="用户名" autocomplete="off">' +
+        '<input id="demoPwd" type="password" placeholder="密码" autocomplete="off">' +
+        '<button id="demoLoginBtn" type="submit">登 录</button>' +
+      '</div>' +
+    '</div>';
+
+  function mountDemoPage() {
+    var wrap = document.createElement('div');
+    wrap.style.cssText = 'position:absolute;left:0;top:0;width:1920px;height:1080px;zoom:' + (state.zoom / 100);
+    wrap.id = 'demoWrap';
+    wrap.innerHTML = DEMO_PAGE;
+    el.inner.appendChild(wrap);
+
+    var login = wrap.querySelector('#demoLogin');
+    wrap.querySelector('#demoLoginBtn').addEventListener('click', function () {
+      login.hidden = true;
+      toast('演示大屏：自动登录完成，已进入展示页');
+    });
+
+    var tabs = wrap.querySelectorAll('.demo-tab');
+    Array.prototype.forEach.call(tabs, function (tab) {
+      tab.addEventListener('click', function () {
+        Array.prototype.forEach.call(tabs, function (t) { t.classList.remove('active'); });
+        tab.classList.add('active');
+        var views = wrap.querySelectorAll('.demo-view');
+        Array.prototype.forEach.call(views, function (v) {
+          v.hidden = v.getAttribute('data-view') !== tab.getAttribute('data-view');
+        });
+        toast('已切换到「' + tab.textContent + '」');
+      });
+    });
+
+    var cards = wrap.querySelectorAll('.demo-card');
+    Array.prototype.forEach.call(cards, function (card) {
+      card.addEventListener('click', function () {
+        toast('演示大屏：点击了「' + card.querySelector('.k').textContent + '」');
+      });
+    });
+
+    wrap.querySelector('#demoAlert').addEventListener('click', function () {
+      showError('（演示）无法连接到大屏服务，请检查网络与地址配置');
+    });
+    wrap.querySelector('#demoReload').addEventListener('click', function () { reloadPage(); });
+
+    injectTvNav();
+    injectAutoLogin({
+      enabled: true,
+      username: 'demo',
+      password: 'demo@2026',
+      usernameSelector: '#demoUser',
+      passwordSelector: '#demoPwd',
+      submitSelector: '#demoLoginBtn'
+    });
+    toast('已注入 tv_nav.js + auto_login.js（与 App 内一致）');
+  }
+
+  function injectTvNav() {
+    if (state.navInjected) {
+      if (window.__tvFocusFirst) window.__tvFocusFirst();
+      return;
+    }
+    state.navInjected = true;
+    var s = document.createElement('script');
+    s.textContent = NAV_SRC;
+    document.body.appendChild(s);
+  }
+
+  function injectAutoLogin(cfg) {
+    window.__TV_AUTOLOGIN_DONE__ = false;
+    window.__TV_AUTOLOGIN__ = cfg;
+    var s = document.createElement('script');
+    s.textContent = LOGIN_SRC;
+    document.body.appendChild(s);
+  }
+
+  /* ---------------- 页面状态（缩放 / 信息浮层 / 错误 / 菜单） ---------------- */
+
+  function showInfo() {
+    var e = state.entry;
+    if (!e) return;
+    el.info.textContent = e.title + '　·　' + e.url + '　·　缩放 ' + state.zoom + '%';
+    el.info.classList.add('show');
+    clearTimeout(state.infoTimer);
+    state.infoTimer = setTimeout(function () { el.info.classList.remove('show'); }, 4000);
+  }
+
+  function applyZoom() {
+    var node = el.inner.querySelector('#demoWrap') || el.inner.querySelector('#realFrame');
+    if (node) node.style.zoom = (state.zoom / 100);
+  }
+
+  function changeZoom(delta) {
+    var next = Math.max(50, Math.min(200, state.zoom + delta));
+    if (next === state.zoom) return;
+    state.zoom = next;
+    applyZoom();
+    toast('当前缩放：' + state.zoom + '%');
+    showInfo();
+  }
+
+  function showError(message) {
+    el.loading.style.display = 'none';
+    el.errorMsg.textContent = message || '无法连接到大屏服务，请检查网络与地址配置';
+    el.error.style.display = 'flex';
+    state.mode = 'error';
+    state.focus = null;
+    applyFocus(el.retry);
+  }
+
+  function reloadPage() {
+    el.error.style.display = 'none';
+    state.mode = 'display';
+    openEntryPage(state.entry);
+    toast('正在重新加载…');
+  }
+
+  function showMenuDialog() {
+    var items = [];
+    // 轮询播放模式下，再按一次【菜单】即进入轮询设置
+    if (rotation.active) {
+      items.push({ text: '轮询设置', run: function () { openSettings(); } });
+    }
+    items = items.concat([
+      { text: '刷新页面', run: function () { reloadPage(); } },
+      { text: '放大显示', run: function () { changeZoom(10); } },
+      { text: '缩小显示', run: function () { changeZoom(-10); } },
+      { text: '重置缩放', run: function () { changeZoom(100 - state.zoom); } },
+      { text: '返回首页', run: function () { backToHome(); } }
+    ]);
+    openDialog('大屏控制菜单', null, items, null, state.entry.title + '　·　' + state.entry.url + '　·　缩放 ' + state.zoom + '%');
+  }
+
+  /**
+   * 首页控制菜单（对应 App 内 MainActivity 的【菜单】键）。
+   * 「轮询展示」「分区展示」都是直接进入展示页，各自的配置在展示页里现场完成。
+   */
+  function showHomeMenu() {
+    var items = [
+      { text: '立即同步配置', run: function () { syncFromServer(true); } },
+      { text: '轮询展示', run: function () { startRotation(); } },
+      { text: '分区展示（2×2 拼接）', run: function () { openZones(); } },
+      { text: '关闭', run: function () { } }
+    ];
+    openDialog('首页控制菜单', null, items, null, (CFG.appTitle || '') + '　·　v' + CFG.version);
+  }
+
+  /* ---------------- 轮询设置界面（在轮询播放页按【菜单】进入） ---------------- */
+
+  var settings = { stateTimer: null, returnRotation: false };
+
+  function openSettings() {
+    settings.returnRotation = rotation.active;
+    stopRotation();
+    state.mode = 'settings';
+    el.home.hidden = true;
+    el.display.hidden = true;
+    document.getElementById('zoneScreen').hidden = true;
+    document.getElementById('settingsScreen').hidden = false;
+    renderSettings();
+  }
+
+  /** 退出设置：原来在轮询播放中就回到轮询播放，否则回首页 */
+  function leaveSettings() {
+    document.getElementById('settingsScreen').hidden = true;
+    if (settings.returnRotation) {
+      settings.returnRotation = false;
+      startRotation();
+    } else {
+      backToHome();
+    }
+  }
+
+  function renderSettings() {
+    var list = document.getElementById('settingsList');
+    list.innerHTML = '';
+    document.getElementById('settingsTitle').textContent = '轮询设置';
+    document.getElementById('settingsSubtitle').textContent = '本机设置，只影响这台电视（内容仍由服务器统一维护）';
+    document.getElementById('settingsHint').textContent = '上下 移动焦点　　确定 切换/选择　　左右 调整播放顺序　　返回 返回轮询播放';
+
+    renderRotationSettings(list);
+    applyFocus(list.querySelector('.settings-row'));
+  }
+
+  function addSettingRow(list, label, value, attrs) {
+    var row = document.createElement('div');
+    row.className = 'settings-row';
+    row.innerHTML = '<span class="label"></span><span class="value"></span>';
+    row.querySelector('.label').textContent = label;
+    row.querySelector('.value').textContent = value;
+    Object.keys(attrs || {}).forEach(function (k) { row.setAttribute('data-' + k, String(attrs[k])); });
+    row.addEventListener('click', function () { state.focus = row; activateSettingsRow(); });
+    list.appendChild(row);
+    return row;
+  }
+
+  function addSettingSection(list, text) {
+    var sec = document.createElement('div');
+    sec.className = 'settings-section';
+    sec.textContent = text;
+    list.appendChild(sec);
+  }
+
+  function renderRotationSettings(list) {
+    var r = local.rotation;
+    addSettingRow(list, '开机自动播放', r.enabled ? '已开启' : '已关闭', { action: 'toggle' });
+    addSettingRow(list, '每页停留时间', r.intervalSec + ' 秒', { action: 'interval' });
+    addSettingSection(list, '参与轮询的页面（确定 加入/移出）');
+    (CFG.entries || []).forEach(function (e) {
+      var idx = r.items.indexOf(e.id);
+      addSettingRow(list, e.title,
+        idx >= 0 ? ('第 ' + (idx + 1) + ' 位 / 共 ' + r.items.length + ' 页') : '未加入',
+        { action: 'page', entry: e.id, move: 1 });
+    });
+    addSettingSection(list, '提示：左右方向键可调整播放顺序；每次改动都会从第 1 页重新开始计时');
+  }
+
+  function activateSettingsRow() {
+    var row = state.focus;
+    if (!row) return;
+    var action = row.getAttribute('data-action');
+    if (action === 'toggle') {
+      local.rotation.enabled = !local.rotation.enabled;
+      afterRotationChange();
+    } else if (action === 'interval') {
+      pickInterval();
+    } else if (action === 'page') {
+      var items = local.rotation.items.slice();
+      var id = row.getAttribute('data-entry');
+      var i = items.indexOf(id);
+      if (i >= 0) items.splice(i, 1); else items.push(id);
+      local.rotation.items = items;
+      afterRotationChange();
+    }
+  }
+
+  function reorderRotationRow(row, dir) {
+    var id = row.getAttribute('data-entry');
+    var items = local.rotation.items.slice();
+    var from = items.indexOf(id);
+    if (from < 0) return;
+    var to = Math.min(items.length - 1, Math.max(0, from + dir));
+    if (to === from) return;
+    items.splice(from, 1);
+    items.splice(to, 0, id);
+    local.rotation.items = items;
+    afterRotationChange();
+  }
+
+  /** 轮询设置改变后：重置本机时钟起点并立即生效（对应 App 内 saveRotation 的 restartClock） */
+  function afterRotationChange() {
+    local.rotation.startedAt = Date.now();
+    saveLocalSettings();
+    rerenderSettingsKeepingFocus();
+    markSettingsSaved();
+  }
+
+  /** 重新渲染设置界面并保持焦点停在原来的那一行 */
+  function rerenderSettingsKeepingFocus() {
+    var rows = Array.prototype.slice.call(
+      document.getElementById('settingsList').querySelectorAll('.settings-row'));
+    var idx = Math.max(0, rows.indexOf(state.focus));
+    renderSettings();
+    var now = document.getElementById('settingsList').querySelectorAll('.settings-row');
+    applyFocus(now[Math.min(idx, now.length - 1)] || null);
+  }
+
+  function pickInterval() {
+    var items = INTERVAL_PRESETS.map(function (s) {
+      return {
+        text: s + ' 秒',
+        primary: s === local.rotation.intervalSec,
+        run: function () {
+          local.rotation.intervalSec = s;
+          afterRotationChange();
+        }
+      };
+    });
+    openDialog('每页停留时间', null, items, null, '取值范围 1–3600 秒');
+  }
+
+  function pickZoneEntry(position) {
+    // 弹层标题虽有格位编号，仍先闪一下操作对象，避免"改错格"
+    flashZone(position);
+    var items = (CFG.entries || []).map(function (e) {
+      return { text: e.title, run: function () { setZoneEntry(position, e.id); } };
+    });
+    items.push({ text: '不使用', run: function () { setZoneEntry(position, ''); } });
+    openDialog('选择第 ' + (position + 1) + ' 格的页面', null, items, null,
+      '2×2 拼接，每格按 ' + ZONE_MIN.width + '×' + ZONE_MIN.height + ' 渲染');
+  }
+
+  function setZoneEntry(position, entryId) {
+    local.zones = local.zones.map(function (z) {
+      return z.position === position ? { position: position, entryId: entryId } : z;
+    });
+    saveLocalSettings();
+    renderZoneCell(position); // 只重建这一格，其余三格不重新加载
+    var entry = entryId ? entryOf(entryId) : null;
+    toast('第 ' + (position + 1) + ' 格已设为：' + (entry ? entry.title : '不使用'));
+  }
+
+  function markSettingsSaved() {
+    var chip = document.getElementById('settingsState');
+    chip.textContent = '已保存';
+    clearTimeout(settings.stateTimer);
+    settings.stateTimer = setTimeout(function () { chip.textContent = ''; }, 1600);
+  }
+
+  function backToHome() {
+    stopRotation();
+    state.mode = 'home';
+    state.entry = null;
+    el.inner.innerHTML = '';
+    el.display.hidden = true;
+    document.getElementById('zoneScreen').hidden = true;
+    document.getElementById('settingsScreen').hidden = true;
+    el.home.hidden = false;
+    el.frameHint.classList.remove('show');
+    state.focus = null;
+    focusFirst();
+    toast('已返回首页');
+  }
+
+  /* ---------------- 对话框 ---------------- */
+
+  function openDialog(title, message, items, buttons, subtitle) {
+    el.dialog.innerHTML = '';
+    var box = document.createElement('div');
+    box.className = 'dialog';
+    var html = '<h2></h2><div class="line"></div>';
+    if (message) html += '<div class="msg"></div>';
+    if (subtitle) html += '<div class="sub"></div>';
+    html += '<div class="row' + (items ? ' col' : '') + '"></div>';
+    box.innerHTML = html;
+    box.querySelector('h2').textContent = title;
+    if (message) box.querySelector('.msg').textContent = message;
+    if (subtitle) box.querySelector('.sub').textContent = subtitle;
+
+    var row = box.querySelector('.row');
+    (items || buttons || []).forEach(function (item) {
+      var key = document.createElement('div');
+      key.className = 'dlg-key' + (item.primary ? ' primary' : '');
+      key.textContent = item.text;
+      key.addEventListener('click', function () {
+        closeDialog();
+        if (item.run) item.run();
+      });
+      row.appendChild(key);
+    });
+
+    el.dialog.appendChild(box);
+    el.dialog.hidden = false;
+    state.dialog = box;
+    // 默认焦点：确认类对话框落在“取消”，防误操作
+    var keys = box.querySelectorAll('.dlg-key');
+    var prefer = null;
+    Array.prototype.forEach.call(keys, function (k) { if (k.textContent === '取消' && !prefer) prefer = k; });
+    applyFocus(prefer || keys[0]);
+  }
+
+  function closeDialog() {
+    el.dialog.hidden = true;
+    el.dialog.innerHTML = '';
+    state.dialog = null;
+    if (state.mode === 'error') applyFocus(el.retry);
+    else focusFirst();
+  }
+
+  function showExitConfirm() {
+    openDialog('退出应用', '确定要退出大屏聚合平台吗？', null, [
+      { text: '取消' },
+      { text: '退出应用', primary: true, run: function () {
+          toast('电脑预览：App 在此处会调用 finish() 退出应用');
+          document.body.innerHTML = '<div style="height:100%;display:flex;align-items:center;justify-content:center;' +
+            'color:#8fa6c4;font-size:15px;flex-direction:column;gap:14px">' +
+            '<div style="font-size:22px;color:#e8f1ff">应用已退出（电脑预览模拟）</div>' +
+            '<div>刷新本页面（F5）可重新开始测试</div></div>';
+        } }
+    ]);
+  }
+
+  /* ---------------- 遥控器按键分发 ---------------- */
+
+  function handleKey(key) {
+    var isBack = (key === 'Escape' || key === 'Backspace');
+    var isMenu = (key === 'm' || key === 'M');
+    var isOk = (key === 'Enter' || key === ' ' || key === 'Spacebar');
+    var dirMap = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
+    var dir = dirMap[key];
+
+    /* ---- 对话框打开时：方向键/确定/返回 都作用于对话框 ---- */
+    if (state.dialog) {
+      if (dir) { moveFocus(dir); return true; }
+      if (isOk) { if (state.focus) state.focus.click(); return true; }
+      if (isBack) { closeDialog(); return true; }
+      return true;
+    }
+
+    /* ---- 轮询设置：上下移动焦点，左右调整播放顺序，确定执行，返回回轮询播放 ---- */
+    if (state.mode === 'settings') {
+      if (dir === 'left' || dir === 'right') {
+        var row = state.focus;
+        if (row && row.getAttribute('data-move') === '1') {
+          reorderRotationRow(row, dir === 'left' ? -1 : 1);
+        }
+        return true;
+      }
+      if (dir) { moveFocus(dir); return true; }
+      if (isOk) { activateSettingsRow(); return true; }
+      if (isBack) { leaveSettings(); return true; }
+      return true;
+    }
+
+    /* ---- 分区展示：方向键选格，确定为该格选页面，菜单打开控制菜单 ---- */
+    if (state.mode === 'zones') {
+      if (isBack) { backToHome(); return true; }
+      if (isMenu) { showZoneMenu(); return true; }
+      if (dir === 'left') { moveZone(0, -1); return true; }
+      if (dir === 'right') { moveZone(0, 1); return true; }
+      if (dir === 'up') { moveZone(-1, 0); return true; }
+      if (dir === 'down') { moveZone(1, 0); return true; }
+      if (isOk) { pickZoneEntry(zones.active); return true; }
+      return true;
+    }
+
+    /* ---- 大屏展示页：只接管 返回 / 菜单，其余交给注入的 tv_nav.js ---- */
+    if (state.mode === 'display') {
+      if (isBack) { backToHome(); return true; }
+      if (isMenu) { showMenuDialog(); return true; }
+      return false;
+    }
+
+    /* ---- 加载失败页：确定 = 重试 ---- */
+    if (state.mode === 'error') {
+      if (isOk) { reloadPage(); return true; }
+      if (isBack) { backToHome(); return true; }
+      return true;
+    }
+
+    /* ---- 首页 ---- */
+    if (dir) { moveFocus(dir); return true; }
+    if (isOk) { if (state.focus) state.focus.click(); return true; }
+    if (isBack) { showExitConfirm(); return true; }
+    if (isMenu) { showHomeMenu(); return true; }
+    return false;
+  }
+
+  window.addEventListener('keydown', function (ev) {
+    if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    var handled = handleKey(ev.key);
+    if (handled) { ev.preventDefault(); ev.stopPropagation(); }
+  }, true);
+
+  /* 虚拟遥控器：派发到当前焦点元素，使其沿父子链传播给注入的脚本 */
+  document.getElementById('remote').addEventListener('click', function (ev) {
+    var key = ev.target.getAttribute && ev.target.getAttribute('data-key');
+    if (!key) return;
+    var target = document.activeElement && document.activeElement !== document.body
+      ? document.activeElement : document.body;
+    target.dispatchEvent(new KeyboardEvent('keydown', { key: key, bubbles: true, cancelable: true }));
+  });
+
+  el.retry.addEventListener('click', function () { reloadPage(); });
+
+  /* ---------------- 时钟 ---------------- */
+
+  function tickClock() {
+    var d = new Date();
+    var pad = function (n) { return n < 10 ? '0' + n : '' + n; };
+    var week = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'][d.getDay()];
+    document.getElementById('clockTime').textContent =
+      pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+    document.getElementById('clockDate').textContent =
+      d.getFullYear() + '年' + pad(d.getMonth() + 1) + '月' + pad(d.getDate()) + '日 ' + week;
+  }
+  tickClock();
+  setInterval(tickClock, 1000);
+
+  /* ---------------- 舞台缩放：等比适配窗口 ---------------- */
+
+  function fitStage() {
+    var cs = getComputedStyle(el.viewport);
+    // clientWidth/clientHeight 含 padding，需扣除后才能作为可用区域
+    var availW = el.viewport.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    var availH = el.viewport.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+
+    var scale;
+    if (state.fitWindow) {
+      scale = Math.min(availW / 1920, availH / 1080);
+    } else {
+      // 默认 1:1：显示尺寸恒为 1920×1080，既不缩小也不放大（窗口不够大时出现滚动条）
+      scale = 1;
+    }
+
+    el.stage.style.transform = 'scale(' + scale + ')';
+    // stageBox 撑开滚动区域；用 margin 实现可用区域内的居中（内容超出时 margin 为 0，可滚动查看）
+    var scaledW = 1920 * scale, scaledH = 1080 * scale;
+    el.stageBox.style.width = scaledW + 'px';
+    el.stageBox.style.height = scaledH + 'px';
+    el.stageBox.style.margin = Math.max(0, (availH - scaledH) / 2) + 'px ' +
+      Math.max(0, (availW - scaledW) / 2) + 'px';
+
+    var info = document.getElementById('viewportInfo');
+    if (info) {
+      info.textContent = '舞台 1920×1080px（电视 960dp×540dp @2x）· WebView CSS 视口 1920×1080 · 显示 ' +
+        Math.round(scale * 100) + '%' + (state.fitWindow ? '（适应窗口）' : '（1:1）');
+    }
+  }
+  window.addEventListener('resize', fitStage);
+  fitStage();
+
+  /* ---------------- PC 工具条 ---------------- */
+
+  document.getElementById('btnRemote').addEventListener('click', function () {
+    var remote = document.getElementById('remote');
+    remote.hidden = !remote.hidden;
+    this.textContent = remote.hidden ? '显示虚拟遥控器' : '隐藏虚拟遥控器';
+    document.body.classList.toggle('remote-visible', !remote.hidden);
+    fitStage();
+  });
+
+  var codePanel = document.getElementById('codePanel');
+  var codeArea = document.getElementById('codeArea');
+
+  /* 1:1 与适应窗口切换：1:1 保证显示尺寸恒为 1920×1080，不缩小 */
+  document.getElementById('btnScale').addEventListener('click', function () {
+    state.fitWindow = !state.fitWindow;
+    this.textContent = state.fitWindow ? '适应窗口' : '1:1（1920×1080）';
+    this.classList.toggle('active', !state.fitWindow);
+    fitStage();
+  });
+
+  /* 直接打开内置演示大屏（不计入首页宫格，避免影响真实布局） */
+  document.getElementById('btnDemo').addEventListener('click', function () {
+    if (state.mode === 'display') backToHome();
+    activateTile(DEMO_ENTRY);
+  });
+
+  /* 轮询播放（对应 App 启动后自动进入的轮询模式） */
+  document.getElementById('btnRotate').addEventListener('click', function () {
+    if (rotation.active) { stopRotation(); backToHome(); toast('已停止轮询'); }
+    else startRotation();
+  });
+
+  /* 分区展示 2×2 拼接 */
+  document.getElementById('btnZones').addEventListener('click', function () {
+    if (state.mode === 'zones') backToHome(); else openZones();
+  });
+
+  /* 手动触发服务端同步（对应 App 首页按菜单键） */
+  document.getElementById('btnSync').addEventListener('click', function () {
+    syncFromServer(true);
+  });
+
+  document.getElementById('btnInject').addEventListener('click', function () {
+    codePanel.hidden = !codePanel.hidden;
+    this.classList.toggle('active', !codePanel.hidden);
+  });
+  document.getElementById('btnCloseCode').addEventListener('click', function () {
+    codePanel.hidden = true;
+    document.getElementById('btnInject').classList.remove('active');
+  });
+
+  /* 组装注入脚本：与 App 内 WebView 注入内容一致 */
+  function buildSnippet() {
+    var lines = ['(function(){'];
+    lines.push('  /* ---------- 大屏聚合平台 · 遥控器导航与自动登录注入脚本 ---------- */');
+    lines.push('  /* 1) 自动登录配置（按真实页面修改账号密码与选择器） */');
+    ENTRIES.filter(function (e) { return e.autoLogin && e.autoLogin.enabled && !e.demo; })
+      .forEach(function (e) {
+        var a = e.autoLogin;
+        lines.push('  /* ' + e.title + ' */');
+        lines.push('  window.__TV_AUTOLOGIN_DONE__ = false;');
+        lines.push('  window.__TV_AUTOLOGIN__ = ' + JSON.stringify({
+          enabled: true,
+          username: a.username,
+          password: a.password,
+          usernameSelector: a.usernameSelector || '',
+          passwordSelector: a.passwordSelector || '',
+          submitSelector: a.submitSelector || '',
+          successSelector: a.successSelector || '',
+          maxAttempts: 3
+        }) + ';');
+      });
+    lines.push('  /* 2) 遥控器焦点导航引擎 tv_nav.js */');
+    lines.push(NAV_SRC);
+    lines.push('  /* 3) 账号密码自动填充 auto_login.js */');
+    lines.push(LOGIN_SRC);
+    lines.push('})();');
+    return lines.join('\n');
+  }
+
+  var snippet = buildSnippet();
+  codeArea.value = snippet;
+  document.getElementById('bookmarklet').setAttribute(
+    'href', 'javascript:' + encodeURIComponent(snippet.replace(/\n\s*/g, ' '))
+  );
+
+  document.getElementById('btnCopy').addEventListener('click', function () {
+    var self = this;
+    var done = function () { self.textContent = '已复制'; setTimeout(function () { self.textContent = '复制脚本'; }, 1500); };
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(snippet).then(done, function () { codeArea.select(); done(); });
+    } else {
+      codeArea.removeAttribute('readonly');
+      codeArea.select();
+      try { document.execCommand('copy'); } catch (e) { /* 手动复制 */ }
+      codeArea.setAttribute('readonly', 'readonly');
+      done();
+    }
+  });
+
+  /* ==========================================================================
+   * 服务端同步（与 App 的 ConfigClient/ConfigRepository 行为一致）
+   * ========================================================================== */
+
+  function mergeDelta(delta) {
+    // 版本必须单调递增、代次必须一致，否则交由调用方降级为全量
+    if (delta.epoch !== CFG.epoch) return null;
+    if (delta.version <= CFG.version) return null;
+
+    var map = new Map();
+    CFG.entries.forEach(function (e) { map.set(e.id, e); });
+    (delta.deletedIds || []).forEach(function (id) { map.delete(id); });
+    (delta.upserted || []).forEach(function (e) { map.set(e.id, e); });
+
+    var ordered;
+    if (delta.order) {
+      // 顺序变化由服务端显式下发（Map 的 set 不会改变已有键的位置）
+      ordered = [];
+      delta.order.forEach(function (id) {
+        if (map.has(id)) { ordered.push(map.get(id)); map.delete(id); }
+      });
+      map.forEach(function (v) { ordered.push(v); });
+    } else {
+      ordered = Array.from(map.values());
+    }
+
+    var meta = delta.meta;
+    return {
+      appTitle: meta ? meta.appTitle : CFG.appTitle,
+      appSubtitle: meta ? meta.appSubtitle : CFG.appSubtitle,
+      exitConfirm: meta ? meta.exitConfirm : CFG.exitConfirm,
+      exitTip: meta ? meta.exitTip : CFG.exitTip,
+      entries: ordered,
+      version: delta.version,
+      epoch: delta.epoch
+    };
+  }
+
+  function applyConfig(cfg, fromServer) {
+    var changed = cfg.version !== CFG.version ||
+      JSON.stringify(cfg.entries) !== JSON.stringify(CFG.entries) ||
+      cfg.appTitle !== CFG.appTitle ||
+      cfg.appSubtitle !== CFG.appSubtitle;
+
+    CFG = cfg;
+    ENTRIES = CFG.entries;
+    if (fromServer) source = 'server';
+    if (!changed) return false;
+
+    renderHome();
+    // 大屏页打开时内容变化不做处理（与 App 一致：下次进入生效）
+    if (state.mode === 'home') focusFirst();
+    if (state.mode === 'zones') renderZones();
+    return true;
+  }
+
+  async function syncFromServer(force) {
+    if (!SERVER_BASE) {
+      syncState = 'fallback';
+      renderSourceChip('服务器地址未配置，展示内置兜底内容');
+      if (force) toast('未配置 serverBaseUrl，无法同步');
+      return;
+    }
+    syncState = 'syncing';
+    renderSourceChip();
+
+    try {
+      var res = await fetch(SERVER_BASE + '/api/config?since=' + CFG.version + '&epoch=' + CFG.epoch, {
+        headers: { 'Accept': 'application/json' }
+      });
+      if (res.status === 304) {
+        source = 'server';
+        syncState = 'ok';
+        renderSourceChip();
+        if (force) toast('已是最新配置（v' + CFG.version + '）');
+        return;
+      }
+      if (!res.ok) throw new Error('服务端返回 HTTP ' + res.status);
+      var body = await res.json();
+
+      if (body.full) {
+        var full = body.full;
+        applyConfig({
+          appTitle: full.appTitle, appSubtitle: full.appSubtitle,
+          exitConfirm: full.exitConfirm, exitTip: full.exitTip,
+          entries: full.entries || [], version: body.version, epoch: body.epoch
+        }, true);
+      } else {
+        var merged = mergeDelta(body);
+        if (!merged) {
+          // 代次变化 / 版本回退 → 降级为全量重拉（与 App 一致）
+          var full2 = await (await fetch(SERVER_BASE + '/api/config?full=1')).json();
+          applyConfig({
+            appTitle: full2.full.appTitle, appSubtitle: full2.full.appSubtitle,
+            exitConfirm: full2.full.exitConfirm, exitTip: full2.full.exitTip,
+            entries: full2.full.entries || [], version: full2.version, epoch: full2.epoch
+          }, true);
+        } else {
+          applyConfig(merged, true);
+        }
+      }
+      syncState = 'ok';
+      renderSourceChip();
+      toast('已从服务器同步到 v' + CFG.version);
+    } catch (e) {
+      syncState = 'offline';
+      renderSourceChip('无法连接服务器：' + e.message);
+      if (force) toast('同步失败，继续使用' + (source === 'server' ? '上次同步的内容' : '内置兜底内容'));
+    }
+  }
+
+  /** 顶栏显示配置来源与同步状态（对应 App 首页底栏的同步状态） */
+  function renderSourceChip(errMsg) {
+    var chip = document.getElementById('sourceChip');
+    if (!chip) return;
+    var label, cls;
+    if (syncState === 'syncing') { label = '同步中…'; cls = 'syncing'; }
+    else if (syncState === 'offline') { label = '离线 · ' + (source === 'server' ? '上次同步内容' : '内置兜底内容'); cls = 'offline'; }
+    else if (source === 'server') { label = '配置来源：服务器 v' + CFG.version; cls = 'server'; }
+    else { label = '配置来源：内置兜底'; cls = 'fallback'; }
+    chip.textContent = label;
+    chip.className = 'src-chip ' + cls;
+    chip.title = errMsg || ('服务器：' + (SERVER_BASE || '未配置'));
+  }
+
+  /* ==========================================================================
+   * 本机展示设置（轮询 / 分区）——与 App 内 LocalSettings 一致
+   *   这两项属于「本机策略」，不来自服务端：服务端只提供可展示的页面列表，
+   *   每台电视自己决定轮播哪些页面、间隔多久、2×2 拼接的每格放什么。
+   *   预览页用 localStorage 模拟 App 的 SharedPreferences。
+   * ========================================================================== */
+
+  var LS_KEY = 'tvshow.localSettings';
+  var ZONE_MIN = { width: 1920, height: 1080 };
+  var INTERVAL_PRESETS = [5, 10, 15, 20, 30, 45, 60, 120, 300];
+
+  var local = {
+    rotation: { enabled: false, intervalSec: 15, items: [], startedAt: 0 },
+    zones: [{ position: 0, entryId: '' }, { position: 1, entryId: '' },
+            { position: 2, entryId: '' }, { position: 3, entryId: '' }]
+  };
+
+  function loadLocalSettings() {
+    var raw = null;
+    try { raw = localStorage.getItem(LS_KEY); } catch (e) { raw = null; }
+    if (!raw) return;
+    try {
+      var obj = JSON.parse(raw);
+      var r = obj.rotation || {};
+      var iv = parseInt(r.intervalSec, 10);
+      local.rotation = {
+        enabled: r.enabled === true,
+        intervalSec: isFinite(iv) ? Math.min(3600, Math.max(1, iv)) : 15,
+        items: Array.isArray(r.items) ? r.items.filter(function (x) { return typeof x === 'string' && x; }) : [],
+        startedAt: Number(r.startedAt) || 0
+      };
+      var zs = Array.isArray(obj.zones) ? obj.zones : [];
+      local.zones = [0, 1, 2, 3].map(function (pos) {
+        var hit = zs.filter(function (z) { return z && z.position === pos; })[0];
+        return { position: pos, entryId: hit && typeof hit.entryId === 'string' ? hit.entryId : '' };
+      });
+    } catch (e) { /* 脏数据按默认处理 */ }
+  }
+
+  function saveLocalSettings() {
+    try { localStorage.setItem(LS_KEY, JSON.stringify(local)); } catch (e) { /* 隐私模式忽略 */ }
+  }
+
+  function entryOf(id) {
+    return (CFG.entries || []).filter(function (e) { return e.id === id; })[0] || null;
+  }
+
+  /**
+   * 轮询序列对应的入口（服务端删掉的页面自动跳过）。
+   * 不看 enabled：该开关只决定"开机是否自动进入轮询播放"，
+   * 用户从首页【菜单】→「轮询展示」显式进入时始终应当播放。
+   */
+  function rotationEntries() {
+    return (local.rotation.items || []).map(entryOf).filter(Boolean);
+  }
+
+  function rotationIntervalMs() { return local.rotation.intervalSec * 1000; }
+
+  function rotationIndexFromClock(n) {
+    if (n <= 0 || !local.rotation.startedAt) return 0;
+    var elapsed = Date.now() - local.rotation.startedAt;
+    if (elapsed <= 0) return 0;
+    return Math.floor(elapsed / rotationIntervalMs()) % n;
+  }
+
+  /* ==========================================================================
+   * 轮询播放（与 App 内 WebDisplayActivity 一致）
+   *   位置由「本机写入的时钟起点」推导：index = floor((now - startedAt) / 间隔) % n
+   * ========================================================================== */
+
+  var rotation = { active: false, index: 0, advanceTimer: null, tickTimer: null };
+
+  function rotationRemainingSec() {
+    if (!local.rotation.startedAt) return Math.round(rotationIntervalMs() / 1000);
+    var iv = rotationIntervalMs();
+    var into = Math.max(0, Date.now() - local.rotation.startedAt) % iv;
+    return Math.max(0, Math.ceil((iv - into) / 1000));
+  }
+
+  function renderRotationChip() {
+    var chip = document.getElementById('rotationChip');
+    if (!chip) return;
+    if (!rotation.active) { chip.style.display = 'none'; return; }
+    var list = rotationEntries();
+    chip.style.display = 'block';
+    chip.innerHTML = '轮询 <b>' + (rotation.index + 1) + ' / ' + list.length + '</b>　剩余 <b>' +
+      rotationRemainingSec() + 's</b>　' + (list[rotation.index] ? list[rotation.index].title : '');
+  }
+
+  function scheduleRotation() {
+    var list = rotationEntries();
+    if (!rotation.active || !list.length) return;
+    var iv = rotationIntervalMs();
+    var now = Date.now();
+    var start = local.rotation.startedAt;
+    var nextAt = start ? start + (Math.floor((now - start) / iv) + 1) * iv : now + iv;
+    var delay = Math.max(300, Math.min(iv, nextAt - now));
+
+    clearTimeout(rotation.advanceTimer);
+    rotation.advanceTimer = setTimeout(advanceRotation, delay);
+    clearInterval(rotation.tickTimer);
+    rotation.tickTimer = setInterval(renderRotationChip, 1000);
+  }
+
+  function advanceRotation() {
+    if (!rotation.active) return;
+    var list = rotationEntries();
+    if (!list.length) return;
+    rotation.index = (rotation.index + 1) % list.length;
+    openEntryPage(list[rotation.index]);
+    showInfo();
+    scheduleRotation();
+  }
+
+  /**
+   * 进入轮询播放。首次进入且还没选过轮询页面时，默认让全部页面参与轮询（点开即用），
+   * 之后可在播放页按【菜单】→「轮询设置」增删页面、调整顺序与停留时间。
+   */
+  function startRotation() {
+    var entries = CFG.entries || [];
+    if (!entries.length) { toast('暂无可轮询的页面，请先在管理后台添加页面'); return; }
+    var usable = (local.rotation.items || []).filter(function (id) { return !!entryOf(id); });
+    if (!usable.length) {
+      local.rotation.items = entries.map(function (e) { return e.id; });
+      local.rotation.startedAt = Date.now();
+      saveLocalSettings();
+    }
+
+    var list = rotationEntries();
+    if (!list.length) {
+      toast('暂无可轮询的页面，请先在管理后台添加页面');
+      return;
+    }
+    rotation.active = true;
+    rotation.index = rotationIndexFromClock(list.length);
+    activateTile(list[rotation.index]);
+    showInfo();
+    renderRotationChip();
+    scheduleRotation();
+    toast('轮询播放中：共 ' + list.length + ' 页，每页 ' + (rotationIntervalMs() / 1000) + ' 秒');
+  }
+
+  function stopRotation() {
+    rotation.active = false;
+    clearTimeout(rotation.advanceTimer);
+    clearInterval(rotation.tickTimer);
+    var chip = document.getElementById('rotationChip');
+    if (chip) chip.style.display = 'none';
+  }
+
+  /* ==========================================================================
+   * 分区展示：2×2 拼接
+   *   每格显示哪个页面由本机设置决定；每个分区都按 1920×1080 建立视口，
+   *   再整体缩放到格子大小，与 App 内「按格宽重写 WebView density」等价。
+   * ========================================================================== */
+
+  var zones = { active: 0 };
+
+  /** 每格对应的入口（下标即格位 0..3，null 表示该格未配置） */
+  function zoneEntries() {
+    return [0, 1, 2, 3].map(function (pos) {
+      var z = local.zones.filter(function (x) { return x.position === pos; })[0];
+      return z && z.entryId ? entryOf(z.entryId) : null;
+    });
+  }
+
+  /**
+   * 构建单格 DOM（含 iframe）。抽出来是为了能"只重建一格"。
+   * 注意：iframes 一旦被重建就会重新加载页面，所以只在内容真的变了时才重建。
+   */
+  function buildZoneCell(entry, position) {
+    var cell = document.createElement('div');
+    cell.className = 'zone-cell';
+    cell.setAttribute('data-pos', String(position));
+
+    var scale = 960 / ZONE_MIN.width;
+    var label = document.createElement('div');
+    label.className = 'zone-label';
+    label.innerHTML = '<b>' + (position + 1) + '</b> ' + (entry ? entry.title : '未配置') +
+      '　CSS 视口 <b>' + ZONE_MIN.width + '×' + ZONE_MIN.height +
+      '</b>　渲染缩放 <b>' + Math.round(scale * 100) + '%</b>';
+    cell.appendChild(label);
+
+    if (!entry) {
+      var ph = document.createElement('div');
+      ph.className = 'zone-placeholder';
+      ph.textContent = '未配置 · 按【确定】选择页面';
+      cell.appendChild(ph);
+    } else {
+      var vp = document.createElement('div');
+      vp.className = 'zone-viewport';
+      vp.style.transform = 'scale(' + scale + ')';
+      var frame = document.createElement('iframe');
+      frame.src = entry.url;
+      frame.style.cssText = 'position:absolute;left:0;top:0;width:' + ZONE_MIN.width + 'px;height:' +
+        ZONE_MIN.height + 'px;border:0;background:#0b1220;pointer-events:none';
+      frame.setAttribute('referrerpolicy', 'no-referrer');
+      vp.appendChild(frame);
+      cell.appendChild(vp);
+    }
+
+    // 高亮层：常驻 DOM，仅切换 .on，避免重建内容
+    var flash = document.createElement('div');
+    flash.className = 'zone-flash';
+    cell.appendChild(flash);
+
+    // 鼠标：点哪一格就选中哪一格，并直接弹出该格的页面选择（等价于遥控器"方向键 + 确定"）
+    cell.addEventListener('click', function () {
+      zones.active = position;
+      updateZoneActive();
+      pickZoneEntry(position);
+    });
+    return cell;
+  }
+
+  /** 只切换"当前分区"的逻辑状态，**不重建 DOM**：否则每次移动方向键 4 个 iframe 都会重新加载 */
+  function updateZoneActive() {
+    var cells = document.getElementById('zoneGrid').querySelectorAll('.zone-cell');
+    Array.prototype.forEach.call(cells, function (cell) {
+      var pos = Number(cell.getAttribute('data-pos'));
+      cell.className = 'zone-cell' + (pos === zones.active ? ' active' : '');
+    });
+  }
+
+  var zoneFlashTimer = null;
+
+  /**
+   * 高亮某一格：立即点亮，holdMs 后淡出。
+   * @param position 目标格位，传负数表示熄灭全部
+   * @param holdMs   保持时长；<=0 表示点亮后不自动淡出（由调用方清除）
+   */
+  function flashZone(position, holdMs) {
+    if (holdMs === undefined) holdMs = 600;
+    clearTimeout(zoneFlashTimer);
+    zoneFlashTimer = null;
+    var cells = document.getElementById('zoneGrid').querySelectorAll('.zone-cell');
+    Array.prototype.forEach.call(cells, function (cell) {
+      var glow = cell.querySelector('.zone-flash');
+      if (!glow) return;
+      if (Number(cell.getAttribute('data-pos')) === position) glow.classList.add('on');
+      else glow.classList.remove('on');
+    });
+    if (position < 0 || holdMs <= 0) return;
+    // 令牌判定交给 clearTimeout：期间再次点亮会取消本次淡出
+    zoneFlashTimer = setTimeout(function () { flashZone(-1, 0); }, holdMs);
+  }
+
+  function renderZones() {
+    var host = document.getElementById('zoneGrid');
+    host.innerHTML = '';
+    var cells = zoneEntries();
+    updateZoneHint();
+
+    cells.forEach(function (entry, position) {
+      host.appendChild(buildZoneCell(entry, position));
+    });
+    updateZoneActive();
+    flashZone(zones.active);
+  }
+
+  /** 只重建某一格（该格内容变了才调用），其余三格的 iframe 保持不动、不重新加载 */
+  function renderZoneCell(position) {
+    var host = document.getElementById('zoneGrid');
+    var old = host.querySelector('.zone-cell[data-pos="' + position + '"]');
+    if (!old) return;
+    host.replaceChild(buildZoneCell(zoneEntries()[position] || null, position), old);
+    updateZoneHint();
+    updateZoneActive();
+    flashZone(position); // 重建后高亮层归零，重新点亮以确认改的是这一格
+  }
+
+  function updateZoneHint() {
+    var configured = zoneEntries().filter(Boolean).length;
+    document.getElementById('zoneHint').textContent = configured
+      ? '方向键 选择分区　确定 为该分区选择页面　M 菜单　Esc 返回首页（每格按 ' +
+        ZONE_MIN.width + '×' + ZONE_MIN.height + ' 渲染）'
+      : '按【确定】为当前分区选择要显示的页面';
+  }
+
+  /** 方向键在 2×2 网格里移动当前分区（到边界不循环） */
+  function moveZone(rowDelta, colDelta) {
+    var row = Math.min(1, Math.max(0, Math.floor(zones.active / 2) + rowDelta));
+    var col = Math.min(1, Math.max(0, (zones.active % 2) + colDelta));
+    var next = row * 2 + col;
+    if (next === zones.active) return;
+    zones.active = next;
+    updateZoneActive(); // 仅换逻辑状态，不重载四个页面
+    flashZone(next);    // 目标格亮一下即淡出，不做常驻边框
+    var cell = zoneEntries()[next];
+    toast('当前分区：' + (cell ? cell.title : '第 ' + (next + 1) + ' 格'));
+  }
+
+  /** 分区展示页的控制菜单（对应 App 内【菜单】键） */
+  function showZoneMenu() {
+    openDialog('分区展示 · 2×2 拼接', null, [
+      { text: '刷新全部页面', run: function () { renderZones(); toast('已刷新全部页面'); } },
+      { text: '返回首页', run: function () { backToHome(); } }
+    ], null, '2×2 拼接，每格按 ' + ZONE_MIN.width + '×' + ZONE_MIN.height + ' 渲染');
+  }
+
+  function openZones() {
+    stopRotation();
+    state.mode = 'zones';
+    el.home.hidden = true;
+    el.display.hidden = true;
+    document.getElementById('settingsScreen').hidden = true;
+    document.getElementById('zoneScreen').hidden = false;
+    var cells = zoneEntries();
+    var first = cells.map(function (e, i) { return e ? i : -1; }).filter(function (i) { return i >= 0; });
+    zones.active = first.length ? first[0] : 0;
+    renderZones();
+  }
+
+  /* ---------------- 启动 ---------------- */
+  document.body.classList.add('remote-visible');
+  // 本机展示设置（轮询 / 分区）先于内容加载：与 App 内 SharedPreferences 一致
+  loadLocalSettings();
+  // 与 App 一致：先用本地兜底内容渲染首屏（不等待网络），再异步做增量同步
+  renderHome();
+  renderSourceChip();
+  fitStage();
+  console.log('[预览] 服务器：' + (SERVER_BASE || '未配置') + '，兜底入口数：' + ENTRIES.length +
+    '，本机轮询：' + (local.rotation.enabled ? '开启' : '关闭') + '/' + local.rotation.items.length + ' 页');
+  syncFromServer(false);
+})();
+</script>
+</body>
+</html>

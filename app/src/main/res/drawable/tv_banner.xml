@@ -1,0 +1,61 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+
+    <!-- 背景 -->
+    <path
+        android:fillColor="#FF0A1220"
+        android:pathData="M0,0h320v180H0z" />
+
+    <!-- 显示器机身 -->
+    <path
+        android:fillColor="#FF101C2E"
+        android:pathData="M32,36h136v96H32z" />
+    <path
+        android:fillColor="#FF060C16"
+        android:pathData="M40,44h120v72H40z" />
+
+    <!-- 屏幕内容示意 -->
+    <path
+        android:fillColor="#FF2FD2F5"
+        android:pathData="M48,52h40v30H48z" />
+    <path
+        android:fillColor="#FF1F7A94"
+        android:pathData="M96,52h56v12H96z" />
+    <path
+        android:fillColor="#FF1F7A94"
+        android:pathData="M96,70h40v12H96z" />
+    <path
+        android:fillColor="#FF3FE0A6"
+        android:pathData="M48,90h104v18H48z" />
+
+    <!-- 底座 -->
+    <path
+        android:fillColor="#FF101C2E"
+        android:pathData="M92,132h16v10H92z" />
+    <path
+        android:fillColor="#FF16233A"
+        android:pathData="M68,142h64v8H68z" />
+
+    <!-- 右侧分隔与色块 -->
+    <path
+        android:fillColor="#FF22314A"
+        android:pathData="M196,36h3v114h-3z" />
+    <path
+        android:fillColor="#FF2FD2F5"
+        android:pathData="M220,56h44v10H220z" />
+    <path
+        android:fillColor="#3D2FD2F5"
+        android:pathData="M220,76h72v6H220z" />
+    <path
+        android:fillColor="#3D2FD2F5"
+        android:pathData="M220,90h56v6H220z" />
+    <path
+        android:fillColor="#FF3FE0A6"
+        android:pathData="M220,112h32v10H220z" />
+    <path
+        android:fillColor="#FFFFB020"
+        android:pathData="M260,112h32v10H260z" />
+</vector>

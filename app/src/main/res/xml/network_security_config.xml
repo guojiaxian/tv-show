@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  内网大屏多为 http 或自签名 https，这里统一放行明文流量；
+  若部署环境强制 HTTPS 且证书可信，可改为 cleartextTrafficPermitted="false"。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

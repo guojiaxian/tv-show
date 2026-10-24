@@ -1,0 +1,10 @@
+{
+  "name": "tv-show-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "大屏聚合平台服务端：除 esbuild（旧内核兼容转译）外仅使用 Node 内置模块",
+  "dependencies": {
+    "esbuild": "^0.28.2",
+    "playwright-core": "^1.63.0"
+  }
+}
