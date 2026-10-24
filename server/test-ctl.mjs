@@ -237,47 +237,29 @@ const beat = (deviceId, extra = {}) => api('POST', '/api/ctl/beat', { deviceId, 
   check('重新注册 bootRestore 回到 kind 默认（tablet=关）',
     r.json.devices.find((d) => d.id === 'dev-bbbb2222').bootRestore === false);
 
-  /* ---------- 10.5 已脱离控制检测（desired 与 reported 不一致） ---------- */
-  // 干净起点：交还 dev-aaaa1111，再下发 show env-monitor 并 ack
-  await api('POST', '/api/ctl/release', { targets: ['dev-aaaa1111'] });
-  r = await api('POST', '/api/ctl/send', { targets: ['dev-aaaa1111'], cmd: 'show', args: { entryId: 'env-monitor' } });
-  const divSeq = r.json.seq;
+  /* ---------- 10.5 脱离即交还：设备端 switchTo local 自动翻转为本地控制 ---------- */
+  // 干净起点：下发 show 并 ack（受控态）
+  await api('POST', '/api/ctl/send', { targets: ['dev-aaaa1111'], cmd: 'show', args: { entryId: 'env-monitor' } });
+  r = await beat('dev-aaaa1111');
+  const divSeq = r.json.desired.seq;
   await beat('dev-aaaa1111', { ackedSeq: divSeq, state: { mode: 'page', entryId: 'env-monitor' } });
+  // 现场本地操作偏离指令画面：设备端自动携带 switchTo=local（TV/Web 客户端行为）
+  await beat('dev-aaaa1111', { state: { mode: 'page', entryId: 'storage-monitor' }, switchTo: 'local' });
   r = await api('GET', '/api/ctl/devices');
-  check('跟随指令画面 → diverged=false',
-    r.json.devices.find((d) => d.id === 'dev-aaaa1111').diverged === false);
-  // 现场本地操作：上报了另一页
-  await beat('dev-aaaa1111', { state: { mode: 'page', entryId: 'storage-monitor' } });
-  r = await api('GET', '/api/ctl/devices');
-  check('受控中上报了别的页面 → diverged=true（已脱离控制）',
-    r.json.devices.find((d) => d.id === 'dev-aaaa1111').diverged === true);
-  // 现场按【返回】回首页
-  await beat('dev-aaaa1111', { state: { mode: 'home' } });
-  r = await api('GET', '/api/ctl/devices');
-  check('受控中回首页（show 指令下）→ diverged=true',
-    r.json.devices.find((d) => d.id === 'dev-aaaa1111').diverged === true);
-  // 轮询跟随：序列与间隔一致为跟随，index 不影响
-  await api('POST', '/api/ctl/send', { targets: ['dev-aaaa1111'], cmd: 'rotate', args: { intervalSec: 10, items: ['storage-monitor', 'env-monitor'] } });
-  r = await beat('dev-aaaa1111', { state: { mode: 'rotate', rotate: { index: 1, total: 2, intervalSec: 10, items: ['storage-monitor', 'env-monitor'] } } });
-  r = await api('GET', '/api/ctl/devices');
-  check('轮询序列与间隔一致 → diverged=false（index 不参与比对）',
-    r.json.devices.find((d) => d.id === 'dev-aaaa1111').diverged === false);
-  await beat('dev-aaaa1111', { state: { mode: 'rotate', rotate: { index: 0, total: 2, intervalSec: 30, items: ['storage-monitor', 'env-monitor'] } } });
-  r = await api('GET', '/api/ctl/devices');
-  check('轮询间隔被本机改动 → diverged=true',
-    r.json.devices.find((d) => d.id === 'dev-aaaa1111').diverged === true);
-  // 分区跟随
-  await api('POST', '/api/ctl/send', { targets: ['dev-aaaa1111'], cmd: 'zone', args: { slots: ['storage-monitor', null, null, null] } });
-  await beat('dev-aaaa1111', { state: { mode: 'zone', zone: { slots: ['storage-monitor', null, null, null] } } });
-  r = await api('GET', '/api/ctl/devices');
-  check('分屏 slots 一致 → diverged=false',
-    r.json.devices.find((d) => d.id === 'dev-aaaa1111').diverged === false);
-  // 本地控制态无所谓脱离
-  await api('POST', '/api/ctl/release', { targets: ['dev-aaaa1111'] });
-  await beat('dev-aaaa1111', { state: { mode: 'page', entryId: 'storage-monitor' } });
-  r = await api('GET', '/api/ctl/devices');
-  check('本地控制态不判脱离（diverged=false）',
-    r.json.devices.find((d) => d.id === 'dev-aaaa1111').diverged === false);
+  const divDev = r.json.devices.find((d) => d.id === 'dev-aaaa1111');
+  check('现场脱离指令画面 → 设备自动回到本地控制（managed=false、desired 清空）',
+    divDev.managed === false && divDev.desired === null, divDev);
+
+  // 指令优先：在途未确认指令与交还意图同拍时，忽略意图并下发指令（设计 §8.3）
+  await api('POST', '/api/ctl/send', { targets: ['dev-aaaa1111'], cmd: 'home' });
+  r = await beat('dev-aaaa1111'); // 领取，未 ack
+  const pendSeq = r.json.desired.seq;
+  r = await beat('dev-aaaa1111', { ackedSeq: pendSeq - 1, switchTo: 'local' });
+  check('switchTo 遇未确认在途指令被忽略（指令优先）',
+    r.json.desired && r.json.desired.seq === pendSeq && r.json.managed === true, r.json);
+  await beat('dev-aaaa1111', { ackedSeq: pendSeq, state: { mode: 'home' } });
+  r = await beat('dev-aaaa1111', { switchTo: 'local' });
+  check('无在途指令时 switchTo local 生效（交还本地）', r.json.managed === false);
 
   /* ---------- 11. 场景 ---------- */
   // 快照保存：当前 dev-aaaa1111 受控（desired=zone）、dev-cccc3333 受控（desired=show）

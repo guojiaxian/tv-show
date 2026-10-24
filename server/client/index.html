@@ -2681,10 +2681,33 @@ select {
     deviceId: null,          // 本机设备身份（localStorage 终身不变，与 IP 无关）
     kind: 'pc',              // pc | tablet（服务端仅用于图标与 bootRestore 默认值）
     ackedSeq: 0,             // 已确认应用的指令序号（内存态）
+    lastApplied: null,       // 最近应用的展示指令 {cmd,args}：本地操作偏离它即自动交还
     boot: true,              // 本页面生命周期内的第一次心跳
     failStreak: 0,
     lastError: null          // 指令应用失败原因（随状态上报，控制台可见）
   };
+
+  /** 实际状态是否仍在执行该指令（与电视端 ControlChannel 同一套比对规则） */
+  function followsCommand(la, r) {
+    if (!la || !r) return true;
+    var a = la.args || {};
+    switch (la.cmd) {
+      case 'show':
+      case 'camera':
+        return (r.mode === 'page' || r.mode === 'camera') && r.entryId === a.entryId;
+      case 'rotate':
+        if (r.mode !== 'rotate' || !r.rotate) return false;
+        return JSON.stringify(r.rotate.items || []) === JSON.stringify(a.items || []) &&
+          Number(r.rotate.intervalSec) === Number(a.intervalSec); // index 随时间推进，不比对
+      case 'zone':
+        return r.mode === 'zone' && !!r.zone &&
+          JSON.stringify(r.zone.slots || []) === JSON.stringify(a.slots || []);
+      case 'home':
+        return r.mode === 'home';
+      default:
+        return true; // 维护类不参与
+    }
+  }
 
   function detectKind() {
     var touch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
@@ -2740,6 +2763,9 @@ select {
     var cmd = desired.cmd;
     var args = desired.args || {};
     ctl.lastError = null;
+    if (cmd === 'show' || cmd === 'rotate' || cmd === 'zone' || cmd === 'home') {
+      ctl.lastApplied = { cmd: cmd, args: args }; // 本地操作偏离它即自动交还（v6）
+    }
     try {
       if (cmd === 'show') {
         var entry = entryOf(args.entryId);
@@ -2797,6 +2823,11 @@ select {
       state: currentState()
     };
     ctl.boot = false;
+    // 现场本地操作偏离指令画面 → 自动交还本地（服务端 managed=false，控制台如实显示）
+    if (ctl.lastApplied && !followsCommand(ctl.lastApplied, body.state)) {
+      body.switchTo = 'local';
+      ctl.lastApplied = null;
+    }
     var ctrl = new AbortController();
     var timer = setTimeout(function () { ctrl.abort(); }, 5000);
     try {

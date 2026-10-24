@@ -288,12 +288,18 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
       dev.reported = state;
       dev.lastSeenAt = Date.now();
 
-      // 设备端模式开关意图（设计 §8.3）：幂等，处理完响应回带 managed，设备据此确认
+      // 设备端脱离/交还意图（v6：受控端本地操作偏离指令画面时自动发送）。
+      // 幂等；响应回带 managed 供设备确认。
+      // 指令优先规则（设计 §8.3）：有未确认的展示指令在途时忽略交还意图——
+      // 设备先应用指令（本拍响应即下发），避免“指令刚下、现场恰好本地操作”竞态丢失指令。
       if (switchTo === 'local') {
-        if (dev.managed || dev.desired) log(`[ctl] ${dev.id} 现场交还本地控制`);
-        dev.managed = false;
-        dev.desired = null;
-        dirty = true;
+        const hasUnacked = dev.desired && dev.desired.seq > dev.ackedSeq;
+        if (!hasUnacked) {
+          if (dev.managed || dev.desired) log(`[ctl] ${dev.id} 现场交还本地控制`);
+          dev.managed = false;
+          dev.desired = null;
+          dirty = true;
+        }
       } else if (switchTo === 'remote') {
         dev.managed = true;
         dirty = true;
@@ -391,42 +397,10 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
     return 'offline';
   }
 
-  /**
-   * 设备是否仍在执行指令画面（managed 时有效）：
-   * 把 desired 指令与 reported 实际状态逐类比对，不一致即「已脱离控制」——
-   * 现场本地操作（Web 鼠标点了别的页 / 电视按【返回】退出）后，控制台据此如实显示。
-   * 返回 true=跟随 / false=已脱离 / null=无从判断（本地控制、无指令、无上报）。
-   */
-  function followingOf(d) {
-    if (!d.managed || !d.desired) return null;
-    const r = d.reported;
-    if (!r || typeof r !== 'object') return null;
-    const a = d.desired.args || {};
-    switch (d.desired.cmd) {
-      case 'show':
-        return (r.mode === 'page' || r.mode === 'camera') && r.entryId === a.entryId;
-      case 'rotate': {
-        if (r.mode !== 'rotate' || !r.rotate) return false;
-        // 比对序列与间隔（当前页 index 随时间推进，不参与比对）
-        return JSON.stringify(r.rotate.items || []) === JSON.stringify(a.items || []) &&
-          Number(r.rotate.intervalSec) === Number(a.intervalSec);
-      }
-      case 'zone':
-        return r.mode === 'zone' && !!r.zone &&
-          JSON.stringify(r.zone.slots || []) === JSON.stringify(a.slots || []);
-      case 'home':
-        return r.mode === 'home';
-      default:
-        return null;
-    }
-  }
-
   function devicesPayload() {
     return {
       seq: data.seq,
-      devices: data.devices.map((d) => {
-        const following = followingOf(d);
-        return {
+      devices: data.devices.map((d) => ({
           id: d.id,
           name: d.name,
           kind: d.kind,
@@ -439,11 +413,8 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
           online: onlineOf(d.lastSeenAt),
           lastSeenAt: d.lastSeenAt || null,
           ip: d.remoteIp || null,
-          // 受控中但实际画面与指令不符（现场本地操作）→ 控制台显示「已脱离控制」
-          diverged: following === false,
           reported: d.reported
-        };
-      }),
+        })),
       // 场景随列表一并下发（控制屏一次轮询拿全，避免第二个接口）
       scenes: data.scenes
     };

@@ -403,44 +403,30 @@ function attachPageLog(page, errors, tag) {
     (await deviceOf(DEV2)).managed === false && (await deviceOf(deviceId)).managed === false, { label: '两台交还' });
   check('确认后两台设备交还本地控制', released);
 
-  /* ---------- 21.5 已脱离控制：现场本地操作后控制台如实显示 ---------- */
-  // 给 TV 下发 show env-monitor 并 ack（跟随态）
-  await send([DEV2], 'show', { entryId: 'env-monitor' });
-  const b215 = await api('POST', '/api/ctl/beat', {
-    deviceId: DEV2, kind: 'tv', appVersion: 'test', state: { mode: 'page', entryId: 'env-monitor' }
-  });
-  const ack215 = b215.json.desired.seq;
-  await api('POST', '/api/ctl/beat', {
-    deviceId: DEV2, kind: 'tv', appVersion: 'test', ackedSeq: ack215,
-    state: { mode: 'page', entryId: 'env-monitor' }
-  });
+  /* ---------- 21.5 现场本地操作脱离指令画面 → 自动回到本地控制，控制台如实显示 ---------- */
+  // 控制台对显示端下发 show
+  await send([deviceId], 'show', { entryId: 'env-monitor' });
+  await waitUntil(() => page1.evaluate(() =>
+    !!document.querySelector('#frameViewport iframe[data-for="env-monitor"]')), { label: '接管显示' });
+  await waitUntil(async () => !(await deviceOf(deviceId)).pending, { label: 'ack' });
+  // 现场本地操作：点「← 返回首页」（Web 被控不锁鼠标）
+  await page1.click('#btnBack');
+  await waitUntil(() => page1.evaluate(() => !document.getElementById('homeScreen').hidden),
+    { label: '本地点击回首页' });
+  // 下一拍心跳自动交还 → 服务端 managed=false；控制台 3s 轮询后卡片变「本地控制」
+  const relAuto = await waitUntil(async () => (await deviceOf(deviceId)).managed === false,
+    { timeout: 10000, label: '自动交还' });
+  check('Web 现场本地操作脱离指令画面：设备自动回到本地控制', relAuto);
   await page2.click('#btnReload');
-  const noDiv = await waitUntil(() => page2.evaluate(() =>
-    !document.querySelector('#deviceList .chip.diverged')), { label: '无脱离角标' });
-  check('跟随指令画面：卡片无「已脱离控制」角标', noDiv);
-  // 现场本地操作：TV 上报了另一页 → 控制台 3s 内出现「已脱离控制」
-  await api('POST', '/api/ctl/beat', {
-    deviceId: DEV2, kind: 'tv', appVersion: 'test',
-    state: { mode: 'page', entryId: 'storage-monitor' }
-  });
-  const divShown = await waitUntil(() => page2.evaluate(() => {
-    const tvCard = Array.from(document.querySelectorAll('#deviceList .card'))
-      .find((c) => c.querySelector('.kind').textContent === 'TV');
-    return tvCard && tvCard.querySelector('.chip.diverged') ? tvCard.querySelector('.chip.diverged').textContent : false;
-  }), { timeout: 8000, label: '脱离角标出现' });
-  const divText = await page2.evaluate(() => {
-    const c = document.querySelector('#deviceList .chip.diverged');
-    return c ? c.textContent : null;
-  });
-  check('现场脱离指令画面：卡片 ≤3s 出现「已脱离控制」角标', divShown && divText === '已脱离控制', divText);
-  // 控制台重新下发纠偏 → 角标消失
-  await send([DEV2], 'show', { entryId: 'env-monitor' });
-  await beat2({ state: { mode: 'page', entryId: 'env-monitor' } }); // TV 领指令并回到指令画面
-  const divGone = await waitUntil(() => page2.evaluate(() =>
-    !document.querySelector('#deviceList .chip.diverged')), { label: '纠偏后脱离标记清除' });
-  check('重新下发纠偏：脱离标记清除', divGone);
+  const localChip = await waitUntil(() => page2.evaluate(() => {
+    const pcCard = Array.from(document.querySelectorAll('#deviceList .card'))
+      .find((c) => c.querySelector('.kind').textContent === 'PC');
+    return pcCard && Array.from(pcCard.querySelectorAll('.chip'))
+      .some((x) => x.textContent === '本地控制');
+  }), { timeout: 8000, label: '控制台显示本地控制' });
+  check('控制台卡片随之显示「本地控制」（无任何脱离角标）', localChip);
 
-  /* ---------- 场景 ---------- */
+  /* ---------- 场景 ---------- */  /* ---------- 场景 ---------- */
   await api('POST', '/api/ctl/release', { targets: [DEV2] }); // 回到本地，快照走 reported
   await beat2({ state: { mode: 'page', entryId: 'storage-monitor' } });
   // 等显示端把「回首页」上报上来（心跳 3s 一拍，快照取的是最近一拍状态）

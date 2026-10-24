@@ -101,6 +101,10 @@ object ControlChannel {
     @Volatile
     private var lastSyncKickAt = 0L
 
+    /** 最近应用的展示指令 {cmd,args}：现场本地操作偏离它即自动交还（v6） */
+    @Volatile
+    private var lastApplied: JSONObject? = null
+
     /* ---------------- 初始化 ---------------- */
 
     /** 幂等初始化；在首个 Activity 的 onCreate 调用（建议 [com.digitalcenter.tvshow.ui.MainActivity]） */
@@ -297,6 +301,14 @@ object ControlChannel {
             put("state", JSONObject(reported.toString()).putOpt("lastError", lastError ?: JSONObject.NULL))
         }
         boot = false
+        // 现场本地操作偏离指令画面 → 自动交还本地（服务端 managed=false，控制台如实显示）；
+        // 本机立即解锁（角标移除）；若服务端恰有在途指令则指令优先（忽略本次交还并回下发）
+        val la = lastApplied
+        if (!localMode && la != null && !followsCommand(la, reported)) {
+            body.put("switchTo", "local")
+            lastApplied = null
+            applyMode(remote = false, silent = true, activity = currentActivity)
+        }
 
         val conn = (URL("$base/api/ctl/beat").openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
@@ -344,6 +356,9 @@ object ControlChannel {
             val seq = desired.optLong("seq", 0L)
             val cmd = desired.optString("cmd")
             val args = desired.optJSONObject("args") ?: JSONObject()
+            if (isDisplayCommand(cmd)) {
+                lastApplied = JSONObject().put("cmd", cmd).put("args", args)
+            }
             mainHandler.post {
                 val activity = currentActivity
                 if (activity == null) {
@@ -358,9 +373,37 @@ object ControlChannel {
 
         // 2) 纯模式校正（无指令时）：控制端「取消控制」→ 解锁；服务端记忆 → 接管（boot 恢复）
         if (!managed && !localMode) {
+            lastApplied = null
             applyMode(remote = false, silent = false, activity = currentActivity)
         } else if (managed && localMode) {
             applyMode(remote = true, silent = true, activity = currentActivity)
+        }
+    }
+
+    /** 实际状态是否仍在执行该指令（与 Web 显示端 followsCommand 同一套比对规则） */
+    private fun followsCommand(la: JSONObject, r: JSONObject): Boolean {
+        return try {
+            val args = la.optJSONObject("args") ?: JSONObject()
+            when (la.optString("cmd")) {
+                "show", "camera" ->
+                    (r.optString("mode") == "page" || r.optString("mode") == "camera") &&
+                        r.optString("entryId") == args.optString("entryId")
+                "rotate" -> {
+                    val rr = r.optJSONObject("rotate") ?: return false
+                    r.optString("mode") == "rotate" &&
+                        rr.optJSONArray("items")?.join(",") == args.optJSONArray("items")?.join(",") &&
+                        rr.optInt("intervalSec") == args.optInt("intervalSec") // index 不比对
+                }
+                "zone" -> {
+                    val z = r.optJSONObject("zone") ?: return false
+                    r.optString("mode") == "zone" &&
+                        z.optJSONArray("slots")?.join(",") == args.optJSONArray("slots")?.join(",")
+                }
+                "home" -> r.optString("mode") == "home"
+                else -> true // 维护类不参与
+            }
+        } catch (e: Exception) {
+            true
         }
     }
 
