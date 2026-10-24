@@ -80,6 +80,23 @@ function attachPageLog(page, errors, tag) {
   attachPageLog(page1, errors, '[显示端]');
 
   await page1.goto(BASE + '/', { waitUntil: 'load' });
+  // 首页「更多 ▾」菜单含控制台入口（新标签打开 /console）
+  await page1.click('#btnMore');
+  const consoleEntry = await page1.evaluate(() => {
+    const a = document.getElementById('btnConsole');
+    if (!a) return null;
+    return { href: a.getAttribute('href'), blank: a.target === '_blank', text: a.textContent.trim() };
+  });
+  check('首页「更多 ▾」含「设备控制」入口（新标签打开 /console）',
+    !!consoleEntry && consoleEntry.href === '/console' && consoleEntry.blank &&
+    consoleEntry.text === '设备控制', consoleEntry);
+  const [popup] = await Promise.all([
+    page1.waitForEvent('popup'),
+    page1.click('#btnConsole')
+  ]);
+  const popupUrl = popup.url();
+  await popup.close();
+  check('点击入口真实打开 /console 独立控制台', /\/console$/.test(popupUrl), popupUrl);
   const ok1 = await waitUntil(async () => !!(await page1.evaluate(() => localStorage.getItem('tvshow.deviceId'))),
     { timeout: 6000, label: 'deviceId 生成' });
   const deviceId = await page1.evaluate(() => localStorage.getItem('tvshow.deviceId'));
