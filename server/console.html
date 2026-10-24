@@ -72,6 +72,7 @@ main { flex: 1; overflow: auto; padding: 16px 22px; display: flex; flex-directio
 .chip.remote { color: #9fe7ff; border-color: rgba(47,210,245,.5); background: rgba(47,210,245,.1); }
 .chip.local { color: #7df0c0; border-color: rgba(63,224,166,.4); }
 .chip.pending { color: #FFB020; border-color: rgba(255,176,32,.5); }
+.chip.diverged { color: #FF8A65; border-color: rgba(255,138,101,.55); background: rgba(255,138,101,.1); }
 .card .ops { display: flex; gap: 6px; flex: none; align-items: center; flex-wrap: wrap; justify-content: flex-end; max-width: 60%; }
 .card .ops .btn { padding: 5px 10px; font-size: 12px; }
 .card .ops select {
@@ -395,6 +396,13 @@ footer select {
         pend.className = 'chip pending';
         pend.textContent = '待送达';
         st.appendChild(pend);
+      }
+      if (d.diverged) {
+        var dv = document.createElement('span');
+        dv.className = 'chip diverged';
+        dv.title = '设备已不在指令画面（现场本地操作过）——重新下发即可纠偏，或「取消控制」交还本地';
+        dv.textContent = '已脱离控制';
+        st.appendChild(dv);
       }
       if (d.reported && d.reported.lastError) {
         var err = document.createElement('span');

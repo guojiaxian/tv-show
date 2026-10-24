@@ -237,14 +237,56 @@ const beat = (deviceId, extra = {}) => api('POST', '/api/ctl/beat', { deviceId, 
   check('重新注册 bootRestore 回到 kind 默认（tablet=关）',
     r.json.devices.find((d) => d.id === 'dev-bbbb2222').bootRestore === false);
 
+  /* ---------- 10.5 已脱离控制检测（desired 与 reported 不一致） ---------- */
+  // 干净起点：交还 dev-aaaa1111，再下发 show env-monitor 并 ack
+  await api('POST', '/api/ctl/release', { targets: ['dev-aaaa1111'] });
+  r = await api('POST', '/api/ctl/send', { targets: ['dev-aaaa1111'], cmd: 'show', args: { entryId: 'env-monitor' } });
+  const divSeq = r.json.seq;
+  await beat('dev-aaaa1111', { ackedSeq: divSeq, state: { mode: 'page', entryId: 'env-monitor' } });
+  r = await api('GET', '/api/ctl/devices');
+  check('跟随指令画面 → diverged=false',
+    r.json.devices.find((d) => d.id === 'dev-aaaa1111').diverged === false);
+  // 现场本地操作：上报了另一页
+  await beat('dev-aaaa1111', { state: { mode: 'page', entryId: 'storage-monitor' } });
+  r = await api('GET', '/api/ctl/devices');
+  check('受控中上报了别的页面 → diverged=true（已脱离控制）',
+    r.json.devices.find((d) => d.id === 'dev-aaaa1111').diverged === true);
+  // 现场按【返回】回首页
+  await beat('dev-aaaa1111', { state: { mode: 'home' } });
+  r = await api('GET', '/api/ctl/devices');
+  check('受控中回首页（show 指令下）→ diverged=true',
+    r.json.devices.find((d) => d.id === 'dev-aaaa1111').diverged === true);
+  // 轮询跟随：序列与间隔一致为跟随，index 不影响
+  await api('POST', '/api/ctl/send', { targets: ['dev-aaaa1111'], cmd: 'rotate', args: { intervalSec: 10, items: ['storage-monitor', 'env-monitor'] } });
+  r = await beat('dev-aaaa1111', { state: { mode: 'rotate', rotate: { index: 1, total: 2, intervalSec: 10, items: ['storage-monitor', 'env-monitor'] } } });
+  r = await api('GET', '/api/ctl/devices');
+  check('轮询序列与间隔一致 → diverged=false（index 不参与比对）',
+    r.json.devices.find((d) => d.id === 'dev-aaaa1111').diverged === false);
+  await beat('dev-aaaa1111', { state: { mode: 'rotate', rotate: { index: 0, total: 2, intervalSec: 30, items: ['storage-monitor', 'env-monitor'] } } });
+  r = await api('GET', '/api/ctl/devices');
+  check('轮询间隔被本机改动 → diverged=true',
+    r.json.devices.find((d) => d.id === 'dev-aaaa1111').diverged === true);
+  // 分区跟随
+  await api('POST', '/api/ctl/send', { targets: ['dev-aaaa1111'], cmd: 'zone', args: { slots: ['storage-monitor', null, null, null] } });
+  await beat('dev-aaaa1111', { state: { mode: 'zone', zone: { slots: ['storage-monitor', null, null, null] } } });
+  r = await api('GET', '/api/ctl/devices');
+  check('分屏 slots 一致 → diverged=false',
+    r.json.devices.find((d) => d.id === 'dev-aaaa1111').diverged === false);
+  // 本地控制态无所谓脱离
+  await api('POST', '/api/ctl/release', { targets: ['dev-aaaa1111'] });
+  await beat('dev-aaaa1111', { state: { mode: 'page', entryId: 'storage-monitor' } });
+  r = await api('GET', '/api/ctl/devices');
+  check('本地控制态不判脱离（diverged=false）',
+    r.json.devices.find((d) => d.id === 'dev-aaaa1111').diverged === false);
+
   /* ---------- 11. 场景 ---------- */
   // 快照保存：当前 dev-aaaa1111 受控（desired=zone）、dev-cccc3333 受控（desired=show）
   r = await api('POST', '/api/ctl/scenes', { name: '晨会' });
   check('快照保存场景（受控设备取 desired）',
     r.status === 201 && r.json.scene && r.json.scene.steps.length >= 2, r.json);
   const sceneId = r.json.scene.id;
-  const showStep = r.json.scene.steps.find((s) => s.cmd === 'show');
-  check('快照 step 保留指令与参数', !!showStep && showStep.args.entryId === 'env-monitor', showStep);
+  const showStep = r.json.scene.steps.find((s) => s.cmd === 'show' && s.args.entryId === 'env-monitor');
+  check('快照 step 保留指令与参数', !!showStep, showStep);
 
   // 显式 steps 保存 + 校验
   r = await api('POST', '/api/ctl/scenes', {
