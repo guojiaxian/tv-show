@@ -241,8 +241,168 @@ async function waitUntil(fn, { timeout = 9000, interval = 300, label = '' } = {}
     { timeout: 25000, label: '意图补送' });
   check('恢复网络后意图自动送达：服务端 managed=false', ok12);
 
-  /* ---------- 13. 页面无 JS 异常 ---------- */
+  /* ---------- 13. 无 JS 异常 ---------- */
   check('运行期无 JS 异常与 console 错误', errors.length === 0, errors);
+
+  /* ============================ P3 · 控制半边（设备控制 screen） ============================ */
+
+  // 第二台设备（电视）用 API 模拟心跳注册，作为被控对象
+  const DEV2 = 'dev-test0002';
+  const beat2 = (extra = {}) => api('POST', '/api/ctl/beat', {
+    deviceId: DEV2, kind: 'tv', appVersion: 'test', ackedSeq: 0, ...extra
+  });
+  await beat2({ state: { mode: 'home' } });
+
+  /* ---------- 14. 打开设备控制（更多菜单入口），列表渲染 ---------- */
+  await page.goto(BASE + '/?screen=control', { waitUntil: 'load' });
+  await waitUntil(() => page.evaluate(() => !document.getElementById('controlScreen').hidden), { label: '控制屏打开' });
+  await page.click('#btnCtlReload'); // 手动刷新引入 DEV2
+  const list14 = await waitUntil(async () => {
+    const n = await page.evaluate(() => document.querySelectorAll('#ctlDeviceList .ctl-card').length);
+    return n === 2 ? n : false;
+  }, { label: '两台设备' });
+  const cards14 = await page.evaluate(() => Array.from(document.querySelectorAll('#ctlDeviceList .ctl-card')).map((c) => ({
+    self: c.classList.contains('self'),
+    kind: c.querySelector('.kind').textContent,
+    chip: c.querySelector('.chip').textContent,
+    online: c.querySelector('.dot').className
+  })));
+  check('设备列表渲染：本机卡片 + 二号电视（TV 图标 / 本地控制 / 在线）',
+    !!list14 && cards14.length === 2 && cards14.some((c) => c.self) &&
+    cards14.some((c) => c.kind === 'TV' && c.chip === '本地控制'), cards14);
+  const selfSummaryOk = await waitUntil(async () => {
+    const t = await page.evaluate(() => {
+      const self = document.querySelector('#ctlDeviceList .ctl-card.self .st');
+      return self ? self.textContent : '';
+    });
+    return t.includes('控制中') ? t : false;
+  }, { label: '本机上报控制中' });
+  check('本机状态摘要显示「控制中」（mode=control 上报生效）', !!selfSummaryOk, selfSummaryOk);
+
+  /* ---------- 15. 单台下发：只勾二号电视，本机不受影响 ---------- */
+  await page.evaluate((id) => {
+    const cards = Array.from(document.querySelectorAll('#ctlDeviceList .ctl-card'));
+    const target = cards.find((c) => !c.classList.contains('self'));
+    target.querySelector('.ck').click();
+  }, DEV2);
+  await page.selectOption('#selCtlEntry', 'storage-monitor');
+  await page.waitForTimeout(600);
+  const dev2a = await deviceOf(DEV2);
+  const dev1a = await deviceOf(deviceId);
+  check('单台下发：仅二号电视收到 show 指令（本机无 desired）',
+    dev2a.desired && dev2a.desired.cmd === 'show' && dev2a.managed === true &&
+    (!dev1a.desired || dev1a.desired.seq < dev2a.desired.seq), { dev2a: dev2a.desired, dev1a: dev1a.desired });
+  // 列表立即显示待送达角标（不等设备心跳）
+  const pending15 = await page.evaluate(() => !!document.querySelector('#ctlDeviceList .ctl-card:not(.self) .chip.pending'));
+  check('下发后列表立即出现「待送达」角标', pending15);
+  // 二号电视领走指令（ackedSeq 保持 0，模拟尚未应用）
+  const b2 = await beat2({ state: { mode: 'page', entryId: 'storage-monitor' } });
+  check('二号电视心跳领到指令（模拟电视端 beat）', b2.json.desired && b2.json.desired.cmd === 'show', b2.json);
+
+  /* ---------- 16. 轮询配置弹层 ---------- */
+  await page.click('#btnCtlRotate');
+  const modal16 = await page.evaluate(() => {
+    const m = document.querySelector('.ctl-modal');
+    if (!m) return null;
+    const sync = m.querySelector('input[type="checkbox"]');
+    const iv = m.querySelector('select');
+    return { exists: true, syncChecked: sync ? sync.checked : null, hasInterval: !!iv };
+  });
+  check('轮询弹层：多屏同步切换默认不勾 + 间隔预设可用',
+    modal16 && modal16.syncChecked === false && modal16.hasInterval === true, modal16);
+  // 勾选一个页面出现序号，调序按钮可用（.grow 区分页面行与 phaseSync/间隔行）
+  await page.evaluate(() => {
+    const rows = Array.from(document.querySelectorAll('.ctl-modal .row'));
+    const row = rows.find((r) => r.querySelector('.grow') && r.querySelector('input[type="checkbox"]'));
+    row.querySelector('input[type="checkbox"]').click();
+  });
+  const draft16 = await page.evaluate(() => {
+    const rows = Array.from(document.querySelectorAll('.ctl-modal .row'));
+    const checked = rows.filter((r) => { const c = r.querySelector('input[type="checkbox"]'); return c && c.checked; });
+    return { count: checked.length, hasOrder: /1\.\s/.test(checked[0] ? checked[0].textContent : ''), hasUp: !!document.querySelector('.ctl-modal .mini-btn') };
+  });
+  check('轮询弹层：勾选页面进入序列（显示顺序号 + 调序按钮）',
+    draft16.count === 1 && draft16.hasOrder && draft16.hasUp, draft16);
+  await page.keyboard.press('Escape'); // 关闭弹层不下发
+  const modal16c = await page.evaluate(() => !document.getElementById('dialogLayer').hidden);
+  check('Esc 只关闭配置弹层、不离开控制屏', modal16c === false &&
+    await page.evaluate(() => !document.getElementById('controlScreen').hidden));
+
+  /* ---------- 17. 分屏配置弹层 ---------- */
+  await page.click('#btnCtlZone');
+  const modal17 = await page.evaluate(() => {
+    const sels = Array.from(document.querySelectorAll('.ctl-modal .zonegrid select'));
+    return { count: sels.length, allHaveNone: sels.every((s) => s.options[0] && s.options[0].textContent === '不使用') };
+  });
+  check('分屏弹层：四格下拉且每格都有「不使用」', modal17.count === 4 && modal17.allHaveNone, modal17);
+  await page.keyboard.press('Escape');
+
+  /* ---------- 18. 改名 ---------- */
+  await page.evaluate(() => {
+    const target = Array.from(document.querySelectorAll('#ctlDeviceList .ctl-card')).find((c) => !c.classList.contains('self'));
+    Array.from(target.querySelectorAll('.ops .btn')).find((b) => b.textContent === '改名').click();
+  });
+  await page.waitForTimeout(200);
+  await page.fill('.ctl-modal input[type="text"]', '二号电视');
+  await page.click('.ctl-modal footer .btn.primary');
+  await page.waitForTimeout(500);
+  const dev2r = await deviceOf(DEV2);
+  const name18 = await page.evaluate(() => {
+    const target = Array.from(document.querySelectorAll('#ctlDeviceList .ctl-card')).find((c) => !c.classList.contains('self'));
+    return target ? target.querySelector('.nm b').textContent : '';
+  });
+  check('改名弹层：保存后服务端与列表同步更新', dev2r.name === '二号电视' && name18 === '二号电视', { dev2r: dev2r.name, name18 });
+
+  /* ---------- 19. 群组下发（全选 → home），本机也被接管并回首页 ---------- */
+  await page.click('#btnCtlAll'); // 全选（2 台）
+  await page.click('#btnCtlHome');
+  await page.waitForTimeout(800);
+  const both19 = await Promise.all([deviceOf(deviceId), deviceOf(DEV2)]);
+  check('群组下发：两台设备均收到 home 且被接管',
+    both19.every((d) => d.managed === true && d.desired && d.desired.cmd === 'home'),
+    both19.map((d) => ({ m: d.managed, c: d.desired && d.desired.cmd })));
+  const home19 = await waitUntil(() => page.evaluate(() =>
+    !document.getElementById('homeScreen').hidden &&
+    document.body.classList.contains('ctl-locked')), { label: '本机回首页并锁定' });
+  check('本机也在目标集合：真实收到指令回首页并锁定', home19);
+
+  /* ---------- 20. 受控锁定时控制屏仍是例外入口（自我解除保证） ---------- */
+  await page.click('#btnMore');
+  await page.waitForTimeout(200);
+  const menu20 = await page.evaluate(() => {
+    const items = Array.from(document.querySelectorAll('#moreMenu .menu-item'));
+    const ctlBtn = items.find((b) => b.id === 'btnControl');
+    const settingsBtn = items.find((b) => b.id === 'btnSettings');
+    return {
+      menuVisible: !document.getElementById('moreMenu').hidden,
+      ctlEnabled: ctlBtn && getComputedStyle(ctlBtn).pointerEvents !== 'none',
+      settingsDisabled: settingsBtn && getComputedStyle(settingsBtn).pointerEvents === 'none'
+    };
+  });
+  check('受控锁定时菜单可用、仅「设备控制」例外可点（其余条目锁定）',
+    menu20.menuVisible && menu20.ctlEnabled && menu20.settingsDisabled, menu20);
+  await page.click('#btnControl');
+  const ctl20 = await page.evaluate(() => !document.getElementById('controlScreen').hidden);
+  const lock20 = await page.evaluate(() => document.body.classList.contains('ctl-locked'));
+  check('受控锁定时仍可进入设备控制屏（且控制屏本身不锁定）', ctl20 && !lock20);
+
+  /* ---------- 21. 取消控制（二次确认） ---------- */
+  await page.evaluate(() => {
+    const cards = Array.from(document.querySelectorAll('#ctlDeviceList .ctl-card'));
+    cards.forEach((c) => { const ck = c.querySelector('.ck'); if (!ck.checked) ck.click(); });
+  });
+  await page.click('#btnCtlRelease');
+  await page.waitForTimeout(200);
+  const dlg21 = await page.evaluate(() => !document.getElementById('dialogLayer').hidden);
+  check('「取消控制」弹出二次确认', dlg21);
+  await page.click('.dialog .item:has-text("取消控制，交还本地")');
+  const rel21 = await waitUntil(async () =>
+    (await deviceOf(DEV2)).managed === false && (await deviceOf(deviceId)).managed === false, { label: '两台交还' });
+  const unlock21 = await waitUntil(() => page.evaluate(() => !document.body.classList.contains('ctl-locked')), { label: '本机解锁' });
+  check('确认后两台设备交还本地、本机立即解锁', rel21 && unlock21);
+
+  /* ---------- 22. 收尾检查 ---------- */
+  check('运行期无 JS 异常与 console 错误（含控制半边）', errors.length === 0, errors);
 
   await browser.close();
   const pass = results.filter((x) => x.pass).length;
