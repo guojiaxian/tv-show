@@ -47,6 +47,8 @@ const ADMIN_FILE = path.join(ROOT, 'admin', 'index.html');
 const CLIENT_FILE = path.join(ROOT, 'client', 'index.html');
 // 电视端 1:1 预览页（构建产物：node tools/build-preview.mjs，位于工程根的 dist/）
 const PREVIEW_FILE = path.join(ROOT, '..', 'dist', 'preview.html');
+// 多设备互控 · 独立控制台（纯控制端，自身不注册为受控设备）
+const CONSOLE_FILE = path.join(ROOT, 'console.html');
 
 const ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
@@ -609,11 +611,15 @@ async function handle(req, res) {
   if (method === 'OPTIONS') return sendEmpty(res, 204, CORS);
 
   /* ---------- 电脑浏览器客户端页面（站点首页） ---------- */
-  // 站点根路径即电脑端客户端；/app、/client 为历史别名，保持可用；
-  // /console 是「设备控制」screen 的直达别名（同一页面，前端按 ?screen=control 直切）
+  // 站点根路径即电脑端客户端（纯显示端）；/app、/client 为历史别名，保持可用
   if (p === '/' || p === '/index.html' || p === '/app' || p === '/client' ||
-      p === '/app/index.html' || p === '/client/index.html' || p === '/console') {
+      p === '/app/index.html' || p === '/client/index.html') {
     return serveHtmlFile(res, CLIENT_FILE, '电脑端客户端页面缺失，请先执行 node tools/build-client.mjs');
+  }
+
+  /* ---------- 多设备互控 · 独立控制台（纯控制端，不注册受控） ---------- */
+  if (p === '/console') {
+    return serveHtmlFile(res, CONSOLE_FILE, '控制台页面缺失');
   }
 
   /* ---------- 管理（设置）页面 ---------- */

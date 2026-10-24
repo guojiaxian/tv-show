@@ -279,10 +279,11 @@ const beat = (deviceId, extra = {}) => api('POST', '/api/ctl/beat', { deviceId, 
     r.json.ctl && typeof r.json.ctl.devices === 'number' &&
     typeof r.json.ctl.online === 'number' && typeof r.json.ctl.scenes === 'number', r.json.ctl);
 
-  const rootPage = await fetch(BASE + '/');
   const consolePage = await fetch(BASE + '/console');
-  check('/console 别名返回客户端页面（与 / 同内容）',
-    consolePage.status === 200 && (await rootPage.text()) === (await consolePage.text()));
+  const consoleText = consolePage.status === 200 ? await consolePage.text() : '';
+  check('/console 是独立控制台页面（含设备控制且不注册受控）',
+    consolePage.status === 200 && /设备控制/.test(consoleText) &&
+    /api\/ctl\/send/.test(consoleText) && !/tvshow\.localSettings/.test(consoleText));
 
   /* ---------- 13. 落盘核对 ---------- */
   if (DATA_DIR) {

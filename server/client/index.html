@@ -352,85 +352,6 @@ select {
 }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
 
-/* ===== 多设备互控：模式开关 / 远程被控角标 / 受控锁定 ===== */
-#ctlSwitch {
-  display: inline-flex; align-items: center; gap: 0; flex: none;
-  border: 1px solid rgba(47,210,245,.35); border-radius: 999px; overflow: hidden;
-  background: rgba(9,16,28,.7); font-size: 12px; user-select: none; cursor: pointer;
-}
-#ctlSwitch .cs-opt { padding: 5px 12px; color: var(--muted); white-space: nowrap; transition: all .18s; }
-#ctlSwitch .cs-opt.on-local { background: rgba(63,224,166,.16); color: #7df0c0; }
-#ctlSwitch .cs-opt.on-remote { background: rgba(47,210,245,.2); color: #9fe7ff; }
-#ctlBadge {
-  position: fixed; right: 14px; bottom: 14px; z-index: 55;
-  padding: 6px 14px; border-radius: 999px; font-size: 12px; letter-spacing: 1px;
-  color: #9fe7ff; background: rgba(9,16,28,.62); border: 1px solid rgba(47,210,245,.45);
-  opacity: .75; pointer-events: none;
-}
-body.ctl-locked #grid, body.ctl-locked #frameViewport,
-body.ctl-locked #camGrid, body.ctl-locked #zoneGrid { pointer-events: none !important; }
-body.ctl-locked .tools .btn { opacity: .38; pointer-events: none !important; }
-body.ctl-locked #ctlSwitch { opacity: 1 !important; pointer-events: auto !important; }
-/* 受控锁定的例外入口：菜单按钮与「设备控制」菜单项保持可用（控制屏是自我解除的保证，
-   设计 §8.1/§11）；菜单里其余条目（本机设置等展示操作）仍锁定 */
-body.ctl-locked .tools #btnMore { opacity: 1 !important; pointer-events: auto !important; }
-body.ctl-locked .tools .menu .menu-item { opacity: .38; pointer-events: none !important; }
-body.ctl-locked .tools .menu .menu-item#btnControl { opacity: 1 !important; pointer-events: auto !important; }
-
-/* ===== 设备控制 screen（P3）===== */
-#controlScreen { display: flex; flex-direction: column; padding: 18px 22px; gap: 14px; overflow: hidden; }
-.ctl-head { display: flex; align-items: center; gap: 14px; flex: none; }
-.ctl-head h2 { margin: 0; font-size: 20px; }
-.ctl-list { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
-.ctl-card {
-  display: flex; align-items: center; gap: 12px; padding: 12px 14px;
-  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
-}
-.ctl-card.self { border-color: rgba(47,210,245,.45); }
-.ctl-card .ck { width: 20px; height: 20px; flex: none; accent-color: #2FD2F5; cursor: pointer; }
-.ctl-card .kind { flex: none; width: 44px; text-align: center; font-size: 11px; color: var(--muted);
-  border: 1px solid var(--line); border-radius: 8px; padding: 4px 0; }
-.ctl-card .main { flex: 1; min-width: 0; }
-.ctl-card .nm { display: flex; align-items: center; gap: 8px; }
-.ctl-card .nm b { font-size: 14px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ctl-card .nm .self-tag { font-size: 10px; color: #9fe7ff; border: 1px solid rgba(47,210,245,.5);
-  border-radius: 999px; padding: 1px 8px; flex: none; }
-.ctl-card .st { margin-top: 4px; font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.ctl-card .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: #56617a; }
-.ctl-card .dot.online { background: #3FE0A6; }
-.ctl-card .dot.recent { background: #FFB020; }
-.ctl-card .chip { border: 1px solid var(--line); border-radius: 999px; padding: 1px 9px; font-size: 11px; }
-.ctl-card .chip.remote { color: #9fe7ff; border-color: rgba(47,210,245,.5); background: rgba(47,210,245,.1); }
-.ctl-card .chip.local { color: #7df0c0; border-color: rgba(63,224,166,.4); }
-.ctl-card .chip.pending { color: #FFB020; border-color: rgba(255,176,32,.5); }
-.ctl-card .ops { display: flex; gap: 6px; flex: none; }
-.ctl-card .ops .btn { padding: 5px 10px; font-size: 12px; }
-.ctl-actions {
-  flex: none; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-  padding: 12px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
-}
-.ctl-actions .sel-info { font-size: 12px; color: var(--muted); margin-right: auto; }
-.ctl-actions select {
-  background: rgba(9,16,28,.9); color: var(--text); border: 1px solid var(--line);
-  border-radius: 8px; padding: 6px 10px; font-size: 13px; max-width: 220px;
-}
-/* 轮询 / 分屏配置弹层（复用 .dialog 外观，内容自定义） */
-.ctl-modal .list { padding: 4px 16px 12px; overflow: auto; max-height: 52vh; }
-.ctl-modal .row { display: flex; align-items: center; gap: 10px; padding: 8px 4px; font-size: 13px; }
-.ctl-modal .row .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ctl-modal .row .mini-btn { flex: none; }
-.ctl-modal label { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-.ctl-modal select { background: rgba(9,16,28,.9); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font-size: 13px; }
-.ctl-modal .zonegrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 4px 0; }
-.ctl-modal .zonegrid .zg { display: flex; flex-direction: column; gap: 6px; }
-.ctl-modal .zonegrid .zg span { font-size: 12px; color: var(--muted); }
-.ctl-modal footer { display: flex; gap: 10px; justify-content: flex-end; align-items: center; padding: 12px 18px; border-top: 1px solid var(--line); }
-/* 场景预设条：常驻控制屏顶部，一键应用 */
-.ctl-scenes { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: none;
-  padding: 10px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
-.ctl-scenes .sc-label { font-size: 12px; color: var(--muted); flex: none; }
-.ctl-scenes .btn.apply { border-color: rgba(63,224,166,.45); color: #7df0c0; }
-.ctl-scenes .btn.apply::before { content: '▶ '; font-size: 10px; }
 </style>
 </head>
 <body>
@@ -453,7 +374,6 @@ body.ctl-locked .tools .menu .menu-item#btnControl { opacity: 1 !important; poin
       <!-- 二级菜单：低频操作与入口收在这里，高频功能按钮全部直达 -->
       <div class="menu" id="moreMenu" hidden>
         <button class="menu-item" id="btnSettings" title="本机展示设置：轮询间隔、参与页面、电脑端偏好">本机设置</button>
-        <button class="menu-item" id="btnControl" title="多设备互控：对全场设备下发显示 / 轮询 / 分屏">设备控制</button>
         <button class="menu-item" id="btnSync" title="立即从服务器拉取最新配置">立即同步配置</button>
         <button class="menu-item" id="btnTurbo" title="极速模式：播放服务端定时截图（刷新率/质量在管理后台逐页配置）">极速模式：关</button>
         <div class="menu-sep"></div>
@@ -477,11 +397,6 @@ body.ctl-locked .tools .menu .menu-item#btnControl { opacity: 1 !important; poin
       <button class="btn" id="btnCamBack">← 返回首页</button>
       <button class="btn" id="btnCamLayout" title="在 3×3 与 1×1 之间切换（M）">布局：3×3</button>
       <button class="btn" id="btnCamRefresh" title="重新连接全部画面">刷新</button>
-    </div>
-    <!-- 模式开关：本地控制 / 远程被控（任何模式下常驻可点，是受控态下唯一的本地出口） -->
-    <div id="ctlSwitch" title="控制模式：本地控制 = 本机自主操作；远程被控 = 跟随控制端指令">
-      <span class="cs-opt" id="csLocal">本地控制</span>
-      <span class="cs-opt" id="csRemote">远程被控</span>
     </div>
   </div>
 </div>
@@ -558,39 +473,10 @@ body.ctl-locked .tools .menu .menu-item#btnControl { opacity: 1 !important; poin
     </div>
   </section>
 
-  <!-- ======================= 设备控制（多设备互控 · 控制半边） ======================= -->
-  <section id="controlScreen" class="screen" hidden>
-    <div class="ctl-head">
-      <button class="btn" id="btnCtlBack">← 返回首页</button>
-      <h2>设备控制</h2>
-      <span class="saved-chip" id="ctlServerChip">连接服务端…</span>
-      <div class="spacer"></div>
-      <button class="btn" id="btnCtlReload" title="立即刷新设备列表">刷新列表</button>
-    </div>
-    <div class="ctl-scenes" id="ctlSceneBar">
-      <span class="sc-label">场景</span>
-      <span id="ctlSceneList" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;"></span>
-      <button class="btn" id="btnCtlSceneSave" title="把当前全场设备的状态保存为一个场景，之后可一键恢复">＋ 存为场景…</button>
-      <button class="btn" id="btnCtlSceneManage" title="场景重命名 / 删除">管理…</button>
-    </div>
-    <div class="ctl-list" id="ctlDeviceList"></div>
-    <div class="ctl-actions" id="ctlActions">
-      <span class="sel-info" id="ctlSelInfo">未勾选设备</span>
-      <select id="selCtlEntry"><option value="">显示页面…</option></select>
-      <button class="btn" id="btnCtlRotate">轮询…</button>
-      <button class="btn" id="btnCtlZone">2×2 分屏…</button>
-      <button class="btn" id="btnCtlHome">回首页</button>
-      <button class="btn" id="btnCtlRelease">取消控制</button>
-      <button class="btn" id="btnCtlRefreshCmd">刷新当前页</button>
-      <button class="btn" id="btnCtlSync">强制同步</button>
-      <button class="btn" id="btnCtlAll">全选 / 清空</button>
-    </div>
-  </section>
 
 </main>
 
 <div id="dialogLayer" hidden></div>
-<div id="ctlBadge" hidden>远程被控</div>
 <div id="toast"></div>
 
 <script id="bootstrap" type="application/json">{
@@ -1109,12 +995,7 @@ body.ctl-locked .tools .menu .menu-item#btnControl { opacity: 1 !important; poin
    'errorPanel','errorMessage','rotationChip','rotationText','btnRotationToggle','zoomChip','btnMode',
    'btnBack','btnBack2','btnRetry','btnUseProxy','btnOpenTab','btnOpenTab2','btnZoomIn',
    'btnZoomOut','btnZoomReset','btnMenu','zoneGrid','zoneHint','btnZoneBack','btnZoneRefresh',
-   'settingsList','btnSettingsBack','settingsState','dialogLayer','toast',
-   'ctlSwitch','csLocal','csRemote','ctlBadge',
-   'controlScreen','btnCtlBack','ctlServerChip','btnCtlReload','ctlDeviceList',
-   'ctlSelInfo','selCtlEntry','btnCtlRotate','btnCtlZone','btnCtlHome','btnCtlRelease',
-   'btnCtlRefreshCmd','btnCtlSync','btnCtlAll','btnControl',
-   'ctlSceneBar','ctlSceneList','btnCtlSceneSave','btnCtlSceneManage'
+   'settingsList','btnSettingsBack','settingsState','dialogLayer','toast'
   ].forEach(function (id) { el[id] = document.getElementById(id); });
 
   var AUTO_LOGIN_SRC = document.getElementById('autoLoginSrc').textContent;
@@ -1288,7 +1169,6 @@ body.ctl-locked .tools .menu .menu-item#btnControl { opacity: 1 !important; poin
     // 展示页内的内容变化不即时生效（与电视端一致：下次进入生效）
     if (state.mode === 'home') focusFirst();
     if (state.mode === 'zones') renderZones();
-    if (state.mode === 'control') renderCtlEntryOptions(); // 下发下拉跟随最新页面列表
     return true;
   }
 
@@ -1649,7 +1529,6 @@ body.ctl-locked .tools .menu .menu-item#btnControl { opacity: 1 !important; poin
     el.displayTools.hidden = !onDisplay;
     el.cameraTools.hidden = !onCamera;
     if (onDisplay || onCamera) setMoreMenu(false);
-    applyCtlLock(); // 模式切换后同步受控锁定态（锁定不作用于「设备控制」屏）
   }
 
   function reloadPage() {
@@ -1934,8 +1813,6 @@ body.ctl-locked .tools .menu .menu-item#btnControl { opacity: 1 !important; poin
   function backToHome() {
     stopRotation();
     if (state.mode === 'camera') closeCameraWall();
-    clearInterval(ctlPanel.timer); // 离开设备控制屏时停止列表轮询
-    ctlPanel.timer = null;
     state.mode = 'home';
     state.entry = null;
     el.frameViewport.innerHTML = '';
@@ -1943,7 +1820,6 @@ body.ctl-locked .tools .menu .menu-item#btnControl { opacity: 1 !important; poin
     el.zoneScreen.hidden = true;
     el.cameraScreen.hidden = true;
     el.settingsScreen.hidden = true;
-    el.controlScreen.hidden = true;
     el.homeScreen.hidden = false;
     syncToolGroups();
     renderHome();
@@ -2597,7 +2473,6 @@ body.ctl-locked .tools .menu .menu-item#btnControl { opacity: 1 !important; poin
     var items = [];
     if (rotation.active) items.push({ text: '暂停 / 继续轮询', run: function () { toggleRotationPause(); } });
     items.push({ text: '轮询设置', run: function () { openSettings(); } });
-    items.push({ text: '设备控制', run: function () { openControl(); } });
     items.push({ text: '刷新页面', run: function () { reloadPage(); } });
     openDialog('控制菜单 · ' + state.entry.title, null, items, 'M 打开菜单　Esc 关闭');
   }
@@ -2617,19 +2492,6 @@ body.ctl-locked .tools .menu .menu-item#btnControl { opacity: 1 !important; poin
 
   document.addEventListener('keydown', function (e) {
     var key = e.key;
-
-    /* 远程被控时锁定全部展示快捷操作（设计 §8.1）：唯一本地出口是顶栏模式开关（鼠标点击）。
-       例外：指令到达前已打开的菜单弹窗允许用 Esc 关闭，否则界面被卡住。 */
-    if (!ctl.localMode) {
-      if (dialog.open && key === 'Escape') { e.preventDefault(); closeDialog(); return; }
-      e.preventDefault();
-      var now = Date.now();
-      if (now - ctl.lastLockToast > 5000) {
-        ctl.lastLockToast = now;
-        toast('远程被控中 · 点顶栏开关（本地控制）交还本机操作');
-      }
-      return;
-    }
 
     if (dialog.open) {
       if (key === 'Escape') { e.preventDefault(); var cb = dialog.onCancel; closeDialog(); cb && cb(); return; }
@@ -2663,12 +2525,9 @@ body.ctl-locked .tools .menu .menu-item#btnControl { opacity: 1 !important; poin
     }
     if (key === 'Escape') {
       e.preventDefault();
-      // 配置弹层（轮询/分屏/改名）打开时，Esc 只关弹层，不离开控制屏
-      if (ctlPanel.modalOpen) { closeCtlModal(); return; }
       // 二级菜单打开时，Esc 只收菜单，不改变当前页面
       if (!el.moreMenu.hidden) { setMoreMenu(false); return; }
       if (state.mode === 'settings') backToHome();
-      else if (state.mode === 'control') closeControl();
       else if (state.mode !== 'home') backToHome();
       return;
     }
@@ -2768,56 +2627,25 @@ body.ctl-locked .tools .menu .menu-item#btnControl { opacity: 1 !important; poin
   el.btnCamBack.addEventListener('click', backToHome);
   el.btnCamLayout.addEventListener('click', function () { setCameraLayout(camWall.layout === 1 ? 3 : 1); });
   el.btnCamRefresh.addEventListener('click', refreshCameraWall);
-  el.ctlSwitch.addEventListener('click', onCtlSwitchClick);
-
-  /* 设备控制 screen（控制半边） */
-  el.btnControl.addEventListener('click', openControl);
-  el.btnCtlBack.addEventListener('click', closeControl);
-  el.btnCtlReload.addEventListener('click', refreshCtlDevices);
-  el.selCtlEntry.addEventListener('change', function () {
-    var id = el.selCtlEntry.value;
-    if (!id) return;
-    ctlSend('show', { entryId: id });
-    el.selCtlEntry.value = ''; // 同一页面可连续下发（含下发给不同勾选集）
-  });
-  el.btnCtlRotate.addEventListener('click', ctlRotateDialog);
-  el.btnCtlZone.addEventListener('click', ctlZoneDialog);
-  el.btnCtlHome.addEventListener('click', function () { ctlSend('home'); });
-  el.btnCtlRelease.addEventListener('click', ctlRelease);
-  el.btnCtlRefreshCmd.addEventListener('click', function () { ctlSend('refresh'); });
-  el.btnCtlSync.addEventListener('click', function () { ctlSend('sync'); });
-  el.btnCtlAll.addEventListener('click', function () {
-    var allOn = ctlPanel.devices.length && ctlPanel.devices.every(function (d) { return ctlPanel.selected[d.id]; });
-    ctlPanel.selected = {};
-    if (!allOn) ctlPanel.devices.forEach(function (d) { ctlPanel.selected[d.id] = true; });
-    renderCtlDevices();
-  });
-  el.btnCtlSceneSave.addEventListener('click', ctlSaveSceneDialog);
-  el.btnCtlSceneManage.addEventListener('click', ctlSceneManageDialog);
 
   window.addEventListener('resize', function () { applyZoom(); scaleZoneCells(); });
 
-  /* ============================ 多设备互控 · 受控半边 ============================
-   * 设计 docs/远程控制台-设计方案.md §7/§8/§10.1：
-   *  - 3s 心跳（失败指数退避最长 30s）：注册 / 上报本机状态 / 领指令 / 同步模式
-   *  - 模式 = 服务端权威 managed + 本机即时影子 localMode：现场拨开关立即生效，
-   *    意图 switchTo 随下一拍心跳捎带，未确认前每拍重发（幂等，离线暂存恢复后送达）
-   *  - 展示类指令（show/rotate/zone/home）应用后自动进入远程被控：切画面 + 锁定展示操作；
-   *    维护类（refresh/sync）不改变模式
-   *  - 退出远程被控一律二次确认；进入远程被控直接生效
+  /* ============================ 多设备互控 · 受控半边（纯显示端） ============================
+   * 设计修订（用户反馈）：Web 显示端被控 = 画面跟随指令切换，**不锁定鼠标、无角标、无模式开关**——
+   * 显示页永远可正常本地操作（远程换了台，本地随时点得动）；控制与场景在独立控制台 /console。
+   *  - 3s 心跳（失败指数退避最长 30s）：注册 / 上报本机状态 / 领指令；
+   *  - boot 恢复由服务端判定（managed + bootRestore），显示端只需带 boot 标志；
+   *  - 电视端（APK 1.8）保留锁定与【菜单】模式开关；Web 显示端不需要。
    * ============================================================================ */
 
   var CTL_BEAT_MS = 3000;
   var ctl = {
     deviceId: null,          // 本机设备身份（localStorage 终身不变，与 IP 无关）
     kind: 'pc',              // pc | tablet（服务端仅用于图标与 bootRestore 默认值）
-    localMode: true,         // 即时影子：true=本地控制（默认，行为与现状一致）
     ackedSeq: 0,             // 已确认应用的指令序号（内存态）
     boot: true,              // 本页面生命周期内的第一次心跳
-    intent: null,            // 待送达的模式开关意图：'local' | 'remote'
     failStreak: 0,
-    lastError: null,         // 指令应用失败原因（随状态上报，控制屏可见）
-    lastLockToast: 0
+    lastError: null          // 指令应用失败原因（随状态上报，控制台可见）
   };
 
   function detectKind() {
@@ -2864,53 +2692,12 @@ body.ctl-locked .tools .menu .menu-item#btnControl { opacity: 1 !important; poin
       s = { mode: 'zone', zone: { slots: local.zones.map(function (z) { return z.entryId || null; }) } };
     } else if (state.mode === 'settings') {
       s = { mode: 'settings' };
-    } else if (state.mode === 'control') {
-      s = { mode: 'control' };
     }
     if (ctl.lastError) s.lastError = ctl.lastError;
     return s;
   }
 
-  /** 模式影子翻转 + UI（开关高亮 / 角标 / 锁定）；立即生效，不等网络 */
-  function applyMode(mode, opts) {
-    opts = opts || {};
-    var target = mode === 'local';
-    if (ctl.localMode === target) { renderCtlSwitch(); return; }
-    ctl.localMode = target;
-    renderCtlSwitch();
-    applyCtlLock();
-    if (!opts.silent) toast(target ? '已交还本地控制' : '已进入远程被控');
-  }
-
-  function renderCtlSwitch() {
-    el.csLocal.classList.toggle('on-local', ctl.localMode);
-    el.csRemote.classList.toggle('on-remote', !ctl.localMode);
-  }
-
-  /** 锁定只作用于展示界面；「设备控制」屏（P3）不受锁定以保证随时可自我解除 */
-  function applyCtlLock() {
-    var locked = !ctl.localMode && state.mode !== 'control';
-    document.body.classList.toggle('ctl-locked', locked);
-    el.ctlBadge.hidden = !locked;
-  }
-
-  /** 顶栏开关：本地→远程直接生效；远程→本地须二次确认（评审决议） */
-  function onCtlSwitchClick() {
-    if (ctl.localMode) {
-      applyMode('remote');
-      ctl.intent = 'remote';
-      return;
-    }
-    openDialog('退出远程被控？', '交还本机操作后，画面保持不变；控制端再次下发指令时会自动切回远程被控。', [
-      { text: '继续远程被控', run: function () {} },   // 默认焦点在继续（防误触），与电视端一致
-      { text: '退出，恢复本地操作', primary: true, run: function () {
-        applyMode('local');
-        ctl.intent = 'local';
-      } }
-    ], 'Enter 确认　Esc 取消');
-  }
-
-  /** 指令应用器：全部复用现有 screen 切换函数，不新造状态机 */
+  /** 指令应用器：全部复用现有 screen 切换函数，不新造状态机（受控=切画面，本地操作照常） */
   function applyCommand(desired) {
     var cmd = desired.cmd;
     var args = desired.args || {};
@@ -2920,7 +2707,6 @@ body.ctl-locked .tools .menu .menu-item#btnControl { opacity: 1 !important; poin
         var entry = entryOf(args.entryId);
         if (!entry) { backToHome(); ctl.lastError = '指令引用的入口已不存在'; }
         else openEntry(entry, { embed: true });
-        applyMode('remote', { silent: true });
       } else if (cmd === 'rotate') {
         local.rotation = {
           enabled: local.rotation.enabled,
@@ -2939,7 +2725,6 @@ body.ctl-locked .tools .menu .menu-item#btnControl { opacity: 1 !important; poin
         } else {
           startRotation();
         }
-        applyMode('remote', { silent: true });
       } else if (cmd === 'zone') {
         var slots = Array.isArray(args.slots) ? args.slots : [null, null, null, null];
         local.zones = [0, 1, 2, 3].map(function (p) {
@@ -2948,10 +2733,8 @@ body.ctl-locked .tools .menu .menu-item#btnControl { opacity: 1 !important; poin
         });
         saveLocalSettings();
         openZones();
-        applyMode('remote', { silent: true });
       } else if (cmd === 'home') {
         backToHome();
-        applyMode('remote', { silent: true });
       } else if (cmd === 'refresh') {
         if (state.mode === 'display') reloadPage();
         else if (state.mode === 'zones') { renderZones(); toast('已刷新全部页面'); }
@@ -2976,7 +2759,6 @@ body.ctl-locked .tools .menu .menu-item#btnControl { opacity: 1 !important; poin
       state: currentState()
     };
     ctl.boot = false;
-    if (ctl.intent) body.switchTo = ctl.intent;
     var ctrl = new AbortController();
     var timer = setTimeout(function () { ctrl.abort(); }, 5000);
     try {
@@ -2991,29 +2773,14 @@ body.ctl-locked .tools .menu .menu-item#btnControl { opacity: 1 !important; poin
       if (!res.ok) throw new Error('HTTP ' + res.status);
       var json = await res.json();
       ctl.failStreak = 0;
-
-      // 意图已送达且服务端状态与之相符 → 清除（未清除前每拍重发，幂等）
-      if (ctl.intent && json.managed !== undefined &&
-          json.managed === (ctl.intent === 'remote')) {
-        ctl.intent = null;
-      }
-
       if (json.desired) {
         applyCommand(json.desired);
         ctl.ackedSeq = json.desired.seq;
-      } else if (!ctl.intent) {
-        // 纯模式校正（无在途意图时）：控制端「取消控制」→ 解锁；boot 恢复 → 锁定
-        if (json.managed === false && !ctl.localMode) {
-          applyMode('local');
-          toast('控制端已交还本地控制');
-        } else if (json.managed === true && ctl.localMode) {
-          applyMode('remote', { silent: true });
-        }
       }
     } catch (e) {
       clearTimeout(timer);
       ctl.failStreak++;
-      // 离线保持：受控态下画面继续（本机设置已写入），恢复后心跳自动续上
+      // 离线保持：画面继续（本机设置已写入），恢复后心跳自动续上
     } finally {
       var delay = ctl.failStreak === 0
         ? CTL_BEAT_MS
@@ -3025,625 +2792,7 @@ body.ctl-locked .tools .menu .menu-item#btnControl { opacity: 1 !important; poin
   function initCtl() {
     ctl.deviceId = loadDeviceId();
     ctl.kind = detectKind();
-    renderCtlSwitch();
     if (ctl.deviceId) doBeat();
-  }
-
-  /* ============================ 多设备互控 · 控制半边（设备控制 screen） ============================
-   * 设计 §11：设备卡片（勾选/改名/模式/在线/状态摘要/待送达/本机标记）+ 底部操作条。
-   * 单台控制是原语（只勾一台下发）；多选 / 全选只是便捷方式。
-   * 「取消控制」与设备端开关是同一状态翻转的两个入口，执行前一律二次确认。
-   * ============================================================================ */
-
-  var ctlPanel = {
-    devices: [],            // 最近一次 /api/ctl/devices
-    scenes: [],             // 最近一次拉取的场景列表（随 devices 一并下发）
-    selected: {},           // 勾选的 deviceId 集合
-    timer: null,            // 3s 列表轮询（仅 control screen 激活期间）
-    modalOpen: false,       // 自定义配置弹层（轮询/分屏/改名，复用 dialogLayer）
-    rotateDraft: [],        // 轮询弹层的已选序列（顺序即播放顺序）
-    zoneDraft: [null, null, null, null]
-  };
-
-  function openControl() {
-    stopRotation();
-    state.mode = 'control';
-    state.entry = null;
-    el.homeScreen.hidden = true;
-    el.displayScreen.hidden = true;
-    el.zoneScreen.hidden = true;
-    el.settingsScreen.hidden = true;
-    el.cameraScreen.hidden = true;
-    el.controlScreen.hidden = false;
-    syncToolGroups();
-    renderCtlEntryOptions();
-    refreshCtlDevices();
-    clearInterval(ctlPanel.timer);
-    ctlPanel.timer = setInterval(function () {
-      if (state.mode === 'control') refreshCtlDevices();
-    }, 3000);
-  }
-
-  function closeControl() {
-    clearInterval(ctlPanel.timer);
-    ctlPanel.timer = null;
-    backToHome();
-  }
-
-  function renderCtlEntryOptions() {
-    var sel = el.selCtlEntry;
-    sel.innerHTML = '<option value="">显示页面…</option>';
-    ENTRIES.forEach(function (e) {
-      var opt = document.createElement('option');
-      opt.value = e.id;
-      opt.textContent = e.title;
-      sel.appendChild(opt);
-    });
-  }
-
-  async function refreshCtlDevices() {
-    if (!SERVER_BASE && !servedOverHttp) { el.ctlServerChip.textContent = '未连接服务端'; return; }
-    try {
-      var res = await fetch(SERVER_BASE + '/api/ctl/devices', { cache: 'no-store' });
-      var json = await res.json();
-      ctlPanel.devices = json.devices || [];
-      ctlPanel.scenes = json.scenes || [];
-      el.ctlServerChip.textContent = '服务端 v' + CFG.version + ' · ' + ctlPanel.devices.length + ' 台设备';
-      renderCtlDevices();
-      renderCtlScenes();
-    } catch (e) {
-      el.ctlServerChip.textContent = '服务端不可达';
-    }
-  }
-
-  /** reported → 人能读的状态摘要 */
-  function ctlSummary(d) {
-    var r = d.reported;
-    if (!r) return '暂无上报';
-    function titleOf(id) { var e = id && entryOf(id); return e ? e.title : (id || '—'); }
-    if (r.mode === 'home') return '首页';
-    if (r.mode === 'page') return '显示：' + titleOf(r.entryId);
-    if (r.mode === 'camera') return '画面墙：' + titleOf(r.entryId);
-    if (r.mode === 'rotate' && r.rotate) {
-      return '轮询 ' + (Number(r.rotate.index) + 1) + '/' + r.rotate.total + ' · ' + r.rotate.intervalSec + 's';
-    }
-    if (r.mode === 'zone' && r.zone && r.zone.slots) {
-      return '分屏：' + r.zone.slots.map(function (s) {
-        return s ? titleOf(s).slice(0, 6) : '—';
-      }).join(' / ');
-    }
-    if (r.mode === 'control') return '控制中';
-    if (r.mode === 'settings') return '本机设置';
-    if (r.lastError) return r.lastError;
-    return r.mode || '—';
-  }
-
-  function renderCtlDevices() {
-    var host = el.ctlDeviceList;
-    // 只重绘内容变化的部分代价不值得：设备数少（几台），整体重绘但保留勾选态
-    host.innerHTML = '';
-    if (!ctlPanel.devices.length) {
-      var empty = document.createElement('div');
-      empty.style.cssText = 'color:var(--muted);font-size:13px;padding:22px;text-align:center;';
-      empty.textContent = '还没有设备注册 —— 用电脑或平板打开本系统、或在电视上安装 1.8 客户端后，会自动出现在这里';
-      host.appendChild(empty);
-    }
-    ctlPanel.devices.forEach(function (d) {
-      var card = document.createElement('div');
-      card.className = 'ctl-card' + (d.id === ctl.deviceId ? ' self' : '');
-
-      var ck = document.createElement('input');
-      ck.type = 'checkbox';
-      ck.className = 'ck';
-      ck.checked = !!ctlPanel.selected[d.id];
-      ck.addEventListener('change', function () {
-        if (ck.checked) ctlPanel.selected[d.id] = true;
-        else delete ctlPanel.selected[d.id];
-        renderCtlSelInfo();
-      });
-      card.appendChild(ck);
-
-      var kind = document.createElement('div');
-      kind.className = 'kind';
-      kind.textContent = d.kind === 'tv' ? 'TV' : d.kind === 'tablet' ? '平板' : 'PC';
-      card.appendChild(kind);
-
-      var main = document.createElement('div');
-      main.className = 'main';
-      var nm = document.createElement('div');
-      nm.className = 'nm';
-      var b = document.createElement('b');
-      b.textContent = d.name;
-      nm.appendChild(b);
-      if (d.id === ctl.deviceId) {
-        var tag = document.createElement('span');
-        tag.className = 'self-tag';
-        tag.textContent = '本机';
-        nm.appendChild(tag);
-      }
-      var st = document.createElement('div');
-      st.className = 'st';
-      var dot = document.createElement('span');
-      dot.className = 'dot ' + d.online;
-      dot.title = d.online === 'online' ? '在线' : d.online === 'recent' ? '刚离线' : '离线';
-      var modeChip = document.createElement('span');
-      modeChip.className = 'chip ' + (d.managed ? 'remote' : 'local');
-      modeChip.textContent = d.managed ? '远程被控' : '本地控制';
-      var summary = document.createElement('span');
-      summary.textContent = ctlSummary(d);
-      st.appendChild(dot);
-      st.appendChild(modeChip);
-      if (d.pending) {
-        var pend = document.createElement('span');
-        pend.className = 'chip pending';
-        pend.textContent = '待送达';
-        st.appendChild(pend);
-      }
-      st.appendChild(summary);
-      if (d.reported && d.reported.lastError) {
-        var errc = document.createElement('span');
-        errc.className = 'chip pending';
-        errc.textContent = d.reported.lastError;
-        st.appendChild(errc);
-      }
-      main.appendChild(nm);
-      main.appendChild(st);
-      card.appendChild(main);
-
-      var ops = document.createElement('div');
-      ops.className = 'ops';
-      var rename = document.createElement('button');
-      rename.className = 'btn';
-      rename.textContent = '改名';
-      rename.addEventListener('click', function () { ctlRenameDialog(d); });
-      var boot = document.createElement('button');
-      boot.className = 'btn';
-      boot.textContent = '开机恢复：' + (d.bootRestore ? '开' : '关');
-      boot.title = '受控状态下设备重启后自动回到设定画面';
-      boot.addEventListener('click', function () { ctlSetBootRestore(d, !d.bootRestore); });
-      ops.appendChild(rename);
-      ops.appendChild(boot);
-      card.appendChild(ops);
-      host.appendChild(card);
-    });
-    renderCtlSelInfo();
-  }
-
-  function renderCtlSelInfo() {
-    var n = Object.keys(ctlPanel.selected).length;
-    el.ctlSelInfo.textContent = n
-      ? '已勾选 ' + n + ' 台设备（对勾选设备执行以下操作）'
-      : '未勾选设备（先勾选，或点「全选」）';
-  }
-
-  function ctlTargets() {
-    var ids = Object.keys(ctlPanel.selected);
-    return ids.length ? ids : null;
-  }
-
-  async function ctlSend(cmd, args) {
-    var targets = ctlTargets();
-    if (!targets) { toast('请先勾选目标设备'); return false; }
-    try {
-      var res = await fetch(SERVER_BASE + '/api/ctl/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targets: targets, cmd: cmd, args: args || {} })
-      });
-      var json = await res.json();
-      if (!res.ok) { toast('下发失败：' + (json && json.error ? json.error : 'HTTP ' + res.status)); return false; }
-      toast('已下发「' + cmd + '」→ ' + json.results.length + ' 台设备（≤3 秒生效）');
-      refreshCtlDevices();
-      return true;
-    } catch (e) {
-      toast('下发失败：网络不可达');
-      return false;
-    }
-  }
-
-  async function ctlRelease() {
-    var targets = ctlTargets();
-    if (!targets) { toast('请先勾选目标设备'); return; }
-    openDialog('取消控制？', '勾选的 ' + targets.length + ' 台设备将退出远程被控、恢复本地操作（画面保持不变）。', [
-      { text: '继续控制', run: function () {} },
-      { text: '取消控制，交还本地', primary: true, run: async function () {
-        try {
-          var res = await fetch(SERVER_BASE + '/api/ctl/release', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ targets: targets })
-          });
-          var json = await res.json();
-          toast(res.ok ? '已交还 ' + json.results.length + ' 台设备' : '操作失败：HTTP ' + res.status);
-        } catch (e) { toast('操作失败：网络不可达'); }
-        refreshCtlDevices();
-      } }
-    ], 'Enter 确认　Esc 取消');
-  }
-
-  /* ---------- 自定义配置弹层（轮询 / 分屏 / 改名），复用 dialogLayer 外观 ---------- */
-
-  function openCtlModal(title, subtitle) {
-    closeCtlModal();
-    var box = document.createElement('div');
-    box.className = 'dialog ctl-modal';
-    var head = document.createElement('header');
-    var h = document.createElement('h3');
-    h.textContent = title;
-    head.appendChild(h);
-    if (subtitle) {
-      var p = document.createElement('p');
-      p.textContent = subtitle;
-      head.appendChild(p);
-    }
-    var list = document.createElement('div');
-    list.className = 'list';
-    var footer = document.createElement('footer');
-    box.appendChild(head);
-    box.appendChild(list);
-    box.appendChild(footer);
-    el.dialogLayer.appendChild(box);
-    el.dialogLayer.hidden = false;
-    ctlPanel.modalOpen = true;
-    return { list: list, footer: footer };
-  }
-
-  function closeCtlModal() {
-    ctlPanel.modalOpen = false;
-    el.dialogLayer.hidden = true;
-    el.dialogLayer.innerHTML = '';
-  }
-
-  /** 轮询配置弹层：间隔预设 + 参与页面多选调序 + 多屏同步切换（默认不勾） */
-  function ctlRotateDialog() {
-    if (!ctlTargets()) { toast('请先勾选目标设备'); return; }
-    ctlPanel.rotateDraft = [];
-    var ui = openCtlModal('轮询下发', '勾选参与页面（↑↓ 调整顺序），确定后对勾选设备立即开始轮询');
-
-    var rowIv = document.createElement('div');
-    rowIv.className = 'row';
-    var lb = document.createElement('label');
-    lb.textContent = '每页停留';
-    var selIv = document.createElement('select');
-    INTERVAL_PRESETS.forEach(function (s) {
-      var o = document.createElement('option');
-      o.value = String(s);
-      o.textContent = s + ' 秒';
-      selIv.appendChild(o);
-    });
-    selIv.value = '15';
-    lb.appendChild(selIv);
-    rowIv.appendChild(lb);
-
-    var rowSync = document.createElement('div');
-    rowSync.className = 'row';
-    var lb2 = document.createElement('label');
-    var ckSync = document.createElement('input');
-    ckSync.type = 'checkbox';
-    ckSync.checked = false; // 同步轮询默认关（评审决议）
-    lb2.appendChild(ckSync);
-    var lb2t = document.createElement('span');
-    lb2t.textContent = '多屏同步切换（各设备翻页时机一致，依赖内网时钟）';
-    lb2.appendChild(lb2t);
-    rowSync.appendChild(lb2);
-
-    var listBox = document.createElement('div');
-    function renderRows() {
-      listBox.innerHTML = '';
-      ENTRIES.forEach(function (e) {
-        var idx = ctlPanel.rotateDraft.indexOf(e.id);
-        var row = document.createElement('div');
-        row.className = 'row';
-        var ck = document.createElement('input');
-        ck.type = 'checkbox';
-        ck.checked = idx >= 0;
-        ck.addEventListener('change', function () {
-          if (ck.checked) ctlPanel.rotateDraft.push(e.id);
-          else ctlPanel.rotateDraft = ctlPanel.rotateDraft.filter(function (x) { return x !== e.id; });
-          renderRows();
-        });
-        var name = document.createElement('span');
-        name.className = 'grow';
-        name.textContent = (idx >= 0 ? (idx + 1) + '. ' : '') + e.title;
-        row.appendChild(ck);
-        row.appendChild(name);
-        if (idx >= 0) {
-          ['↑', '↓'].forEach(function (dir, k) {
-            var btn = document.createElement('button');
-            btn.className = 'mini-btn';
-            btn.textContent = dir;
-            btn.addEventListener('click', function () {
-              var j = dir === '↑' ? idx - 1 : idx + 1;
-              if (j < 0 || j >= ctlPanel.rotateDraft.length) return;
-              var t = ctlPanel.rotateDraft[idx];
-              ctlPanel.rotateDraft[idx] = ctlPanel.rotateDraft[j];
-              ctlPanel.rotateDraft[j] = t;
-              renderRows();
-            });
-            row.appendChild(btn);
-          });
-        }
-        listBox.appendChild(row);
-      });
-    }
-    renderRows();
-
-    var ok = document.createElement('button');
-    ok.className = 'btn primary';
-    ok.textContent = '下发轮询';
-    ok.addEventListener('click', function () {
-      if (!ctlPanel.rotateDraft.length) { toast('请至少勾选一个页面'); return; }
-      if (ctlSend('rotate', {
-        intervalSec: Number(selIv.value),
-        items: ctlPanel.rotateDraft.slice(),
-        phaseSync: ckSync.checked
-      })) closeCtlModal();
-    });
-    var cancel = document.createElement('button');
-    cancel.className = 'btn';
-    cancel.textContent = '取消';
-    cancel.addEventListener('click', closeCtlModal);
-
-    ui.list.appendChild(rowIv);
-    ui.list.appendChild(rowSync);
-    ui.list.appendChild(listBox);
-    ui.footer.appendChild(cancel);
-    ui.footer.appendChild(ok);
-  }
-
-  /** 2×2 分屏配置弹层：四格各选页面或「不使用」 */
-  function ctlZoneDialog() {
-    if (!ctlTargets()) { toast('请先勾选目标设备'); return; }
-    ctlPanel.zoneDraft = [null, null, null, null];
-    var ui = openCtlModal('2×2 分屏下发', '为四个分区各指定页面（或「不使用」），确定后对勾选设备进入分屏');
-
-    var grid = document.createElement('div');
-    grid.className = 'zonegrid';
-    ctlPanel.zoneDraft.forEach(function (_, pos) {
-      var cell = document.createElement('div');
-      cell.className = 'zg';
-      var span = document.createElement('span');
-      span.textContent = '第 ' + (pos + 1) + ' 格';
-      var sel = document.createElement('select');
-      var none = document.createElement('option');
-      none.value = '';
-      none.textContent = '不使用';
-      sel.appendChild(none);
-      ENTRIES.forEach(function (e) {
-        var o = document.createElement('option');
-        o.value = e.id;
-        o.textContent = e.title;
-        sel.appendChild(o);
-      });
-      sel.addEventListener('change', function () {
-        ctlPanel.zoneDraft[pos] = sel.value || null;
-      });
-      cell.appendChild(span);
-      cell.appendChild(sel);
-      grid.appendChild(cell);
-    });
-
-    var ok = document.createElement('button');
-    ok.className = 'btn primary';
-    ok.textContent = '下发分屏';
-    ok.addEventListener('click', function () {
-      if (!ctlPanel.zoneDraft.some(function (s) { return s; })) { toast('至少为一格指定页面'); return; }
-      if (ctlSend('zone', { slots: ctlPanel.zoneDraft.slice() })) closeCtlModal();
-    });
-    var cancel = document.createElement('button');
-    cancel.className = 'btn';
-    cancel.textContent = '取消';
-    cancel.addEventListener('click', closeCtlModal);
-
-    ui.list.appendChild(grid);
-    ui.footer.appendChild(cancel);
-    ui.footer.appendChild(ok);
-  }
-
-  /** 设备改名弹层 */
-  function ctlRenameDialog(d) {
-    var ui = openCtlModal('设备改名', d.id);
-    var row = document.createElement('div');
-    row.className = 'row';
-    var input = document.createElement('input');
-    input.type = 'text';
-    input.value = d.name;
-    input.maxLength = 60;
-    input.style.cssText = 'flex:1;background:rgba(9,16,28,.9);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:14px;';
-    row.appendChild(input);
-    var ok = document.createElement('button');
-    ok.className = 'btn primary';
-    ok.textContent = '保存';
-    ok.addEventListener('click', async function () {
-      var name = input.value.trim();
-      if (!name) { toast('设备名不能为空'); return; }
-      try {
-        var res = await fetch(SERVER_BASE + '/api/ctl/device/' + encodeURIComponent(d.id), {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: name })
-        });
-        toast(res.ok ? '已改名：' + name : '改名失败：HTTP ' + res.status);
-      } catch (e) { toast('改名失败：网络不可达'); }
-      closeCtlModal();
-      refreshCtlDevices();
-    });
-    var cancel = document.createElement('button');
-    cancel.className = 'btn';
-    cancel.textContent = '取消';
-    cancel.addEventListener('click', closeCtlModal);
-    ui.list.appendChild(row);
-    ui.footer.appendChild(cancel);
-    ui.footer.appendChild(ok);
-    setTimeout(function () { input.focus(); }, 50);
-  }
-
-  async function ctlSetBootRestore(d, value) {
-    try {
-      var res = await fetch(SERVER_BASE + '/api/ctl/device/' + encodeURIComponent(d.id), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bootRestore: value })
-      });
-      toast(res.ok ? (d.name + ' 开机恢复：' + (value ? '开' : '关')) : '操作失败：HTTP ' + res.status);
-    } catch (e) { toast('操作失败：网络不可达'); }
-    refreshCtlDevices();
-  }
-
-  /* ---------- 场景预设（设计 §9）：常驻顶部，一键应用 / 存为场景 / 管理 ---------- */
-
-  function renderCtlScenes() {
-    var host = el.ctlSceneList;
-    host.innerHTML = '';
-    if (!ctlPanel.scenes.length) {
-      var tip = document.createElement('span');
-      tip.style.cssText = 'font-size:12px;color:var(--muted);';
-      tip.textContent = '暂无场景 —— 把全场调到某个状态后点「＋ 存为场景」';
-      host.appendChild(tip);
-      return;
-    }
-    ctlPanel.scenes.forEach(function (s) {
-      var btn = document.createElement('button');
-      btn.className = 'btn apply';
-      btn.textContent = s.name + '（' + s.steps.length + '）';
-      btn.title = '一键把 ' + s.steps.length + ' 台设备恢复到该场景（离线设备会补投递）';
-      btn.addEventListener('click', function () { ctlApplyScene(s); });
-      host.appendChild(btn);
-    });
-  }
-
-  async function ctlApplyScene(scene) {
-    try {
-      var res = await fetch(SERVER_BASE + '/api/ctl/scenes/' + encodeURIComponent(scene.id) + '/apply', { method: 'POST' });
-      var json = await res.json();
-      if (!res.ok) { toast('应用失败：' + (json && json.error ? json.error : 'HTTP ' + res.status)); return; }
-      var skipped = json.total - json.applied;
-      toast('场景「' + scene.name + '」已下发 ' + json.applied + '/' + json.total +
-        (skipped ? '（' + skipped + ' 台设备已移除，跳过）' : ''));
-      refreshCtlDevices();
-    } catch (e) { toast('应用失败：网络不可达'); }
-  }
-
-  /** 存为场景：服务端快照当前现场（受控设备取 desired，本地设备把 reported 转等价指令） */
-  function ctlSaveSceneDialog() {
-    var online = ctlPanel.devices.filter(function (d) { return d.online !== 'offline'; }).length;
-    if (!online) { toast('当前没有在线设备，无法保存场景'); return; }
-    var ui = openCtlModal('存为场景', '将捕获 ' + online + ' 台在线设备的当前状态（正在控制的设备记指令，本地设备记当前画面）');
-    var row = document.createElement('div');
-    row.className = 'row';
-    var input = document.createElement('input');
-    input.type = 'text';
-    input.placeholder = '场景名（如：晨会 / 来访 / 值守）';
-    input.maxLength = 60;
-    input.style.cssText = 'flex:1;background:rgba(9,16,28,.9);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:14px;';
-    row.appendChild(input);
-    var ok = document.createElement('button');
-    ok.className = 'btn primary';
-    ok.textContent = '保存';
-    ok.addEventListener('click', async function () {
-      var name = input.value.trim();
-      if (!name) { toast('请输入场景名'); return; }
-      try {
-        var res = await fetch(SERVER_BASE + '/api/ctl/scenes', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: name })
-        });
-        var json = await res.json();
-        if (!res.ok) { toast('保存失败：' + (json && json.error ? json.error : 'HTTP ' + res.status)); return; }
-        var skippedNote = json.skipped && json.skipped.length ? '（' + json.skipped.length + ' 台离线设备未入场景）' : '';
-        toast('场景「' + name + '」已保存：' + json.scene.steps.length + ' 步' + skippedNote);
-      } catch (e) { toast('保存失败：网络不可达'); }
-      closeCtlModal();
-      refreshCtlDevices();
-    });
-    var cancel = document.createElement('button');
-    cancel.className = 'btn';
-    cancel.textContent = '取消';
-    cancel.addEventListener('click', closeCtlModal);
-    ui.list.appendChild(row);
-    ui.footer.appendChild(cancel);
-    ui.footer.appendChild(ok);
-    setTimeout(function () { input.focus(); }, 50);
-  }
-
-  /** 场景管理：重命名 / 删除 */
-  function ctlSceneManageDialog() {
-    if (!ctlPanel.scenes.length) { toast('还没有场景'); return; }
-    var ui = openCtlModal('场景管理', '重命名或删除已保存的场景');
-    ctlPanel.scenes.forEach(function (s) {
-      var row = document.createElement('div');
-      row.className = 'row';
-      var name = document.createElement('span');
-      name.className = 'grow';
-      name.textContent = s.name + '（' + s.steps.length + ' 步）';
-      row.appendChild(name);
-      var rn = document.createElement('button');
-      rn.className = 'mini-btn';
-      rn.textContent = '重命名';
-      rn.addEventListener('click', function () { ctlRenameScene(s); });
-      var del = document.createElement('button');
-      del.className = 'mini-btn';
-      del.textContent = '删除';
-      del.addEventListener('click', async function () {
-        openDialog('删除场景「' + s.name + '」？', '删除后不可恢复。', [
-          { text: '保留', run: function () {} },
-          { text: '删除', primary: true, run: async function () {
-            try {
-              await fetch(SERVER_BASE + '/api/ctl/scenes/' + encodeURIComponent(s.id), { method: 'DELETE' });
-              toast('已删除场景「' + s.name + '」');
-            } catch (e) { toast('删除失败：网络不可达'); }
-            refreshCtlDevices();
-            closeCtlModal();
-          } }
-        ], 'Enter 确认　Esc 取消');
-      });
-      row.appendChild(rn);
-      row.appendChild(del);
-      ui.list.appendChild(row);
-    });
-    var close = document.createElement('button');
-    close.className = 'btn';
-    close.textContent = '关闭';
-    close.addEventListener('click', closeCtlModal);
-    ui.footer.appendChild(close);
-  }
-
-  function ctlRenameScene(scene) {
-    var ui = openCtlModal('场景重命名', scene.id);
-    var row = document.createElement('div');
-    row.className = 'row';
-    var input = document.createElement('input');
-    input.type = 'text';
-    input.value = scene.name;
-    input.maxLength = 60;
-    input.style.cssText = 'flex:1;background:rgba(9,16,28,.9);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:14px;';
-    row.appendChild(input);
-    var ok = document.createElement('button');
-    ok.className = 'btn primary';
-    ok.textContent = '保存';
-    ok.addEventListener('click', async function () {
-      var name = input.value.trim();
-      if (!name) { toast('场景名不能为空'); return; }
-      try {
-        var res = await fetch(SERVER_BASE + '/api/ctl/scenes/' + encodeURIComponent(scene.id), {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: name })
-        });
-        toast(res.ok ? '已重命名：' + name : '重命名失败：HTTP ' + res.status);
-      } catch (e) { toast('重命名失败：网络不可达'); }
-      closeCtlModal();
-      refreshCtlDevices();
-    });
-    var cancel = document.createElement('button');
-    cancel.className = 'btn';
-    cancel.textContent = '取消';
-    cancel.addEventListener('click', closeCtlModal);
-    ui.list.appendChild(row);
-    ui.footer.appendChild(cancel);
-    ui.footer.appendChild(ok);
-    setTimeout(function () { input.focus(); }, 50);
   }
 
 
@@ -3653,9 +2802,7 @@ body.ctl-locked .tools .menu .menu-item#btnControl { opacity: 1 !important; poin
   syncClockOffset();
   // 启动不阻塞于网络：先用兜底内容渲染首屏，再后台增量同步
   syncFromServer(false);
-  initCtl(); // 多设备互控：注册心跳 + 领指令（受控半边）
-  // /console 深链直达「设备控制」（平板书签场景）
-  if (/[?&]screen=control\b/.test(location.search)) openControl();
+  initCtl(); // 多设备互控：注册心跳 + 领指令（受控半边；控制台在独立页 /console）
   setTimeout(function () { if (!rotation.active) applyZoom(); }, 200);
 })();
 </script>

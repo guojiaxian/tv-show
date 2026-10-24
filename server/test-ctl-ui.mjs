@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 /**
- * 多设备互控 · Web 客户端端到端验证（Playwright 驱动真实浏览器）
- * P2 受控半边：注册心跳 / 指令应用（show·rotate·zone·home）/ 锁定与角标 /
- *             模式开关（含退出二次确认）/ boot 恢复 / 断线意图暂存与补送。
- * P3/P4 用例（设备控制 screen 与场景）后续追加。
+ * 多设备互控 · 端到端验证（Playwright 驱动真实浏览器，双页面架构）
+ *
+ *   page1 = 显示端（/）   ：注册心跳 + 指令切换画面；**被控不锁鼠标**（核心修订断言）
+ *   page2 = 控制台（/console）：纯控制端，自身不注册为受控设备
+ *   DEV2  = 模拟电视（API 直接 beat）
  */
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
 const require = createRequire(import.meta.url);
 const { chromium } = require('/root/.pwtest/node_modules/playwright-core');
 
-// 动态探测已安装的 Chromium（版本号随升级变化）
 const PW_DIR = '/root/.cache/ms-playwright';
 const EXEC = fs.readdirSync(PW_DIR)
   .filter((d) => /^chromium-\d+$/.test(d))
@@ -22,8 +22,6 @@ if (!BASE) {
   console.error('本脚本会改写服务端数据，必须跑在隔离实例上：node server/test-run.mjs');
   process.exit(1);
 }
-const OUT = '/tmp/ctl-ui-test';
-fs.mkdirSync(OUT, { recursive: true });
 
 const results = [];
 const check = (name, pass, detail) => {
@@ -44,7 +42,6 @@ const send = (targets, cmd, args) => api('POST', '/api/ctl/send', { targets, cmd
 const deviceOf = async (id) =>
   (await api('GET', '/api/ctl/devices')).json.devices.find((d) => d.id === id);
 
-/** 轮询页面直到谓词为真（设备 3s 一拍心跳，给足余量） */
 async function waitUntil(fn, { timeout = 9000, interval = 300, label = '' } = {}) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
@@ -54,431 +51,307 @@ async function waitUntil(fn, { timeout = 9000, interval = 300, label = '' } = {}
   return false;
 }
 
-(async () => {
-  const browser = await chromium.launch({ executablePath: EXEC, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
-  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-  const page = await ctx.newPage();
-  const errors = [];
-  page.on('pageerror', (e) => errors.push('pageerror: ' + String(e).split('\n')[0]));
+function attachPageLog(page, errors, tag) {
+  page.on('pageerror', (e) => errors.push(tag + ' pageerror: ' + String(e).split('\n')[0]));
   page.on('console', (m) => {
     if (m.type() !== 'error') return;
-    if (/Failed to load resource/.test(m.text())) return; // 非目标是页的 HTTP 噪音
-    // 只记录客户端自身页面（主 frame）的脚本错误；走代理的目标大屏页面与客户端
-    // 同源（这正是代理的意义），其报错须按路径前缀排除；客户端自身不用 WebSocket
+    if (/Failed to load resource/.test(m.text())) return;
     const loc = (m.location() && m.location().url) || '';
     if (loc.startsWith(BASE + '/proxy/') || loc.startsWith(BASE + '/cam/') || loc.startsWith(BASE + '/shot/')) return;
     if (/^WebSocket connection/.test(m.text())) return;
-    errors.push('console: ' + m.text());
+    errors.push(tag + ' console: ' + m.text());
   });
+}
 
-  // 清理前置套件（test-ctl）留下的设备与场景，保证本套件从干净档案开始：
-  // test-run 在同一隔离实例上按顺序跑全部套件，控制通道的档案是跨套件共享的。
-  // 必须在打开页面前做——之后本机会随首拍心跳注册进来。
+(async () => {
+  const browser = await chromium.launch({ executablePath: EXEC, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+  const errors = [];
+
+  /* ---------- 清理前置套件档案（test-run 顺序执行，控制通道档案跨套件共享） ---------- */
   {
     const pre = (await api('GET', '/api/ctl/devices')).json;
     for (const d of pre.devices || []) await api('DELETE', '/api/ctl/device/' + encodeURIComponent(d.id));
     for (const s of pre.scenes || []) await api('DELETE', '/api/ctl/scenes/' + encodeURIComponent(s.id));
   }
 
-  await page.goto(BASE + '/', { waitUntil: 'load' });
-  if (process.env.CTL_UI_DEBUG) {
-    page.on('response', (r) => {
-      if (r.url().includes('/api/ctl/')) console.log('[dbg]', r.status(), r.url().replace(BASE, ''));
-    });
-  }
+  /* ============================ 显示端（/）受控侧 ============================ */
+  const ctx1 = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const page1 = await ctx1.newPage();
+  attachPageLog(page1, errors, '[显示端]');
 
-  /* ---------- 1. 打开即注册 ---------- */
-  const ok1 = await waitUntil(async () => !!(await page.evaluate(() => localStorage.getItem('tvshow.deviceId'))),
+  await page1.goto(BASE + '/', { waitUntil: 'load' });
+  const ok1 = await waitUntil(async () => !!(await page1.evaluate(() => localStorage.getItem('tvshow.deviceId'))),
     { timeout: 6000, label: 'deviceId 生成' });
-  const deviceId = await page.evaluate(() => localStorage.getItem('tvshow.deviceId'));
+  const deviceId = await page1.evaluate(() => localStorage.getItem('tvshow.deviceId'));
   const ok1b = await waitUntil(async () => {
     const d = await deviceOf(deviceId);
     return !!(d && d.reported && d.reported.mode === 'home');
   }, { label: '注册并上报 home' });
-  const dev1 = await deviceOf(deviceId);
-  check('打开页面即注册为受控设备并上报状态',
-    ok1 && ok1b && /^dev-[0-9a-f]{8}$/.test(deviceId), { deviceId, dev1 });
-  check('桌面浏览器自报 kind=pc，初始本地控制（managed=false）',
-    dev1 && dev1.kind === 'pc' && dev1.managed === false, dev1);
+  check('显示端打开即注册为受控设备并上报状态', ok1 && ok1b && /^dev-[0-9a-f]{8}$/.test(deviceId), deviceId);
 
-  /* ---------- 2. 下发 show → 切展示页并自动接管 ---------- */
-  await send([deviceId], 'show', { entryId: 'storage-monitor' });
-  const ok2 = await waitUntil(() => page.evaluate(() =>
-    !document.getElementById('displayScreen').hidden &&
-    !!document.querySelector('#frameViewport iframe[data-for="storage-monitor"]')), { label: 'show 切换' });
-  const ui2 = await page.evaluate(() => ({
-    locked: document.body.classList.contains('ctl-locked'),
-    badge: !document.getElementById('ctlBadge').hidden,
-    remote: document.getElementById('csRemote').classList.contains('on-remote')
-  }));
-  const dev2ok = await waitUntil(async () => {
-    const d = await deviceOf(deviceId);
-    return d.managed === true && d.reported.mode === 'page' && d.reported.entryId === 'storage-monitor';
-  }, { label: 'reported=page' });
-  check('show 指令：切换到指定页面（iframe data-for）', ok2);
-  check('show 指令自动进入远程被控（锁定 + 角标 + 开关高亮）',
-    ui2.locked && ui2.badge && ui2.remote, ui2);
-  check('服务端视角 managed=true 且 reported.mode=page', dev2ok);
-
-  /* ---------- 3. 受控锁定：展示操作不可用 ---------- */
-  const lock3 = await page.evaluate(() => ({
-    grid: getComputedStyle(document.getElementById('grid')).pointerEvents,
-    frame: getComputedStyle(document.getElementById('frameViewport')).pointerEvents,
-    btnRotation: getComputedStyle(document.getElementById('btnRotation')).pointerEvents,
-    ctlSwitch: getComputedStyle(document.getElementById('ctlSwitch')).pointerEvents
-  }));
-  check('锁定生效：卡片/iframe/顶栏按钮不可点，模式开关例外可用',
-    lock3.grid === 'none' && lock3.frame === 'none' && lock3.btnRotation === 'none' && lock3.ctlSwitch !== 'none', lock3);
-  // 快捷键被拦截（M 键不弹菜单）
-  await page.keyboard.press('m');
-  await page.waitForTimeout(300);
-  const menuOpen = await page.evaluate(() => {
-    const d = document.getElementById('dialogLayer');
-    return d && !d.hidden;
-  });
-  check('锁定生效：快捷键 M 被拦截（不弹控制菜单）', menuOpen === false);
-
-  /* ---------- 4. 开关退出（二次确认 → 确认） ---------- */
-  await page.click('#ctlSwitch');
-  await page.waitForTimeout(200);
-  const dlgVisible = await page.evaluate(() => !document.getElementById('dialogLayer').hidden);
-  check('退出远程被控弹出二次确认', dlgVisible);
-  await page.click('.dialog .item:has-text("退出，恢复本地操作")');
-  const ui4 = await page.evaluate(() => ({
-    locked: document.body.classList.contains('ctl-locked'),
-    badge: document.getElementById('ctlBadge').hidden,
-    local: document.getElementById('csLocal').classList.contains('on-local')
-  }));
-  check('确认后本机立即解锁（不等网络）', !ui4.locked && ui4.badge && ui4.local, ui4);
-  const dev4ok = await waitUntil(async () => (await deviceOf(deviceId)).managed === false, { label: 'managed=false' });
-  check('意图随心跳送达：服务端 managed=false、desired 清空', dev4ok);
-
-  /* ---------- 5. 再下发 → 自动切回受控 ---------- */
-  await send([deviceId], 'show', { entryId: 'env-monitor' });
-  const ok5 = await waitUntil(() => page.evaluate(() =>
-    document.body.classList.contains('ctl-locked') &&
-    !!document.querySelector('#frameViewport iframe[data-for="env-monitor"]')), { label: '再接管' });
-  check('本地态再收展示指令 → 自动切回远程被控并切页', ok5);
-
-  /* ---------- 6. 二次确认的取消路径 ---------- */
-  await page.click('#ctlSwitch');
-  await page.waitForTimeout(200);
-  await page.click('.dialog .item:has-text("继续远程被控")');
-  await page.waitForTimeout(200);
-  const stillLocked = await page.evaluate(() => document.body.classList.contains('ctl-locked'));
-  check('确认弹层选「继续远程被控」→ 保持被控不退出', stillLocked);
-
-  /* ---------- 7. rotate 指令 ---------- */
-  await api('POST', '/api/ctl/release', { targets: [deviceId] });
-  await waitUntil(async () => (await deviceOf(deviceId)).managed === false, { label: 'release' });
-  await waitUntil(() => page.evaluate(() => !document.body.classList.contains('ctl-locked')), { label: '解锁' });
-  await send([deviceId], 'rotate', { intervalSec: 5, items: ['storage-monitor', 'env-monitor'] });
-  const ok7 = await waitUntil(() => page.evaluate(() =>
-    document.getElementById('rotationChip').classList.contains('show')), { label: '轮询启动' });
-  const ls7 = await page.evaluate(() => JSON.parse(localStorage.getItem('tvshow.localSettings') || '{}').rotation);
-  const dev7ok = await waitUntil(async () => {
-    const d = await deviceOf(deviceId);
-    return d.reported.mode === 'rotate' && d.reported.rotate &&
-      JSON.stringify(d.reported.rotate.items) === JSON.stringify(['storage-monitor', 'env-monitor']);
-  }, { label: 'reported=rotate' });
-  const dev7 = await deviceOf(deviceId);
-  check('rotate 指令：写入本机轮询设置并进入轮询播放',
-    ok7 && ls7 && ls7.intervalSec === 5 &&
-    JSON.stringify(ls7.items) === JSON.stringify(['storage-monitor', 'env-monitor']), ls7);
-  check('服务端视角 reported.mode=rotate（含 items 序列）', dev7ok, dev7.reported);
-
-  /* ---------- 8. zone 指令 ---------- */
-  await send([deviceId], 'zone', { slots: ['storage-monitor', null, 'env-monitor', 'security-cockpit'] });
-  const ok8 = await waitUntil(() => page.evaluate(() =>
-    !document.getElementById('zoneScreen').hidden &&
-    document.querySelectorAll('#zoneGrid .zone-cell').length === 4), { label: '分屏切换' });
-  const zone8 = await page.evaluate(() => Array.from(document.querySelectorAll('#zoneGrid .zone-cell')).map(function (c) {
-    const f = c.querySelector('iframe');
-    return f ? f.getAttribute('data-for') : null;
-  }));
-  const dev8ok = await waitUntil(async () => {
-    const d = await deviceOf(deviceId);
-    return d.reported.mode === 'zone' && d.reported.zone &&
-      JSON.stringify(d.reported.zone.slots) === JSON.stringify(['storage-monitor', null, 'env-monitor', 'security-cockpit']);
-  }, { label: 'reported=zone' });
-  check('zone 指令：进入 2×2 分屏且四格内容正确',
-    ok8 && JSON.stringify(zone8) === JSON.stringify(['storage-monitor', null, 'env-monitor', 'security-cockpit']), zone8);
-  check('服务端视角 reported.mode=zone（含 slots）', dev8ok);
-
-  /* ---------- 9. home 指令与维护类不改模式 ---------- */
-  await send([deviceId], 'home');
-  await waitUntil(() => page.evaluate(() => !document.getElementById('homeScreen').hidden), { label: '回首页' });
-  const ui9 = await page.evaluate(() => ({
-    locked: document.body.classList.contains('ctl-locked')
-  }));
-  check('home 指令：回首页并保持受控（受控停在首页）', ui9.locked, ui9);
-  await send([deviceId], 'refresh');
-  await waitUntil(async () => (await deviceOf(deviceId)).desired === null, { label: 'refresh ack' });
-  const dev9 = await deviceOf(deviceId);
-  check('维护类指令（refresh）不改变受控模式', dev9.managed === true, dev9);
-
-  /* ---------- 10. 交还后维护类在本地态也可用 ---------- */
-  await api('POST', '/api/ctl/release', { targets: [deviceId] });
-  await waitUntil(async () => (await deviceOf(deviceId)).managed === false, { label: 'release2' });
-  await send([deviceId], 'sync');
-  const dev10 = await deviceOf(deviceId);
-  check('本地态收到维护类指令：可送达且不改变模式', dev10.managed === false && dev10.desired && dev10.desired.cmd === 'sync', dev10);
-
-  /* ---------- 11. boot 恢复 ---------- */
-  await send([deviceId], 'show', { entryId: 'env-monitor' });
-  await waitUntil(() => page.evaluate(() =>
-    !!document.querySelector('#frameViewport iframe[data-for="env-monitor"]')), { label: 'show env' });
-  await waitUntil(async () => {
-    const d = await deviceOf(deviceId);
-    return !d.pending;
-  }, { label: 'ack' });
-  await page.reload({ waitUntil: 'load' });
-  const ok11 = await waitUntil(() => page.evaluate(() =>
-    document.body.classList.contains('ctl-locked') &&
-    !!document.querySelector('#frameViewport iframe[data-for="env-monitor"]')), { timeout: 12000, label: 'boot 恢复' });
-  check('页面重开（boot）自动恢复受控画面（managed + bootRestore）', ok11);
-
-  /* ---------- 12. 断线意图暂存与补送 ---------- */
-  await page.route('**/api/ctl/beat', (route) => route.abort());
-  await page.waitForTimeout(3600); // 覆盖一拍失败（failStreak=1 → 退避 6s）
-  await page.click('#ctlSwitch');
-  await page.waitForTimeout(200);
-  await page.click('.dialog .item:has-text("退出，恢复本地操作")');
-  const ui12 = await page.evaluate(() => ({
-    locked: document.body.classList.contains('ctl-locked')
-  }));
-  const dev12 = await deviceOf(deviceId);
-  check('断线时拨开关：本机立即解锁（影子即时生效）', !ui12.locked, ui12);
-  check('断线时意图暂存：服务端仍认为受控', dev12.managed === true, dev12);
-  await page.unroute('**/api/ctl/beat');
-  const ok12 = await waitUntil(async () => (await deviceOf(deviceId)).managed === false,
-    { timeout: 25000, label: '意图补送' });
-  check('恢复网络后意图自动送达：服务端 managed=false', ok12);
-
-  /* ---------- 13. 无 JS 异常 ---------- */
-  check('运行期无 JS 异常与 console 错误', errors.length === 0, errors);
-
-  /* ============================ P3 · 控制半边（设备控制 screen） ============================ */
-
-  // 第二台设备（电视）用 API 模拟心跳注册，作为被控对象
+  /* ---------- 模拟电视 DEV2 ---------- */
   const DEV2 = 'dev-test0002';
   const beat2 = (extra = {}) => api('POST', '/api/ctl/beat', {
     deviceId: DEV2, kind: 'tv', appVersion: 'test', ackedSeq: 0, ...extra
   });
-  await beat2({ state: { mode: 'home' } });
 
-  /* ---------- 14. 打开设备控制（更多菜单入口），列表渲染 ---------- */
-  await page.goto(BASE + '/?screen=control', { waitUntil: 'load' });
-  await waitUntil(() => page.evaluate(() => !document.getElementById('controlScreen').hidden), { label: '控制屏打开' });
-  await page.click('#btnCtlReload'); // 手动刷新引入 DEV2
-  const list14 = await waitUntil(async () => {
-    const n = await page.evaluate(() => document.querySelectorAll('#ctlDeviceList .ctl-card').length);
+  /* ============================ 控制台（/console）控制侧 ============================ */
+  const ctx2 = await browser.newContext({ viewport: { width: 1180, height: 860 } });
+  const page2 = await ctx2.newPage();
+  attachPageLog(page2, errors, '[控制台]');
+  await page2.goto(BASE + '/console', { waitUntil: 'load' });
+  await page2.click('#btnReload');
+
+  // 控制台不注册为受控设备
+  const beforeCount = (await api('GET', '/api/ctl/devices')).json.devices.length;
+  await page2.waitForTimeout(3500); // 覆盖一拍心跳周期
+  const afterCount = (await api('GET', '/api/ctl/devices')).json.devices.length;
+  check('控制台是纯控制端：自身不注册为受控设备（列表数不变）',
+    beforeCount === 1 && afterCount === 1, { beforeCount, afterCount });
+
+  /* ---------- 单台下发 show（只发显示端），断言：切画面 + 不锁鼠标 ---------- */
+  await send([deviceId], 'show', { entryId: 'storage-monitor' });
+  const okShow = await waitUntil(() => page1.evaluate(() =>
+    !document.getElementById('displayScreen').hidden &&
+    !!document.querySelector('#frameViewport iframe[data-for="storage-monitor"]')), { label: 'show 切换' });
+  check('show 指令：显示端切换到指定页面', okShow);
+
+  const uiLock = await page1.evaluate(() => ({
+    lockedClass: document.body.classList.contains('ctl-locked'),
+    btnBackClickable: getComputedStyle(document.getElementById('btnBack')).pointerEvents !== 'none'
+  }));
+  check('核心修订：被控后不锁定（无 ctl-locked 类，顶栏按钮可点）',
+    uiLock.lockedClass === false && uiLock.btnBackClickable === true, uiLock);
+
+  // 被控状态下鼠标真实可点：点「← 返回首页」成功回到首页
+  await page1.click('#btnBack');
+  const homeClickable = await waitUntil(() => page1.evaluate(() =>
+    !document.getElementById('homeScreen').hidden), { label: '本地点击返回首页' });
+  check('核心修订：被控状态下鼠标点击真实生效（点「返回首页」成功）', homeClickable);
+
+  // 首页卡片存在（鼠标可用性已由上一条「点返回首页」验证）
+  const cardClick = await page1.evaluate(() => document.getElementById('grid').children.length > 0);
+  check('首页卡片结构存在（点击由上一条已验证鼠标可用）', cardClick);
+  const devAfterClick = await deviceOf(deviceId);
+  check('本地点击后服务端如实收到新状态（reported 跟随实际画面）',
+    await waitUntil(async () => ['page', 'home'].includes((await deviceOf(deviceId)).reported.mode), { label: 'reported 更新' }), devAfterClick.reported);
+
+  /* ---------- 控制台列表渲染与操作 ---------- */
+  await beat2({ state: { mode: 'home' } });
+  await page2.click('#btnReload');
+  const twoCards = await waitUntil(async () => {
+    const n = await page2.evaluate(() => document.querySelectorAll('#deviceList .card').length);
     return n === 2 ? n : false;
   }, { label: '两台设备' });
-  const cards14 = await page.evaluate(() => Array.from(document.querySelectorAll('#ctlDeviceList .ctl-card')).map((c) => ({
-    self: c.classList.contains('self'),
+  const cards = await page2.evaluate(() => Array.from(document.querySelectorAll('#deviceList .card')).map((c) => ({
     kind: c.querySelector('.kind').textContent,
-    chip: c.querySelector('.chip').textContent,
-    online: c.querySelector('.dot').className
+    chip: c.querySelector('.chip').textContent
   })));
-  check('设备列表渲染：本机卡片 + 二号电视（TV 图标 / 本地控制 / 在线）',
-    !!list14 && cards14.length === 2 && cards14.some((c) => c.self) &&
-    cards14.some((c) => c.kind === 'TV' && c.chip === '本地控制'), cards14);
-  const selfSummaryOk = await waitUntil(async () => {
-    const t = await page.evaluate(() => {
-      const self = document.querySelector('#ctlDeviceList .ctl-card.self .st');
-      return self ? self.textContent : '';
-    });
-    return t.includes('控制中') ? t : false;
-  }, { label: '本机上报控制中' });
-  check('本机状态摘要显示「控制中」（mode=control 上报生效）', !!selfSummaryOk, selfSummaryOk);
+  check('控制台设备列表：显示端（PC）+ 二号电视（TV，本地控制）',
+    !!twoCards && cards.length === 2 && cards.some((c) => c.kind === 'PC') &&
+    cards.some((c) => c.kind === 'TV' && c.chip === '本地控制'), cards);
 
-  /* ---------- 15. 单台下发：只勾二号电视，本机不受影响 ---------- */
-  await page.evaluate((id) => {
-    const cards = Array.from(document.querySelectorAll('#ctlDeviceList .ctl-card'));
-    const target = cards.find((c) => !c.classList.contains('self'));
+  // 单台下发：只勾 DEV2
+  await page2.evaluate(() => {
+    const target = Array.from(document.querySelectorAll('#deviceList .card')).find((c) => c.querySelector('.kind').textContent === 'TV');
     target.querySelector('.ck').click();
-  }, DEV2);
-  await page.selectOption('#selCtlEntry', 'storage-monitor');
-  await page.waitForTimeout(600);
+  });
+  await page2.selectOption('#selEntry', 'env-monitor');
+  await page2.waitForTimeout(600);
   const dev2a = await deviceOf(DEV2);
   const dev1a = await deviceOf(deviceId);
-  check('单台下发：仅二号电视收到 show 指令（本机无 desired）',
+  check('单台下发：仅二号电视收到 show（显示端不受影响）',
     dev2a.desired && dev2a.desired.cmd === 'show' && dev2a.managed === true &&
-    (!dev1a.desired || dev1a.desired.seq < dev2a.desired.seq), { dev2a: dev2a.desired, dev1a: dev1a.desired });
-  // 列表立即显示待送达角标（不等设备心跳）
-  const pending15 = await page.evaluate(() => !!document.querySelector('#ctlDeviceList .ctl-card:not(.self) .chip.pending'));
-  check('下发后列表立即出现「待送达」角标', pending15);
-  // 二号电视领走指令（ackedSeq 保持 0，模拟尚未应用）
-  const b2 = await beat2({ state: { mode: 'page', entryId: 'storage-monitor' } });
+    (!dev1a.desired || dev1a.desired.seq < dev2a.desired.seq), { dev2: dev2a.desired, dev1: dev1a.desired });
+  const pendingShown = await page2.evaluate(() => !!document.querySelector('#deviceList .chip.pending'));
+  check('下发后列表立即出现「待送达」角标', pendingShown);
+  const b2 = await beat2({ state: { mode: 'page', entryId: 'env-monitor' } });
   check('二号电视心跳领到指令（模拟电视端 beat）', b2.json.desired && b2.json.desired.cmd === 'show', b2.json);
 
-  /* ---------- 16. 轮询配置弹层 ---------- */
-  await page.click('#btnCtlRotate');
-  const modal16 = await page.evaluate(() => {
-    const m = document.querySelector('.ctl-modal');
+  /* ---------- 轮询弹层 ---------- */
+  await page2.click('#btnRotate');
+  const modalRot = await page2.evaluate(() => {
+    const m = document.querySelector('.modal');
     if (!m) return null;
-    const sync = m.querySelector('input[type="checkbox"]');
-    const iv = m.querySelector('select');
-    return { exists: true, syncChecked: sync ? sync.checked : null, hasInterval: !!iv };
+    const rows = Array.from(m.querySelectorAll('.row'));
+    const sync = rows.map((r) => r.querySelector('input[type="checkbox"]')).find(Boolean);
+    return { syncChecked: sync ? sync.checked : null, hasInterval: !!m.querySelector('select') };
   });
   check('轮询弹层：多屏同步切换默认不勾 + 间隔预设可用',
-    modal16 && modal16.syncChecked === false && modal16.hasInterval === true, modal16);
-  // 勾选一个页面出现序号，调序按钮可用（.grow 区分页面行与 phaseSync/间隔行）
-  await page.evaluate(() => {
-    const rows = Array.from(document.querySelectorAll('.ctl-modal .row'));
+    modalRot && modalRot.syncChecked === false && modalRot.hasInterval, modalRot);
+  await page2.evaluate(() => {
+    const rows = Array.from(document.querySelectorAll('.modal .row'));
     const row = rows.find((r) => r.querySelector('.grow') && r.querySelector('input[type="checkbox"]'));
     row.querySelector('input[type="checkbox"]').click();
   });
-  const draft16 = await page.evaluate(() => {
-    const rows = Array.from(document.querySelectorAll('.ctl-modal .row'));
-    const checked = rows.filter((r) => { const c = r.querySelector('input[type="checkbox"]'); return c && c.checked; });
-    return { count: checked.length, hasOrder: /1\.\s/.test(checked[0] ? checked[0].textContent : ''), hasUp: !!document.querySelector('.ctl-modal .mini-btn') };
+  const draft = await page2.evaluate(() => {
+    const checked = Array.from(document.querySelectorAll('.modal .row')).filter((r) => {
+      const c = r.querySelector('input[type="checkbox"]'); return c && c.checked;
+    });
+    return { count: checked.length, hasOrder: /1\.\s/.test(checked[0] ? checked[0].textContent : '') };
   });
-  check('轮询弹层：勾选页面进入序列（显示顺序号 + 调序按钮）',
-    draft16.count === 1 && draft16.hasOrder && draft16.hasUp, draft16);
-  await page.keyboard.press('Escape'); // 关闭弹层不下发
-  const modal16c = await page.evaluate(() => !document.getElementById('dialogLayer').hidden);
-  check('Esc 只关闭配置弹层、不离开控制屏', modal16c === false &&
-    await page.evaluate(() => !document.getElementById('controlScreen').hidden));
+  check('轮询弹层：勾选页面进入序列（顺序号）', draft.count === 1 && draft.hasOrder, draft);
+  await page2.keyboard.press('Escape');
+  const modalClosed = await page2.evaluate(() => document.getElementById('mask').hidden);
+  check('Esc 关闭配置弹层', modalClosed === true);
 
-  /* ---------- 17. 分屏配置弹层 ---------- */
-  await page.click('#btnCtlZone');
-  const modal17 = await page.evaluate(() => {
-    const sels = Array.from(document.querySelectorAll('.ctl-modal .zonegrid select'));
+  /* ---------- 分屏弹层 ---------- */
+  await page2.click('#btnZone');
+  const modalZone = await page2.evaluate(() => {
+    const sels = Array.from(document.querySelectorAll('.modal .zonegrid select'));
     return { count: sels.length, allHaveNone: sels.every((s) => s.options[0] && s.options[0].textContent === '不使用') };
   });
-  check('分屏弹层：四格下拉且每格都有「不使用」', modal17.count === 4 && modal17.allHaveNone, modal17);
-  await page.keyboard.press('Escape');
+  check('分屏弹层：四格下拉且每格都有「不使用」', modalZone.count === 4 && modalZone.allHaveNone, modalZone);
+  await page2.keyboard.press('Escape');
 
-  /* ---------- 18. 改名 ---------- */
-  await page.evaluate(() => {
-    const target = Array.from(document.querySelectorAll('#ctlDeviceList .ctl-card')).find((c) => !c.classList.contains('self'));
-    Array.from(target.querySelectorAll('.ops .btn')).find((b) => b.textContent === '改名').click();
-  });
-  await page.waitForTimeout(200);
-  await page.fill('.ctl-modal input[type="text"]', '二号电视');
-  await page.click('.ctl-modal footer .btn.primary');
-  await page.waitForTimeout(500);
-  const dev2r = await deviceOf(DEV2);
-  const name18 = await page.evaluate(() => {
-    const target = Array.from(document.querySelectorAll('#ctlDeviceList .ctl-card')).find((c) => !c.classList.contains('self'));
-    return target ? target.querySelector('.nm b').textContent : '';
-  });
-  check('改名弹层：保存后服务端与列表同步更新', dev2r.name === '二号电视' && name18 === '二号电视', { dev2r: dev2r.name, name18 });
+  /* ---------- 对显示端下发 rotate / zone / home（page1 断言） ---------- */
+  await send([deviceId], 'rotate', { intervalSec: 5, items: ['storage-monitor', 'env-monitor'] });
+  const okRotate = await waitUntil(() => page1.evaluate(() =>
+    document.getElementById('rotationChip').classList.contains('show')), { label: '轮询启动' });
+  const lsRotate = await page1.evaluate(() => JSON.parse(localStorage.getItem('tvshow.localSettings') || '{}').rotation);
+  check('rotate 指令：写入本机轮询设置并进入轮询播放',
+    okRotate && lsRotate && lsRotate.intervalSec === 5 &&
+    JSON.stringify(lsRotate.items) === JSON.stringify(['storage-monitor', 'env-monitor']), lsRotate);
+  const repRotate = await waitUntil(async () => {
+    const d = await deviceOf(deviceId);
+    return d.reported.mode === 'rotate' && d.reported.rotate &&
+      JSON.stringify(d.reported.rotate.items) === JSON.stringify(['storage-monitor', 'env-monitor']);
+  }, { label: 'reported=rotate' });
+  check('服务端视角 reported.mode=rotate（含 items 序列）', repRotate);
 
-  /* ---------- 19. 群组下发（全选 → home），本机也被接管并回首页 ---------- */
-  await page.click('#btnCtlAll'); // 全选（2 台）
-  await page.click('#btnCtlHome');
-  await page.waitForTimeout(800);
-  const both19 = await Promise.all([deviceOf(deviceId), deviceOf(DEV2)]);
-  check('群组下发：两台设备均收到 home 且被接管',
-    both19.every((d) => d.managed === true && d.desired && d.desired.cmd === 'home'),
-    both19.map((d) => ({ m: d.managed, c: d.desired && d.desired.cmd })));
-  const home19 = await waitUntil(() => page.evaluate(() =>
-    !document.getElementById('homeScreen').hidden &&
-    document.body.classList.contains('ctl-locked')), { label: '本机回首页并锁定' });
-  check('本机也在目标集合：真实收到指令回首页并锁定', home19);
+  await send([deviceId], 'zone', { slots: ['storage-monitor', null, 'env-monitor', 'security-cockpit'] });
+  const okZone = await waitUntil(() => page1.evaluate(() =>
+    !document.getElementById('zoneScreen').hidden &&
+    document.querySelectorAll('#zoneGrid .zone-cell').length === 4), { label: '分屏切换' });
+  const zoneSlots = await page1.evaluate(() => Array.from(document.querySelectorAll('#zoneGrid .zone-cell')).map(function (c) {
+    const f = c.querySelector('iframe');
+    return f ? f.getAttribute('data-for') : null;
+  }));
+  check('zone 指令：进入 2×2 分屏且四格内容正确',
+    okZone && JSON.stringify(zoneSlots) === JSON.stringify(['storage-monitor', null, 'env-monitor', 'security-cockpit']), zoneSlots);
 
-  /* ---------- 20. 受控锁定时控制屏仍是例外入口（自我解除保证） ---------- */
-  await page.click('#btnMore');
-  await page.waitForTimeout(200);
-  const menu20 = await page.evaluate(() => {
-    const items = Array.from(document.querySelectorAll('#moreMenu .menu-item'));
-    const ctlBtn = items.find((b) => b.id === 'btnControl');
-    const settingsBtn = items.find((b) => b.id === 'btnSettings');
-    return {
-      menuVisible: !document.getElementById('moreMenu').hidden,
-      ctlEnabled: ctlBtn && getComputedStyle(ctlBtn).pointerEvents !== 'none',
-      settingsDisabled: settingsBtn && getComputedStyle(settingsBtn).pointerEvents === 'none'
-    };
-  });
-  check('受控锁定时菜单可用、仅「设备控制」例外可点（其余条目锁定）',
-    menu20.menuVisible && menu20.ctlEnabled && menu20.settingsDisabled, menu20);
-  await page.click('#btnControl');
-  const ctl20 = await page.evaluate(() => !document.getElementById('controlScreen').hidden);
-  const lock20 = await page.evaluate(() => document.body.classList.contains('ctl-locked'));
-  check('受控锁定时仍可进入设备控制屏（且控制屏本身不锁定）', ctl20 && !lock20);
+  await send([deviceId], 'home');
+  const okHome = await waitUntil(() => page1.evaluate(() =>
+    !document.getElementById('homeScreen').hidden), { label: '回首页' });
+  check('home 指令：回到首页（画面切换，本地操作依旧可用）', okHome);
 
-  /* ---------- 21. 取消控制（二次确认） ---------- */
-  await page.evaluate(() => {
-    const cards = Array.from(document.querySelectorAll('#ctlDeviceList .ctl-card'));
-    cards.forEach((c) => { const ck = c.querySelector('.ck'); if (!ck.checked) ck.click(); });
-  });
-  await page.click('#btnCtlRelease');
-  await page.waitForTimeout(200);
-  const dlg21 = await page.evaluate(() => !document.getElementById('dialogLayer').hidden);
-  check('「取消控制」弹出二次确认', dlg21);
-  await page.click('.dialog .item:has-text("取消控制，交还本地")');
-  const rel21 = await waitUntil(async () =>
+  /* ---------- 维护类不改模式 + 本地态也可送达 ---------- */
+  await send([deviceId], 'refresh');
+  await waitUntil(async () => (await deviceOf(deviceId)).desired === null, { label: 'refresh ack' });
+  check('维护类指令（refresh）可送达且不改变受控标记', (await deviceOf(deviceId)).managed === true);
+  await api('POST', '/api/ctl/release', { targets: [deviceId] });
+  await waitUntil(async () => (await deviceOf(deviceId)).managed === false, { label: 'release' });
+  await send([deviceId], 'sync');
+  const devSync = await deviceOf(deviceId);
+  check('本地态收到维护类指令：可送达且不改变模式', devSync.managed === false && devSync.desired && devSync.desired.cmd === 'sync', devSync.desired);
+
+  /* ---------- boot 恢复（显示端 reload） ---------- */
+  await send([deviceId], 'show', { entryId: 'env-monitor' });
+  await waitUntil(() => page1.evaluate(() =>
+    !!document.querySelector('#frameViewport iframe[data-for="env-monitor"]')), { label: 'show env' });
+  await waitUntil(async () => !(await deviceOf(deviceId)).pending, { label: 'ack' });
+  await page1.reload({ waitUntil: 'load' });
+  const okBoot = await waitUntil(() => page1.evaluate(() =>
+    !!document.querySelector('#frameViewport iframe[data-for="env-monitor"]')), { timeout: 12000, label: 'boot 恢复' });
+  const bootNoLock = await page1.evaluate(() => ({
+    lockedClass: document.body.classList.contains('ctl-locked'),
+    btnBack: getComputedStyle(document.getElementById('btnBack')).pointerEvents
+  }));
+  check('页面重开（boot）自动恢复设定画面，且依旧不锁定鼠标',
+    okBoot && bootNoLock.lockedClass === false && bootNoLock.btnBack !== 'none', bootNoLock);
+
+  /* ---------- 控制台：群组下发（全选 home） ---------- */
+  await page2.click('#btnAll');
+  await page2.click('#btnHome');
+  await page2.waitForTimeout(700);
+  const both = await Promise.all([deviceOf(deviceId), deviceOf(DEV2)]);
+  check('控制台群组下发：两台设备均收到 home 并被接管',
+    both.every((d) => d.managed === true && d.desired && d.desired.cmd === 'home'),
+    both.map((d) => ({ m: d.managed, c: d.desired && d.desired.cmd })));
+  const homeReal = await waitUntil(() => page1.evaluate(() =>
+    !document.getElementById('homeScreen').hidden), { label: '显示端真实回首页' });
+  check('显示端在群组集合中：真实收到指令回首页', homeReal);
+
+  /* ---------- 取消控制（二次确认） ---------- */
+  await page2.click('#btnRelease');
+  await page2.waitForTimeout(200);
+  const dlgVisible = await page2.evaluate(() => !document.getElementById('mask').hidden);
+  check('「取消控制」弹出二次确认', dlgVisible);
+  await page2.click('.confirm-btn:has-text("取消控制，交还本地")');
+  const released = await waitUntil(async () =>
     (await deviceOf(DEV2)).managed === false && (await deviceOf(deviceId)).managed === false, { label: '两台交还' });
-  const unlock21 = await waitUntil(() => page.evaluate(() => !document.body.classList.contains('ctl-locked')), { label: '本机解锁' });
-  check('确认后两台设备交还本地、本机立即解锁', rel21 && unlock21);
+  check('确认后两台设备交还本地控制', released);
 
-  /* ============================ P4 · 场景预设 ============================ */
-
-  /* ---------- 22. 存为场景（服务端快照：本地设备 reported 转指令；控制中设备不入场景） ---------- */
-  // 当前：本机在控制屏（mode=control，不入场景）；二号电视刷新心跳保持在线，reported=page/storage-monitor
+  /* ---------- 场景 ---------- */
   await beat2({ state: { mode: 'page', entryId: 'storage-monitor' } });
-  await page.click('#btnCtlSceneSave');
-  await page.waitForTimeout(200);
-  await page.fill('.ctl-modal input[type="text"]', '晨会');
-  await page.click('.ctl-modal footer .btn.primary');
-  let scene22 = null;
-  const scene22ok = await waitUntil(async () => {
+  // 等显示端把「回首页」上报上来（心跳 3s 一拍，快照取的是最近一拍状态）
+  await waitUntil(async () => (await deviceOf(deviceId)).reported.mode === 'home', { label: '显示端上报 home' });
+  await page2.click('#btnSceneSave');
+  await page2.waitForTimeout(200);
+  await page2.fill('.modal input[type="text"]', '晨会');
+  await page2.click('.modal footer .btn.primary');
+  let scene = null;
+  const sceneOk = await waitUntil(async () => {
     const list = (await api('GET', '/api/ctl/devices')).json.scenes;
-    scene22 = list.find((s) => s.name === '晨会') || null;
-    return !!scene22;
+    scene = list.find((s) => s.name === '晨会') || null;
+    return !!scene;
   }, { label: '场景落盘' });
-  check('存为场景：保存成功且场景条立即出现按钮', scene22ok, scene22);
-  await page.click('#btnCtlReload');
-  const sceneBtn22ok = await waitUntil(() => page.evaluate(() =>
-    !!document.querySelector('#ctlSceneList .btn.apply')), { label: '场景按钮' });
-  const sceneBtn22 = await page.evaluate(() => {
-    const b = document.querySelector('#ctlSceneList .btn.apply');
-    return b ? b.textContent : null;
-  });
-  check('场景条渲染「▶晨会」按钮（含步数）', sceneBtn22ok && /晨会/.test(sceneBtn22 || ''), sceneBtn22);
-  const step22 = scene22 && scene22.steps ? scene22.steps.find((s) => s.deviceId === DEV2) : null;
-  check('快照内容：本地控制的二号电视 reported(page) 转为 show 指令',
-    scene22.steps.length === 1 && step22 && step22.cmd === 'show' &&
-    step22.args.entryId === 'storage-monitor', scene22.steps);
+  check('存为场景：保存成功且场景条立即出现按钮', sceneOk, scene && scene.name);
+  const btnShown = await waitUntil(() => page2.evaluate(() =>
+    !!document.querySelector('#sceneList .btn.apply')), { label: '场景按钮' });
+  check('场景条渲染「▶晨会」按钮', btnShown);
+  const stepTv = scene && scene.steps ? scene.steps.find((s) => s.deviceId === DEV2) : null;
+  const stepWeb = scene && scene.steps ? scene.steps.find((s) => s.deviceId === deviceId) : null;
+  check('快照内容：本地电视 reported(page) 转 show、显示端 home 转 home',
+    !!stepTv && stepTv.cmd === 'show' && stepTv.args.entryId === 'storage-monitor' &&
+    !!stepWeb && stepWeb.cmd === 'home', scene && scene.steps);
 
-  /* ---------- 23. 应用场景：未受控设备自动接管 ---------- */
-  await page.click('#ctlSceneList .btn.apply');
-  const applied23 = await waitUntil(async () => {
-    const d = await deviceOf(DEV2);
-    return d.managed === true && d.desired && d.desired.cmd === 'show';
-  }, { label: '二号电视被接管' });
-  check('一键应用场景：二号电视收到 show 并自动接管', applied23);
-  const self23 = await deviceOf(deviceId);
-  check('场景不含「控制中」设备：本机不受影响（仍本地）', self23.managed === false, self23.managed);
+  // 应用场景：两台自动接管
+  await page2.click('#sceneList .btn.apply');
+  const applied = await waitUntil(async () => {
+    const d2 = await deviceOf(DEV2);
+    const d1 = await deviceOf(deviceId);
+    return d2.managed === true && d2.desired && d2.desired.cmd === 'show' &&
+           d1.managed === true && d1.desired && d1.desired.cmd === 'home';
+  }, { label: '场景应用' });
+  check('一键应用场景：两台设备自动接管并收到各自指令', applied);
 
-  /* ---------- 24. 场景管理：重命名与删除 ---------- */
-  await page.click('#btnCtlSceneManage');
-  await page.waitForTimeout(200);
-  await page.click('.ctl-modal .mini-btn:has-text("重命名")');
-  await page.waitForTimeout(200);
-  await page.fill('.ctl-modal input[type="text"]', '晨会V2');
-  await page.click('.ctl-modal footer .btn.primary');
-  const scene24ok = await waitUntil(async () => {
+  // 场景重命名 / 删除
+  await page2.click('#btnSceneManage');
+  await page2.waitForTimeout(200);
+  await page2.click('.modal .row .btn:has-text("重命名")');
+  await page2.waitForTimeout(200);
+  await page2.fill('.modal input[type="text"]', '晨会V2');
+  await page2.click('.modal footer .btn.primary');
+  const renamed = await waitUntil(async () => {
     const list = (await api('GET', '/api/ctl/devices')).json.scenes;
     return list.length === 1 && list[0].name === '晨会V2';
-  }, { label: '重命名生效' });
-  check('场景重命名生效', scene24ok);
-  await page.click('#btnCtlSceneManage');
-  await page.waitForTimeout(200);
-  await page.click('.ctl-modal .mini-btn:has-text("删除")');
-  await page.waitForTimeout(200);
-  await page.click('.dialog .item:has-text("删除")');
-  const sceneGone24 = await waitUntil(async () => {
-    const list = (await api('GET', '/api/ctl/devices')).json.scenes;
-    return list.length === 0;
-  }, { label: '场景删除' });
-  check('场景删除生效（列表清空）', sceneGone24);
+  }, { label: '重命名' });
+  check('场景重命名生效', renamed);
+  await page2.click('#btnSceneManage');
+  await page2.waitForTimeout(200);
+  await page2.click('.modal .row .btn:has-text("删除")');
+  await page2.waitForTimeout(200);
+  await page2.click('.confirm-btn:has-text("删除")');
+  const deleted = await waitUntil(async () =>
+    (await api('GET', '/api/ctl/devices')).json.scenes.length === 0, { label: '删除' });
+  check('场景删除生效（列表清空）', deleted);
 
-  /* ---------- 25. 收尾检查 ---------- */
-  check('运行期无 JS 异常与 console 错误（含场景）', errors.length === 0, errors);
+  /* ---------- 改名与开机恢复开关（控制台卡片操作） ---------- */
+  await page2.click('#btnReload');
+  await page2.waitForTimeout(400);
+  await page2.evaluate(() => {
+    const target = Array.from(document.querySelectorAll('#deviceList .card')).find((c) => c.querySelector('.kind').textContent === 'TV');
+    Array.from(target.querySelectorAll('.ops .btn')).find((b) => b.textContent === '改名').click();
+  });
+  await page2.waitForTimeout(200);
+  await page2.fill('.modal input[type="text"]', '二号电视');
+  await page2.click('.modal footer .btn.primary');
+  const renamedDev = await waitUntil(async () => (await deviceOf(DEV2)).name === '二号电视', { label: '设备改名' });
+  check('设备改名生效（服务端与列表同步）', renamedDev);
+
+  /* ---------- 收尾 ---------- */
+  check('两页运行期均无 JS 异常与 console 错误', errors.length === 0, errors);
 
   await browser.close();
   const pass = results.filter((x) => x.pass).length;
