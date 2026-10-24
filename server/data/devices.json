@@ -1,5 +1,5 @@
 {
-  "seq": 5,
+  "seq": 7,
   "devices": [
     {
       "id": "dev-e8952f98",
@@ -10,7 +10,7 @@
       "managed": false,
       "bootRestore": true,
       "desired": null,
-      "ackedSeq": 0
+      "ackedSeq": 7
     },
     {
       "id": "dev-ec4f1e40",
@@ -18,17 +18,10 @@
       "kind": "pc",
       "appVersion": "2.0-web",
       "registeredAt": "2026-10-24T11:47:31.437Z",
-      "managed": true,
+      "managed": false,
       "bootRestore": true,
-      "desired": {
-        "seq": 5,
-        "cmd": "show",
-        "args": {
-          "entryId": "entry-7c64f6"
-        },
-        "issuedAt": "2026-10-24T11:49:22.689Z"
-      },
-      "ackedSeq": 4
+      "desired": null,
+      "ackedSeq": 5
     }
   ],
   "scenes": []

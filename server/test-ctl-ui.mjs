@@ -224,18 +224,21 @@ function attachPageLog(page, errors, tag) {
   await page2.keyboard.press('Escape');
 
   /* ---------- 单台快捷操作（卡片右侧按钮，无需勾选） ---------- */
-  // 卡片操作区结构：显示页面下拉 + 轮询… + 分屏… + 取消控制 + 改名 + 开机恢复
+  // 卡片操作区结构：显示页面下拉（选中项=当前画面）+ 轮询… + 分屏… + 取消控制 + 重命名
   const tvCardOps = await page2.evaluate(() => {
     const card = Array.from(document.querySelectorAll('#deviceList .card')).find((c) => c.querySelector('.kind').textContent === 'TV');
     if (!card) return null;
+    const sel = card.querySelector('.ops select');
     return {
-      selOptions: card.querySelectorAll('.ops select option').length,
+      selOptions: sel ? sel.options.length : 0,
+      selSelected: sel && sel.selectedOptions[0] ? sel.selectedOptions[0].textContent : null,
       buttons: Array.from(card.querySelectorAll('.ops .btn')).map((b) => b.textContent)
     };
   });
-  check('卡片右侧单台快捷操作齐全（显示页面下拉 + 轮询/分屏/取消控制 + 改名/开机恢复）',
-    !!tvCardOps && tvCardOps.selOptions > 1 &&
-    ['轮询…', '分屏…', '取消控制'].every((t) => tvCardOps.buttons.includes(t)), tvCardOps);
+  check('卡片右侧单台快捷操作齐全（当前画面下拉 + 轮询/分屏/取消控制 + 重命名，无开机恢复按钮）',
+    !!tvCardOps && tvCardOps.selOptions > 1 && tvCardOps.selSelected === '首页' &&
+    ['轮询…', '分屏…', '取消控制', '重命名'].every((t) => tvCardOps.buttons.includes(t)) &&
+    !tvCardOps.buttons.some((t) => t.includes('开机恢复')), tvCardOps);
 
   // 不勾选任何设备，直接用 TV 卡片的下拉对它单台下发 show
   await page2.evaluate(() => {
@@ -249,6 +252,14 @@ function attachPageLog(page, errors, tag) {
     tvSolo.desired && tvSolo.desired.cmd === 'show' && tvSolo.desired.args.entryId === 'security-cockpit' &&
     (!webSolo.desired || webSolo.desired.seq < tvSolo.desired.seq), { tv: tvSolo.desired, web: webSolo.desired });
   await beat2({ state: { mode: 'page', entryId: 'security-cockpit' } });
+  // 刷新后 TV 卡片下拉应选中「安全驾驶舱」（当前画面）
+  await page2.click('#btnReload');
+  const selNow = await waitUntil(() => page2.evaluate(() => {
+    const card = Array.from(document.querySelectorAll('#deviceList .card')).find((c) => c.querySelector('.kind').textContent === 'TV');
+    const sel = card && card.querySelector('.ops select');
+    return sel && sel.selectedOptions[0] ? sel.selectedOptions[0].textContent : '';
+  }).then((t) => t.includes('物探') || t.includes('安全') || t.includes('驾驶舱') ? t : false), { label: '下拉显示当前页' });
+  check('显示页面下拉显示设备当前画面（选中正在显示的页）', !!selNow, selNow);
 
   // 卡片「轮询…」弹层单台路径：标题带目标设备名，下发仅作用于该台
   await page2.click('.card:has(.kind:text-is("TV")) .ops .btn:text-is("轮询…")');
@@ -408,18 +419,18 @@ function attachPageLog(page, errors, tag) {
     (await api('GET', '/api/ctl/devices')).json.scenes.length === 0, { label: '删除' });
   check('场景删除生效（列表清空）', deleted);
 
-  /* ---------- 改名与开机恢复开关（控制台卡片操作） ---------- */
+  /* ---------- 重命名（控制台卡片操作） ---------- */
   await page2.click('#btnReload');
   await page2.waitForTimeout(400);
   await page2.evaluate(() => {
     const target = Array.from(document.querySelectorAll('#deviceList .card')).find((c) => c.querySelector('.kind').textContent === 'TV');
-    Array.from(target.querySelectorAll('.ops .btn')).find((b) => b.textContent === '改名').click();
+    Array.from(target.querySelectorAll('.ops .btn')).find((b) => b.textContent === '重命名').click();
   });
   await page2.waitForTimeout(200);
   await page2.fill('.modal input[type="text"]', '二号电视');
   await page2.click('.modal footer .btn.primary');
-  const renamedDev = await waitUntil(async () => (await deviceOf(DEV2)).name === '二号电视', { label: '设备改名' });
-  check('设备改名生效（服务端与列表同步）', renamedDev);
+  const renamedDev = await waitUntil(async () => (await deviceOf(DEV2)).name === '二号电视', { label: '设备重命名' });
+  check('设备重命名生效（服务端与列表同步）', renamedDev);
 
   /* ---------- 收尾 ---------- */
   check('两页运行期均无 JS 异常与 console 错误', errors.length === 0, errors);

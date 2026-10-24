@@ -1,5 +1,5 @@
 {
-  "seq": 4,
+  "seq": 7,
   "devices": [
     {
       "id": "dev-e8952f98",
@@ -7,10 +7,17 @@
       "kind": "pc",
       "appVersion": "2.0-web",
       "registeredAt": "2026-10-24T11:30:15.841Z",
-      "managed": false,
+      "managed": true,
       "bootRestore": true,
-      "desired": null,
-      "ackedSeq": 0
+      "desired": {
+        "seq": 7,
+        "cmd": "show",
+        "args": {
+          "entryId": "entry-a7ab1b"
+        },
+        "issuedAt": "2026-10-24T13:24:45.610Z"
+      },
+      "ackedSeq": 7
     },
     {
       "id": "dev-ec4f1e40",
@@ -18,17 +25,10 @@
       "kind": "pc",
       "appVersion": "2.0-web",
       "registeredAt": "2026-10-24T11:47:31.437Z",
-      "managed": true,
+      "managed": false,
       "bootRestore": true,
-      "desired": {
-        "seq": 4,
-        "cmd": "show",
-        "args": {
-          "entryId": "env-monitor"
-        },
-        "issuedAt": "2026-10-24T11:49:08.234Z"
-      },
-      "ackedSeq": 3
+      "desired": null,
+      "ackedSeq": 5
     }
   ],
   "scenes": []
