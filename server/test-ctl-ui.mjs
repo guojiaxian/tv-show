@@ -71,6 +71,15 @@ async function waitUntil(fn, { timeout = 9000, interval = 300, label = '' } = {}
     errors.push('console: ' + m.text());
   });
 
+  // 清理前置套件（test-ctl）留下的设备与场景，保证本套件从干净档案开始：
+  // test-run 在同一隔离实例上按顺序跑全部套件，控制通道的档案是跨套件共享的。
+  // 必须在打开页面前做——之后本机会随首拍心跳注册进来。
+  {
+    const pre = (await api('GET', '/api/ctl/devices')).json;
+    for (const d of pre.devices || []) await api('DELETE', '/api/ctl/device/' + encodeURIComponent(d.id));
+    for (const s of pre.scenes || []) await api('DELETE', '/api/ctl/scenes/' + encodeURIComponent(s.id));
+  }
+
   await page.goto(BASE + '/', { waitUntil: 'load' });
   if (process.env.CTL_UI_DEBUG) {
     page.on('response', (r) => {
