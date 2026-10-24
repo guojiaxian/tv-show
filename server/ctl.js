@@ -58,7 +58,7 @@ const bad = (msg) => new HttpError(400, msg);
 
 /* ============================ 模块工厂 ============================ */
 
-function createCtl({ dataDir, getEntries, log = () => {} }) {
+function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
   const DATA_FILE = path.join(dataDir, 'devices.json');
   const BACKUP_FILE = `${DATA_FILE}.bak`;
 
@@ -246,7 +246,13 @@ function createCtl({ dataDir, getEntries, log = () => {} }) {
 
   /* ---------- 心跳 ---------- */
 
-  async function handleBeat(body) {
+  /** 连接来源 IP 归一化：去掉 IPv4-mapped 的 ::ffff: 前缀 */
+  function normalizeIp(remoteAddr) {
+    const raw = String(remoteAddr || '');
+    return raw.startsWith('::ffff:') ? raw.slice(7) : raw;
+  }
+
+  async function handleBeat(body, remoteAddr) {
     const deviceId = String(body.deviceId || '').trim();
     if (!DEVICE_ID_PATTERN.test(deviceId)) {
       throw bad('deviceId 格式应为小写字母/数字/短横线（≤64 字符）');
@@ -277,6 +283,8 @@ function createCtl({ dataDir, getEntries, log = () => {} }) {
       // 身份字段每次心跳刷新（appVersion 可随升级变化；name 不覆盖，以档案为准）
       dev.kind = kind;
       dev.appVersion = String(body.appVersion || '').slice(0, 20);
+      // 连接来源 IP（仅内存，随 DHCP 变化属正常；控制台展示用）
+      dev.remoteIp = normalizeIp(remoteAddr);
       dev.reported = state;
       dev.lastSeenAt = Date.now();
 
@@ -307,7 +315,16 @@ function createCtl({ dataDir, getEntries, log = () => {} }) {
       } else if (boot && dev.managed && dev.bootRestore && dev.desired) {
         desired = { seq: dev.desired.seq, cmd: dev.desired.cmd, args: dev.desired.args };
       }
-      return { ok: true, name: dev.name, managed: dev.managed, serverTime: Date.now(), desired };
+      // content：内容版本随心跳下发——客户端发现落后即立即强制同步
+      //（Web 管理后台保存后 ≤3 秒全场生效，设计 §五 同步策略修订）
+      return {
+        ok: true,
+        name: dev.name,
+        managed: dev.managed,
+        serverTime: Date.now(),
+        desired,
+        content: getContentVersion ? getContentVersion() : null
+      };
     }, { needPersist: false });
 
     if (dirty) await mutate(() => undefined, { needPersist: true });
@@ -389,6 +406,7 @@ function createCtl({ dataDir, getEntries, log = () => {} }) {
         pending: !!(d.desired && d.desired.seq > d.ackedSeq),
         online: onlineOf(d.lastSeenAt),
         lastSeenAt: d.lastSeenAt || null,
+        ip: d.remoteIp || null,
         reported: d.reported
       })),
       // 场景随列表一并下发（控制屏一次轮询拿全，避免第二个接口）
@@ -632,7 +650,7 @@ function createCtl({ dataDir, getEntries, log = () => {} }) {
 
     if (p === '/api/ctl/beat' && method === 'POST') {
       const body = await readBody(req);
-      sendJson(res, 200, await handleBeat(body), CORS);
+      sendJson(res, 200, await handleBeat(body, req.socket.remoteAddress), CORS);
       return;
     }
 

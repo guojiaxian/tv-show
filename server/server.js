@@ -806,6 +806,8 @@ function start() {
   ctl = createCtl({
     dataDir: DATA_DIR,
     getEntries: () => data.entries,
+    // 心跳响应携带内容版本：客户端发现落后即立即强制同步（Web 保存后 ≤3 秒全场生效）
+    getContentVersion: () => ({ version: data.version, epoch: data.epoch }),
     log: (msg) => console.log(msg)
   });
 

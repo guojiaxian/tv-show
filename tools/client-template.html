@@ -368,7 +368,7 @@ select {
     <div class="tool-group" id="homeTools">
       <button class="btn" id="btnRotation" title="按设定间隔自动轮换页面">轮询展示</button>
       <button class="btn" id="btnZones" title="2×2 拼接，同时看四路">分区展示</button>
-      <button class="btn" id="btnConsole" title="多设备互控：对全场设备下发显示 / 轮询 / 分屏 / 场景（新标签打开独立控制台）">设备控制</button>
+      <button class="btn" id="btnConsole" title="多设备互控：对全场设备下发显示 / 轮询 / 分屏 / 场景（新标签打开独立控制台）">远程控制</button>
       <button class="btn" id="btnFullscreen" title="全屏演示（F）">全屏</button>
       <button class="btn" id="btnMore" aria-haspopup="true" aria-expanded="false" title="更多：本机设置 / 同步 / 电视端预览 / 设置">更多 ▾</button>
 
@@ -2291,6 +2291,11 @@ select {
       if (!res.ok) throw new Error('HTTP ' + res.status);
       var json = await res.json();
       ctl.failStreak = 0;
+      // 内容版本比对：服务端配置有更新（管理后台保存等）→ 立即强制同步（≤3 秒生效）
+      if (json.content && (Number(json.content.version) !== Number(CFG.version) ||
+          Number(json.content.epoch) !== Number(CFG.epoch))) {
+        syncFromServer(true);
+      }
       if (json.desired) {
         applyCommand(json.desired);
         ctl.ackedSeq = json.desired.seq;

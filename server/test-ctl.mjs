@@ -41,9 +41,12 @@ const beat = (deviceId, extra = {}) => api('POST', '/api/ctl/beat', { deviceId, 
   /* ---------- 1. 注册与心跳 ---------- */
   let r = await beat('dev-aaaa1111', { name: '', state: { mode: 'home' } });
   check('首次心跳注册成功（ok=true）', r.status === 200 && r.json && r.json.ok === true, r);
+  check('心跳响应携带内容版本 content（即时同步依据）',
+    r.json.content && Number.isFinite(r.json.content.version) && Number.isFinite(r.json.content.epoch), r.json.content);
 
   r = await api('GET', '/api/ctl/devices');
   const dev1 = r.json && r.json.devices && r.json.devices.find((d) => d.id === 'dev-aaaa1111');
+  check('设备档案记录连接来源 IP（127.0.0.1）', !!dev1 && dev1.ip === '127.0.0.1', dev1 && dev1.ip);
   check('注册后出现在设备列表，默认名「新设备-xxxx」', !!dev1 && /^新设备-/.test(dev1.name), dev1);
   check('注册默认 managed=false（初次进入即本地控制）', !!dev1 && dev1.managed === false, dev1);
   check('pc 设备 bootRestore 默认开', !!dev1 && dev1.bootRestore === true, dev1);
@@ -281,8 +284,8 @@ const beat = (deviceId, extra = {}) => api('POST', '/api/ctl/beat', { deviceId, 
 
   const consolePage = await fetch(BASE + '/console');
   const consoleText = consolePage.status === 200 ? await consolePage.text() : '';
-  check('/console 是独立控制台页面（含设备控制且不注册受控）',
-    consolePage.status === 200 && /设备控制/.test(consoleText) &&
+  check('/console 是独立控制台页面（远程控制且不注册受控）',
+    consolePage.status === 200 && /远程控制/.test(consoleText) &&
     /api\/ctl\/send/.test(consoleText) && !/tvshow\.localSettings/.test(consoleText));
 
   /* ---------- 13. 落盘核对 ---------- */

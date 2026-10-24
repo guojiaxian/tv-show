@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>大屏聚合平台 · 设备控制</title>
+<title>大屏聚合平台 · 远程控制</title>
 <!--
-  多设备互控 · 独立控制台（docs/远程控制台-设计方案.md §11 修订版）
+  多设备互控 · 远程控制台（docs/远程控制台-设计方案.md §11 修订版）
 
   - 纯控制端：本页面不注册为受控设备、不心跳，只调用 /api/ctl/* 接口；
     打开它的平板/电脑永远不会被自己下发的指令锁住。
@@ -146,7 +146,7 @@ footer select {
 <body>
 
 <header>
-  <h1>设备控制</h1>
+  <h1>远程控制</h1>
   <span class="sub" id="serverChip">连接服务端…</span>
   <span class="spacer"></span>
   <a class="btn" href="/" target="_blank" rel="noopener">显示端首页 ↗</a>
@@ -378,6 +378,13 @@ footer select {
       var mode = document.createElement('span');
       mode.className = 'chip ' + (d.managed ? 'remote' : 'local');
       mode.textContent = d.managed ? '远程被控' : '本地控制';
+      if (d.ip) {
+        var ip = document.createElement('span');
+        ip.className = 'chip';
+        ip.textContent = 'IP ' + d.ip;
+        ip.title = '连接来源 IP（DHCP 变化属正常）';
+        st.appendChild(ip);
+      }
       var sm = document.createElement('span');
       sm.textContent = summary(d);
       st.appendChild(dot);

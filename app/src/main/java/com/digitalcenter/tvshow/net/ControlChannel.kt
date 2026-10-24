@@ -97,6 +97,10 @@ object ControlChannel {
     private val started = AtomicBoolean(false)
     private var lastLockToastAt = 0L
 
+    /** 上次因内容落后触发强制同步的时刻（防抖：同步失败时不每拍重试） */
+    @Volatile
+    private var lastSyncKickAt = 0L
+
     /* ---------------- 初始化 ---------------- */
 
     /** 幂等初始化；在首个 Activity 的 onCreate 调用（建议 [com.digitalcenter.tvshow.ui.MainActivity]） */
@@ -315,6 +319,24 @@ object ControlChannel {
 
     private fun handleResponse(json: JSONObject) {
         val managed = json.optBoolean("managed", true)
+
+        // 0) 内容版本比对：服务端配置有更新（Web 管理后台保存等）→ 立即强制同步。
+        //    借 3s 心跳实现「Web 保存后 ≤3 秒电视端拿到新内容」；5s 防抖避免同步
+        //    失败期间每拍重试。
+        val content = json.optJSONObject("content")
+        if (content != null) {
+            val snap = ConfigRepository.snapshot()
+            val stale = content.optLong("version", snap.version) != snap.version ||
+                content.optLong("epoch", snap.epoch) != snap.epoch
+            if (stale) {
+                val now = System.currentTimeMillis()
+                if (now - lastSyncKickAt > 5000L) {
+                    lastSyncKickAt = now
+                    Log.i(TAG, "检测到服务端内容更新（v${content.optLong("version")} > 本机 v${snap.version}），立即同步")
+                    mainHandler.post { ConfigRepository.syncNow(force = true) }
+                }
+            }
+        }
 
         // 1) 指令应用（展示类自动进入远程被控）
         val desired = json.optJSONObject("desired")

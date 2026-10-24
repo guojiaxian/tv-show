@@ -80,7 +80,7 @@ function attachPageLog(page, errors, tag) {
   attachPageLog(page1, errors, '[显示端]');
 
   await page1.goto(BASE + '/', { waitUntil: 'load' });
-  // 顶栏「设备控制」按钮位于「分区展示」与「全屏」之间，点击新标签打开 /console
+  // 顶栏「远程控制」按钮位于「分区展示」与「全屏」之间，点击新标签打开 /console
   const consoleEntry = await page1.evaluate(() => {
     const btn = document.getElementById('btnConsole');
     if (!btn) return null;
@@ -89,9 +89,9 @@ function attachPageLog(page, errors, tag) {
       order: Array.from(document.querySelectorAll('#homeTools > .btn')).map((b) => b.textContent.trim())
     };
   });
-  check('顶栏「设备控制」按钮位于「分区展示」与「全屏」之间',
-    !!consoleEntry && consoleEntry.text === '设备控制' &&
-    consoleEntry.order.join('|').includes('分区展示|设备控制|全屏'), consoleEntry);
+  check('顶栏「远程控制」按钮位于「分区展示」与「全屏」之间',
+    !!consoleEntry && consoleEntry.text === '远程控制' &&
+    consoleEntry.order.join('|').includes('分区展示|远程控制|全屏'), consoleEntry);
   const [popup] = await Promise.all([
     page1.waitForEvent('popup'),
     page1.click('#btnConsole')
@@ -107,6 +107,15 @@ function attachPageLog(page, errors, tag) {
     return !!(d && d.reported && d.reported.mode === 'home');
   }, { label: '注册并上报 home' });
   check('显示端打开即注册为受控设备并上报状态', ok1 && ok1b && /^dev-[0-9a-f]{8}$/.test(deviceId), deviceId);
+
+  /* ---------- 即时同步：管理后台保存 → 显示端 ≤3s 心跳发现内容落后 → 立即拉取 ---------- */
+  const titleBefore = await page1.evaluate(() => document.getElementById('appTitle').textContent);
+  const newTitle = '即时同步测试标题' + Date.now() % 10000;
+  await api('PUT', '/api/admin/meta', { appTitle: newTitle });
+  const syncOk = await waitUntil(() => page1.evaluate((t) =>
+    document.getElementById('appTitle').textContent === t, newTitle),
+    { timeout: 8000, label: '显示端标题更新' });
+  check('Web 端保存后显示端立即同步（≤8s 内标题更新，无需重启/手动）', syncOk, { before: titleBefore, after: newTitle });
 
   /* ---------- 模拟电视 DEV2 ---------- */
   const DEV2 = 'dev-test0002';
@@ -164,11 +173,15 @@ function attachPageLog(page, errors, tag) {
   }, { label: '两台设备' });
   const cards = await page2.evaluate(() => Array.from(document.querySelectorAll('#deviceList .card')).map((c) => ({
     kind: c.querySelector('.kind').textContent,
-    chip: c.querySelector('.chip').textContent
+    chip: Array.from(c.querySelectorAll('.chip')).map((x) => x.textContent).join('|')
   })));
-  check('控制台设备列表：显示端（PC）+ 二号电视（TV，本地控制）',
+  check('控制台设备列表：显示端（PC）+ 二号电视（TV，本地控制，含 IP）',
     !!twoCards && cards.length === 2 && cards.some((c) => c.kind === 'PC') &&
-    cards.some((c) => c.kind === 'TV' && c.chip === '本地控制'), cards);
+    cards.some((c) => c.kind === 'TV' && /本地控制/.test(c.chip) && /IP 127\.0\.0\.1/.test(c.chip)), cards);
+  const h1 = await page2.evaluate(() => document.querySelector('header h1').textContent);
+  const ipShown = await page2.evaluate(() =>
+    Array.from(document.querySelectorAll('#deviceList .card .st .chip')).some((c) => /^IP /.test(c.textContent)));
+  check('控制台标题为「远程控制」且设备卡片显示来源 IP', h1 === '远程控制' && ipShown, { h1, ipShown });
 
   // 单台下发：只勾 DEV2
   await page2.evaluate(() => {
