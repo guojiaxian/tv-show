@@ -80,23 +80,25 @@ function attachPageLog(page, errors, tag) {
   attachPageLog(page1, errors, '[显示端]');
 
   await page1.goto(BASE + '/', { waitUntil: 'load' });
-  // 首页「更多 ▾」菜单含控制台入口（新标签打开 /console）
-  await page1.click('#btnMore');
+  // 顶栏「设备控制」按钮位于「分区展示」与「全屏」之间，点击新标签打开 /console
   const consoleEntry = await page1.evaluate(() => {
-    const a = document.getElementById('btnConsole');
-    if (!a) return null;
-    return { href: a.getAttribute('href'), blank: a.target === '_blank', text: a.textContent.trim() };
+    const btn = document.getElementById('btnConsole');
+    if (!btn) return null;
+    return {
+      text: btn.textContent.trim(),
+      order: Array.from(document.querySelectorAll('#homeTools > .btn')).map((b) => b.textContent.trim())
+    };
   });
-  check('首页「更多 ▾」含「设备控制」入口（新标签打开 /console）',
-    !!consoleEntry && consoleEntry.href === '/console' && consoleEntry.blank &&
-    consoleEntry.text === '设备控制', consoleEntry);
+  check('顶栏「设备控制」按钮位于「分区展示」与「全屏」之间',
+    !!consoleEntry && consoleEntry.text === '设备控制' &&
+    consoleEntry.order.join('|').includes('分区展示|设备控制|全屏'), consoleEntry);
   const [popup] = await Promise.all([
     page1.waitForEvent('popup'),
     page1.click('#btnConsole')
   ]);
   const popupUrl = popup.url();
   await popup.close();
-  check('点击入口真实打开 /console 独立控制台', /\/console$/.test(popupUrl), popupUrl);
+  check('点击按钮真实打开 /console 独立控制台', /\/console$/.test(popupUrl), popupUrl);
   const ok1 = await waitUntil(async () => !!(await page1.evaluate(() => localStorage.getItem('tvshow.deviceId'))),
     { timeout: 6000, label: 'deviceId 生成' });
   const deviceId = await page1.evaluate(() => localStorage.getItem('tvshow.deviceId'));

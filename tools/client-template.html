@@ -368,6 +368,7 @@ select {
     <div class="tool-group" id="homeTools">
       <button class="btn" id="btnRotation" title="按设定间隔自动轮换页面">轮询展示</button>
       <button class="btn" id="btnZones" title="2×2 拼接，同时看四路">分区展示</button>
+      <button class="btn" id="btnConsole" title="多设备互控：对全场设备下发显示 / 轮询 / 分屏 / 场景（新标签打开独立控制台）">设备控制</button>
       <button class="btn" id="btnFullscreen" title="全屏演示（F）">全屏</button>
       <button class="btn" id="btnMore" aria-haspopup="true" aria-expanded="false" title="更多：本机设置 / 同步 / 电视端预览 / 设置">更多 ▾</button>
 
@@ -377,7 +378,6 @@ select {
         <button class="menu-item" id="btnSync" title="立即从服务器拉取最新配置">立即同步配置</button>
         <button class="menu-item" id="btnTurbo" title="极速模式：播放服务端定时截图（刷新率/质量在管理后台逐页配置）">极速模式：关</button>
         <div class="menu-sep"></div>
-        <a class="menu-item" id="btnConsole" href="/console" target="_blank" rel="noopener" title="多设备互控：对全场设备下发显示 / 轮询 / 分屏 / 场景">设备控制</a>
         <a class="menu-item" id="btnPreview" href="/preview" target="_blank" rel="noopener" title="打开电视端 1:1 预览页面">电视端预览</a>
         <a class="menu-item" id="btnAdmin" href="/setting" target="_blank" rel="noopener" title="打开设置页面：页面增删改查、系统标题">设置</a>
       </div>
@@ -501,7 +501,7 @@ select {
 
   var el = {};
   ['appTitle','appSubtitle','brandTitle','brandSub','clockTime','clockDate','grid',
-   'btnSync','btnRotation','btnZones','btnSettings','btnFullscreen','btnAdmin',
+   'btnSync','btnRotation','btnZones','btnSettings','btnFullscreen','btnAdmin','btnConsole',
    'btnMore','moreMenu','btnTurbo',
    'homeScreen','displayScreen','cameraScreen','zoneScreen','settingsScreen',
    'cameraTools','camGrid','btnCamBack','btnCamLayout','btnCamRefresh',
@@ -2098,6 +2098,10 @@ select {
   el.btnZones.addEventListener('click', openZones);
   el.btnSettings.addEventListener('click', openSettings);
   el.btnFullscreen.addEventListener('click', toggleFullscreen);
+  // 设备控制：新标签打开独立控制台（显示端页面保持显示不受干扰）
+  el.btnConsole.addEventListener('click', function () {
+    window.open('/console', '_blank', 'noopener');
+  });
 
   /* 「更多」二级菜单：点击开合；点菜单项后自动收起；点页面别处或按 Esc 也收起 */
   function setMoreMenu(open) {
