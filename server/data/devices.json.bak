@@ -1,0 +1,17 @@
+{
+  "seq": 0,
+  "devices": [
+    {
+      "id": "dev-e8952f98",
+      "name": "新设备-2f98",
+      "kind": "pc",
+      "appVersion": "2.0-web",
+      "registeredAt": "2026-10-24T11:30:15.841Z",
+      "managed": false,
+      "bootRestore": true,
+      "desired": null,
+      "ackedSeq": 0
+    }
+  ],
+  "scenes": []
+}

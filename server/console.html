@@ -71,8 +71,13 @@ main { flex: 1; overflow: auto; padding: 16px 22px; display: flex; flex-directio
 .chip.remote { color: #9fe7ff; border-color: rgba(47,210,245,.5); background: rgba(47,210,245,.1); }
 .chip.local { color: #7df0c0; border-color: rgba(63,224,166,.4); }
 .chip.pending { color: #FFB020; border-color: rgba(255,176,32,.5); }
-.card .ops { display: flex; gap: 6px; flex: none; }
+.card .ops { display: flex; gap: 6px; flex: none; align-items: center; flex-wrap: wrap; justify-content: flex-end; max-width: 60%; }
 .card .ops .btn { padding: 5px 10px; font-size: 12px; }
+.card .ops select {
+  background: rgba(9,16,28,.9); color: var(--text); border: 1px solid var(--line);
+  border-radius: 8px; padding: 5px 8px; font-size: 12px; max-width: 150px;
+}
+.card .ops .sep { width: 1px; align-self: stretch; background: var(--line); margin: 0 2px; }
 .empty { color: var(--muted); font-size: 13px; padding: 26px; text-align: center; }
 
 footer {
@@ -131,9 +136,10 @@ footer select {
   opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s;
 }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
-@media (max-width: 720px) {
+@media (max-width: 900px) {
   header { flex-wrap: wrap; }
-  .card .ops { display: none; } /* 触屏小屏隐藏次要操作，改名/恢复经卡片长按菜单后续再议 */
+  .card { flex-wrap: wrap; }
+  .card .ops { max-width: 100%; }
 }
 </style>
 </head>
@@ -282,6 +288,7 @@ footer select {
       var cfg = await api('GET', '/api/admin/config');
       state.entries = cfg.entries || [];
       renderEntryOptions();
+      renderDevices(); // 卡片上的「显示页面」下拉跟随最新页面列表
     } catch (e) { /* 下拉沿用旧列表 */ }
   }
 
@@ -322,6 +329,9 @@ footer select {
 
   function renderDevices() {
     var host = els.deviceList;
+    // 用户正在卡片下拉里选页面时跳过本轮重渲染（3s 自动刷新不打断操作，下一轮再刷）
+    var ae = document.activeElement;
+    if (ae && ae.tagName === 'SELECT' && host.contains(ae)) return;
     host.innerHTML = '';
     if (!state.devices.length) {
       var e = document.createElement('div');
@@ -390,6 +400,45 @@ footer select {
 
       var ops = document.createElement('div');
       ops.className = 'ops';
+      // 单台快捷操作（对这张卡片直接下发，无需勾选；勾选集操作在底部操作条）
+      var sel = document.createElement('select');
+      sel.className = 'entry-sel';
+      var defOpt = document.createElement('option');
+      defOpt.value = '';
+      defOpt.textContent = '显示页面…';
+      sel.appendChild(defOpt);
+      state.entries.forEach(function (e) {
+        var o = document.createElement('option');
+        o.value = e.id;
+        o.textContent = e.title;
+        sel.appendChild(o);
+      });
+      sel.addEventListener('change', function () {
+        if (!sel.value) return;
+        sendCmd('show', { entryId: sel.value }, [d.id]);
+        sel.value = '';
+      });
+      ops.appendChild(sel);
+      ['轮询…', '分屏…'].forEach(function (label) {
+        var b = document.createElement('button');
+        b.className = 'btn';
+        b.textContent = label;
+        b.addEventListener('click', function () {
+          if (label === '轮询…') rotateDialog([d.id]);
+          else zoneDialog([d.id]);
+        });
+        ops.appendChild(b);
+      });
+      var rel = document.createElement('button');
+      rel.className = 'btn';
+      rel.textContent = '取消控制';
+      rel.addEventListener('click', function () { releaseCmd([d.id]); });
+      ops.appendChild(rel);
+
+      var sep = document.createElement('span');
+      sep.className = 'sep';
+      ops.appendChild(sep);
+
       var rn = document.createElement('button');
       rn.className = 'btn';
       rn.textContent = '改名';
@@ -422,8 +471,12 @@ footer select {
 
   /* ============================ 下发操作 ============================ */
 
-  async function sendCmd(cmd, args) {
-    var t = targets();
+  /**
+   * 下发指令。explicit 传入时对指定设备单台下发（卡片快捷操作）；
+   * 否则作用于底部操作条的勾选集。
+   */
+  async function sendCmd(cmd, args, explicit) {
+    var t = explicit || targets();
     if (!t) { toast('请先勾选目标设备'); return false; }
     try {
       var json = await api('POST', '/api/ctl/send', { targets: t, cmd: cmd, args: args || {} });
@@ -436,10 +489,11 @@ footer select {
     }
   }
 
-  function releaseCmd() {
-    var t = targets();
+  /** 取消控制（退出远程被控一律二次确认）；explicit = 单台，否则勾选集 */
+  function releaseCmd(explicit) {
+    var t = explicit || targets();
     if (!t) { toast('请先勾选目标设备'); return; }
-    confirmModal('取消控制？', '勾选的 ' + t.length + ' 台设备将退出远程被控、恢复本地操作（画面保持不变）。', [
+    confirmModal('取消控制？', (t.length) + ' 台设备将退出远程被控、恢复本地操作（画面保持不变）。', [
       { text: '继续控制', run: function () {} },
       { text: '取消控制，交还本地', primary: true, run: async function () {
         try {
@@ -456,10 +510,13 @@ footer select {
   var rotateDraft = [];
   var INTERVAL_PRESETS = [5, 10, 15, 20, 30, 45, 60, 120, 300];
 
-  function rotateDialog() {
-    if (!targets()) { toast('请先勾选目标设备'); return; }
+  /** 轮询弹层：explicit = 单台目标（卡片快捷），否则勾选集（底部操作条） */
+  function rotateDialog(explicit) {
+    if (!explicit && !targets()) { toast('请先勾选目标设备'); return; }
     rotateDraft = [];
-    formModal('轮询下发', '勾选参与页面（↑↓ 调整顺序），确定后对勾选设备立即开始轮询', function (body, foot) {
+    var targetName = explicit ? (state.devices.find(function (d) { return d.id === explicit[0]; }) || {}).name : null;
+    formModal('轮询下发', (targetName ? '目标：' + targetName + '。' : '') +
+      '勾选参与页面（↑↓ 调整顺序），确定后立即开始轮询', function (body, foot) {
       var rowIv = document.createElement('div');
       rowIv.className = 'row';
       var lb = document.createElement('label');
@@ -546,7 +603,7 @@ footer select {
           intervalSec: Number(selIv.value),
           items: rotateDraft.slice(),
           phaseSync: ckSync.checked
-        })) closeModal();
+        }, explicit)) closeModal();
       });
       foot.appendChild(cancel);
       foot.appendChild(ok);
@@ -555,10 +612,11 @@ footer select {
 
   /* ---------- 分屏弹层 ---------- */
 
-  function zoneDialog() {
-    if (!targets()) { toast('请先勾选目标设备'); return; }
+  /** 分屏弹层：explicit = 单台目标（卡片快捷），否则勾选集 */
+  function zoneDialog(explicit) {
+    if (!explicit && !targets()) { toast('请先勾选目标设备'); return; }
     var draft = [null, null, null, null];
-    formModal('2×2 分屏下发', '为四个分区各指定页面（或「不使用」），确定后对勾选设备进入分屏', function (body, foot) {
+    formModal('2×2 分屏下发', '为四个分区各指定页面（或「不使用」），确定后进入分屏', function (body, foot) {
       var grid = document.createElement('div');
       grid.className = 'zonegrid';
       draft.forEach(function (_, pos) {
@@ -593,7 +651,7 @@ footer select {
       ok.textContent = '下发分屏';
       ok.addEventListener('click', function () {
         if (!draft.some(function (s) { return s; })) { toast('至少为一格指定页面'); return; }
-        if (sendCmd('zone', { slots: draft.slice() })) closeModal();
+        if (sendCmd('zone', { slots: draft.slice() }, explicit)) closeModal();
       });
       foot.appendChild(cancel);
       foot.appendChild(ok);
@@ -800,10 +858,10 @@ footer select {
     sendCmd('show', { entryId: id });
     els.selEntry.value = '';
   });
-  els.btnRotate.addEventListener('click', rotateDialog);
-  els.btnZone.addEventListener('click', zoneDialog);
+  els.btnRotate.addEventListener('click', function () { rotateDialog(); });
+  els.btnZone.addEventListener('click', function () { zoneDialog(); });
   els.btnHome.addEventListener('click', function () { sendCmd('home'); });
-  els.btnRelease.addEventListener('click', releaseCmd);
+  els.btnRelease.addEventListener('click', function () { releaseCmd(); });
   els.btnRefreshCmd.addEventListener('click', function () { sendCmd('refresh'); });
   els.btnSync.addEventListener('click', function () { sendCmd('sync'); });
   els.btnAll.addEventListener('click', function () {

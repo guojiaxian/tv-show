@@ -223,7 +223,59 @@ function attachPageLog(page, errors, tag) {
   check('分屏弹层：四格下拉且每格都有「不使用」', modalZone.count === 4 && modalZone.allHaveNone, modalZone);
   await page2.keyboard.press('Escape');
 
-  /* ---------- 对显示端下发 rotate / zone / home（page1 断言） ---------- */
+  /* ---------- 单台快捷操作（卡片右侧按钮，无需勾选） ---------- */
+  // 卡片操作区结构：显示页面下拉 + 轮询… + 分屏… + 取消控制 + 改名 + 开机恢复
+  const tvCardOps = await page2.evaluate(() => {
+    const card = Array.from(document.querySelectorAll('#deviceList .card')).find((c) => c.querySelector('.kind').textContent === 'TV');
+    if (!card) return null;
+    return {
+      selOptions: card.querySelectorAll('.ops select option').length,
+      buttons: Array.from(card.querySelectorAll('.ops .btn')).map((b) => b.textContent)
+    };
+  });
+  check('卡片右侧单台快捷操作齐全（显示页面下拉 + 轮询/分屏/取消控制 + 改名/开机恢复）',
+    !!tvCardOps && tvCardOps.selOptions > 1 &&
+    ['轮询…', '分屏…', '取消控制'].every((t) => tvCardOps.buttons.includes(t)), tvCardOps);
+
+  // 不勾选任何设备，直接用 TV 卡片的下拉对它单台下发 show
+  await page2.evaluate(() => {
+    document.querySelectorAll('#deviceList .card .ck').forEach((ck) => { if (ck.checked) ck.click(); });
+  });
+  await page2.selectOption('.card:has(.kind:text-is("TV")) .ops select', 'security-cockpit');
+  await page2.waitForTimeout(600);
+  const tvSolo = await deviceOf(DEV2);
+  const webSolo = await deviceOf(deviceId);
+  check('卡片下拉单台下发：仅 TV 收到 show（未勾选、显示端不受影响）',
+    tvSolo.desired && tvSolo.desired.cmd === 'show' && tvSolo.desired.args.entryId === 'security-cockpit' &&
+    (!webSolo.desired || webSolo.desired.seq < tvSolo.desired.seq), { tv: tvSolo.desired, web: webSolo.desired });
+  await beat2({ state: { mode: 'page', entryId: 'security-cockpit' } });
+
+  // 卡片「轮询…」弹层单台路径：标题带目标设备名，下发仅作用于该台
+  await page2.click('.card:has(.kind:text-is("TV")) .ops .btn:text-is("轮询…")');
+  const soloTitle = await page2.evaluate(() => {
+    const h = document.querySelector('.modal header p');
+    return h ? h.textContent : '';
+  });
+  check('卡片轮询弹层标注单台目标', /目标：/.test(soloTitle), soloTitle);
+  await page2.evaluate(() => {
+    const rows = Array.from(document.querySelectorAll('.modal .row'));
+    const row = rows.find((r) => r.querySelector('.grow') && r.querySelector('input[type="checkbox"]'));
+    row.querySelector('input[type="checkbox"]').click();
+  });
+  await page2.click('.modal footer .btn.primary');
+  await page2.waitForTimeout(600);
+  const tvRot = await deviceOf(DEV2);
+  check('卡片轮询单台下发：仅 TV 收到 rotate 指令',
+    tvRot.desired && tvRot.desired.cmd === 'rotate' && tvRot.managed === true, tvRot.desired);
+
+  // 卡片「取消控制」单台二次确认
+  await page2.click('.card:has(.kind:text-is("TV")) .ops .btn:text-is("取消控制")');
+  await page2.waitForTimeout(200);
+  await page2.click('.confirm-btn:has-text("取消控制，交还本地")');
+  const tvRel = await waitUntil(async () => (await deviceOf(DEV2)).managed === false, { label: 'TV 交还' });
+  check('卡片「取消控制」单台二次确认后交还', tvRel);
+
+  /* ---------- 对显示端下发 rotate / zone / home（API 直发 + page1 断言） ---------- */
   await send([deviceId], 'rotate', { intervalSec: 5, items: ['storage-monitor', 'env-monitor'] });
   const okRotate = await waitUntil(() => page1.evaluate(() =>
     document.getElementById('rotationChip').classList.contains('show')), { label: '轮询启动' });
