@@ -123,7 +123,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        // 远程被控时锁定展示操作（【菜单】豁免——菜单首项即控制模式开关，是唯一本地出口）
+        // 远程被控时锁定展示操作（【返回】豁免——正常退出操作，v6：退出取代取消控制）
         if (ControlChannel.interceptKeyLocked(keyCode, this)) return true
         showKeyHint()
         if (keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_INFO) {
@@ -139,29 +139,24 @@ class MainActivity : AppCompatActivity() {
      * 「轮询展示」「分区展示」都是**直接进入展示页**：
      * 轮询的开关/页面/间隔、分区的每格内容，都在各自展示页里按【菜单】/【确定】现场调整，
      * 因此首页不再需要单独的设置入口。
-     * 首项固定为「控制模式」开关（多设备互控，设计 §8.2）；远程被控态下菜单只保留该开关与关闭。
+     * 受控态下【菜单】被锁定（v6：受控端无取消入口，退出用【返回】）。
      */
     private fun showHomeMenu() {
         val labels = ArrayList<String>()
         val actions = ArrayList<() -> Unit>()
 
-        labels.add(CtlUi.modeMenuLabel(this))
-        actions.add { CtlUi.toggleMode(this) }
+        labels.add(getString(R.string.menu_sync_now))
+        actions.add { syncFromServer(force = true) }
 
-        if (!ControlChannel.locked) {
-            labels.add(getString(R.string.menu_sync_now))
-            actions.add { syncFromServer(force = true) }
+        labels.add(getString(R.string.menu_rotation_display))
+        actions.add { startRotation() }
 
-            labels.add(getString(R.string.menu_rotation_display))
-            actions.add { startRotation() }
+        labels.add(getString(R.string.menu_zone_display))
+        actions.add { startActivity(Intent(this, ZoneDisplayActivity::class.java)) }
 
-            labels.add(getString(R.string.menu_zone_display))
-            actions.add { startActivity(Intent(this, ZoneDisplayActivity::class.java)) }
-
-            // 极速模式本机总开关：翻转后不强制刷新首页（首页无 WebView，下次进入展示页即生效）
-            labels.add(turboMenuLabel())
-            actions.add { toggleTurbo() }
-        }
+        // 极速模式本机总开关：翻转后不强制刷新首页（首页无 WebView，下次进入展示页即生效）
+        labels.add(turboMenuLabel())
+        actions.add { toggleTurbo() }
 
         labels.add(getString(R.string.menu_cancel))
         actions.add { }

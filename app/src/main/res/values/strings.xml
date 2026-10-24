@@ -66,13 +66,7 @@
     <string name="turbo_mode_label">极速模式</string>
     <string name="turbo_frame_ago">极速模式 · 帧 %1$d 秒前</string>
 
-    <!-- 多设备互控（受控通道）：控制模式开关与退出远程被控确认 -->
-    <string name="menu_ctl_mode_local">控制模式：本地控制 ▸ 远程被控</string>
-    <string name="menu_ctl_mode_remote">控制模式：远程被控 ▸ 本地控制</string>
-    <string name="ctl_exit_title">退出远程被控？</string>
-    <string name="ctl_exit_message">交还本机操作后画面保持不变；控制端再次下发指令时会自动切回远程被控。</string>
-    <string name="ctl_exit_confirm">退出，恢复本地</string>
-    <string name="ctl_exit_cancel">继续受控</string>
+    <!-- 多设备互控（受控通道）：v6 起受控端无取消入口（退出用【返回】），控制台侧确认在 /console -->
 
     <string name="state_on">已开启</string>
     <string name="state_off">已关闭</string>

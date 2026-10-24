@@ -778,7 +778,7 @@ class WebDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
-            // 远程被控时锁定展示操作（【菜单】豁免——菜单首项即控制模式开关，是唯一本地出口）
+            // 远程被控时锁定展示操作（【返回】豁免——正常退出操作，v6：退出取代取消控制）
             if (ControlChannel.interceptKeyLocked(event.keyCode, this)) return true
             when (event.keyCode) {
                 // 返回键：直接回到首页，避免在网页历史中迷失
@@ -826,43 +826,36 @@ class WebDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
         val labels = ArrayList<String>()
         val actions = ArrayList<() -> Unit>()
 
-        // 首项固定为控制模式开关（多设备互控，设计 §8.2）
-        labels.add(CtlUi.modeMenuLabel(this))
-        actions.add { CtlUi.toggleMode(this) }
-
-        // 远程被控态下其余条目属于被锁定的展示操作，裁剪掉（设计 §8.2）
-        if (!ControlChannel.locked) {
-            // 轮询播放模式下，再按一次【菜单】即进入轮询设置
-            if (rotationActive) {
-                labels.add(getString(R.string.menu_rotation_settings))
-                actions.add { startActivity(Intent(this, SettingsActivity::class.java)) }
-            }
-
-            labels.add(getString(R.string.menu_refresh))
-            actions.add { reloadPage() }
-
-            // 极速模式开关：翻转后立即用新地址重载当前页（单页/轮询均生效）
-            labels.add(
-                getString(
-                    if (LocalSettings.turbo(this).enabled) R.string.menu_turbo_on
-                    else R.string.menu_turbo_off
-                )
-            )
-            actions.add { toggleTurboAndReload() }
-
-            if (webView.canGoBack()) {
-                labels.add(getString(R.string.menu_back))
-                actions.add { webView.goBack() }
-            }
-            labels.add(getString(R.string.menu_zoom_in))
-            actions.add { changeZoom(ZOOM_STEP) }
-            labels.add(getString(R.string.menu_zoom_out))
-            actions.add { changeZoom(-ZOOM_STEP) }
-            labels.add(getString(R.string.menu_zoom_reset))
-            actions.add { changeZoom(100 - zoomPercent) }
-            labels.add(getString(R.string.menu_home))
-            actions.add { finish() }
+        // 轮询播放模式下，再按一次【菜单】即进入轮询设置
+        if (rotationActive) {
+            labels.add(getString(R.string.menu_rotation_settings))
+            actions.add { startActivity(Intent(this, SettingsActivity::class.java)) }
         }
+
+        labels.add(getString(R.string.menu_refresh))
+        actions.add { reloadPage() }
+
+        // 极速模式开关：翻转后立即用新地址重载当前页（单页/轮询均生效）
+        labels.add(
+            getString(
+                if (LocalSettings.turbo(this).enabled) R.string.menu_turbo_on
+                else R.string.menu_turbo_off
+            )
+        )
+        actions.add { toggleTurboAndReload() }
+
+        if (webView.canGoBack()) {
+            labels.add(getString(R.string.menu_back))
+            actions.add { webView.goBack() }
+        }
+        labels.add(getString(R.string.menu_zoom_in))
+        actions.add { changeZoom(ZOOM_STEP) }
+        labels.add(getString(R.string.menu_zoom_out))
+        actions.add { changeZoom(-ZOOM_STEP) }
+        labels.add(getString(R.string.menu_zoom_reset))
+        actions.add { changeZoom(100 - zoomPercent) }
+        labels.add(getString(R.string.menu_home))
+        actions.add { finish() }
 
         labels.add(getString(R.string.menu_cancel))
         actions.add { }

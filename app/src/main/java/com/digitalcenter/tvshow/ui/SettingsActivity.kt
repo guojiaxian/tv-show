@@ -76,7 +76,7 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        // 远程被控时锁定设置操作（【菜单】豁免——可切回本地控制）
+        // 远程被控时锁定设置操作（【返回】豁免——正常退出操作）
         if (ControlChannel.interceptKeyLocked(keyCode, this)) return true
         return super.onKeyDown(keyCode, event)
     }

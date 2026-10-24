@@ -367,7 +367,7 @@ class CameraWallActivity : AppCompatActivity(), CommandApplier.Reloadable {
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
-            // 远程被控时锁定展示操作（【菜单】豁免——菜单首项即控制模式开关，是唯一本地出口）
+            // 远程被控时锁定展示操作（【返回】豁免——正常退出操作，v6：退出取代取消控制）
             if (ControlChannel.interceptKeyLocked(event.keyCode, this)) return true
             keyHintShower()
             when (event.keyCode) {
@@ -438,24 +438,18 @@ class CameraWallActivity : AppCompatActivity(), CommandApplier.Reloadable {
         val labels = ArrayList<String>()
         val actions = ArrayList<() -> Unit>()
 
-        // 首项固定为控制模式开关（多设备互控，设计 §8.2）
-        labels.add(CtlUi.modeMenuLabel(this))
-        actions.add { CtlUi.toggleMode(this) }
-
-        if (!ControlChannel.locked) {
-            labels.add(getString(if (layout == MODE_WALL) R.string.camera_menu_single else R.string.camera_menu_wall))
-            actions.add {
-                layout = if (layout == MODE_WALL) MODE_SINGLE else MODE_WALL
-                startStreams()
-            }
-            labels.add(getString(R.string.camera_menu_reconnect))
-            actions.add {
-                startStreams()
-                Toast.makeText(this, R.string.camera_reconnecting, Toast.LENGTH_SHORT).show()
-            }
-            labels.add(getString(R.string.menu_home))
-            actions.add { finish() }
+        labels.add(getString(if (layout == MODE_WALL) R.string.camera_menu_single else R.string.camera_menu_wall))
+        actions.add {
+            layout = if (layout == MODE_WALL) MODE_SINGLE else MODE_WALL
+            startStreams()
         }
+        labels.add(getString(R.string.camera_menu_reconnect))
+        actions.add {
+            startStreams()
+            Toast.makeText(this, R.string.camera_reconnecting, Toast.LENGTH_SHORT).show()
+        }
+        labels.add(getString(R.string.menu_home))
+        actions.add { finish() }
 
         TvDialogs.menu(
             context = this,

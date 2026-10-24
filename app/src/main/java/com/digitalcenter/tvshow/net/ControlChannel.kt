@@ -31,13 +31,13 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * 多设备互控 · 受控通道（电视端唯一上行通道）。
  *
- * 设计 docs/远程控制台-设计方案.md §7/§8/§10.2：
+ * 设计 docs/远程控制台-设计方案.md §7/§8/§10.2（v6 修订：受控端无任何取消入口）：
  *  - 3 秒心跳（失败指数退避最长 30 秒）：注册 / 上报本机状态 / 领指令 / 同步模式；
- *  - 模式 = 服务端权威 managed + 本机即时影子 [localMode]：遥控器【菜单】拨开关立即生效，
- *    意图 [switchIntent] 随下一拍心跳捎带，未确认前每拍重发（幂等，离线暂存恢复后送达）；
+ *  - 模式 = 服务端权威 managed + 本机影子 [localMode]：状态翻转（取消控制）只在控制台；
+ *    现场摆脱受控画面 = 正常退出操作（【返回】键已放行）；
  *  - 展示类指令（show/rotate/zone/home）应用后自动进入远程被控：切画面 + 锁定遥控操作 + 角标；
  *    维护类（refresh/sync）不改变模式；
- *  - 退出远程被控一律二次确认（默认焦点「继续受控」，防误触）；进入无需确认。
+ *  - 控制端 release → 心跳响应 managed=false → 解锁（画面保持）。
  *
  * 线程模型：心跳在单线程后台执行；指令应用 / 模式翻转 / 角标更新全部 post 到主线程。
  */
@@ -67,10 +67,6 @@ object ControlChannel {
     /** 已确认应用的指令序号（内存态，重启后由服务端 boot 重发机制兜底） */
     @Volatile
     private var ackedSeq = 0L
-
-    /** 待送达的模式开关意图："local" | "remote" | null（确认送达后清除） */
-    @Volatile
-    private var switchIntent: String? = null
 
     /** 本进程启动后的第一次心跳 */
     @Volatile
@@ -177,24 +173,12 @@ object ControlChannel {
         reported = JSONObject().put("mode", "settings")
     }
 
-    /* ---------------- 模式开关（遥控器【菜单】入口调用；主线程） ---------------- */
+    /* ---------------- 模式（v6 决议：受控端无任何取消入口） ----------------
+     * 现场想摆脱受控画面 = 正常退出操作（【返回】退出当前画面，见 interceptKeyLocked 放行）；
+     * 状态翻转（取消控制）只在控制台。这里只保留两条被动路径：
+     * 控制端 release → managed=false → 解锁；boot 恢复 / 指令 → managed=true → 接管。 */
 
-    /**
-     * 现场交还本地：立即解锁、画面保持；意图随下一拍心跳送达服务端。
-     * 二次确认由调用方（菜单项）用 TvDialogs.confirm 完成。
-     */
-    fun switchToLocal(activity: Activity) {
-        applyMode(remote = false, silent = false, activity = activity)
-        switchIntent = "local"
-    }
-
-    /** 现场主动进入远程被控（本地态下菜单里选择「远程被控」）：直接生效，无需确认 */
-    fun switchToRemote(activity: Activity) {
-        applyMode(remote = true, silent = false, activity = activity)
-        switchIntent = "remote"
-    }
-
-    /** 模式影子翻转 + 角标 + 提示；立即生效，不等网络（服务端失联时照常工作） */
+    /** 模式影子翻转 + 角标 + 提示（仅由心跳响应的被动路径触发，主线程） */
     private fun applyMode(remote: Boolean, silent: Boolean, activity: Activity? = null) {
         if (localMode == !remote) return
         localMode = !remote
@@ -215,20 +199,18 @@ object ControlChannel {
     /* ---------------- 远程被控锁定（各 Activity 按键分发处调用） ---------------- */
 
     /**
-     * 受控锁定检查：远程被控时拦截除【菜单】外的全部按键（【菜单】是唯一的本地出口，
-     * 菜单首项即控制模式开关）。返回 true 表示事件已被锁定吞掉。
+     * 受控锁定检查：远程被控时拦截方向 / 确定 / 菜单等展示操作（无人值守防误按）；
+     * 【返回】放行——现场随时可用正常退出操作摆脱当前画面（回首页 / 退出应用）。
+     * 返回 true 表示事件已被锁定吞掉。
      */
     fun interceptKeyLocked(keyCode: Int, context: Context): Boolean {
         if (localMode) return false
-        // 菜单键豁免：受控态下仍可打开菜单切换回本地
-        if (keyCode == android.view.KeyEvent.KEYCODE_MENU ||
-            keyCode == android.view.KeyEvent.KEYCODE_INFO ||
-            keyCode == android.view.KeyEvent.KEYCODE_BUTTON_Y
-        ) return false
+        // 返回键豁免：受控态下仍可正常退出当前画面（v6：退出操作取代取消控制）
+        if (keyCode == android.view.KeyEvent.KEYCODE_BACK) return false
         val now = System.currentTimeMillis()
         if (now - lastLockToastAt > 5000L) {
             lastLockToastAt = now
-            Toast.makeText(context, "远程被控中 · 按【菜单】可切回本地控制", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "远程被控中 · 可按【返回】退出当前画面", Toast.LENGTH_SHORT).show()
         }
         return true
     }
@@ -311,7 +293,6 @@ object ControlChannel {
             put("state", JSONObject(reported.toString()).putOpt("lastError", lastError ?: JSONObject.NULL))
         }
         boot = false
-        switchIntent?.let { body.put("switchTo", it) }
 
         val conn = (URL("$base/api/ctl/beat").openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
@@ -335,13 +316,7 @@ object ControlChannel {
     private fun handleResponse(json: JSONObject) {
         val managed = json.optBoolean("managed", true)
 
-        // 1) 意图确认：服务端状态与意图一致 → 清除（未清除前每拍重发）
-        val intent = switchIntent
-        if (intent != null && managed == (intent == "remote")) {
-            switchIntent = null
-        }
-
-        // 2) 指令应用（展示类自动进入远程被控）
+        // 1) 指令应用（展示类自动进入远程被控）
         val desired = json.optJSONObject("desired")
         if (desired != null) {
             val seq = desired.optLong("seq", 0L)
@@ -359,20 +334,11 @@ object ControlChannel {
             return
         }
 
-        // 3) 纯模式校正（无在途意图时）：控制端「取消控制」→ 解锁；服务端记忆 → 接管
-        if (switchIntent == null) {
-            if (!managed && !localMode) {
-                val activity = currentActivity
-                applyMode(remote = false, silent = false, activity = activity)
-                activity?.let {
-                    mainHandler.post {
-                        Toast.makeText(it, "控制端已交还本地控制", Toast.LENGTH_SHORT).show()
-                    }
-                }
-            } else if (managed && localMode) {
-                val activity = currentActivity
-                applyMode(remote = true, silent = true, activity = activity)
-            }
+        // 2) 纯模式校正（无指令时）：控制端「取消控制」→ 解锁；服务端记忆 → 接管（boot 恢复）
+        if (!managed && !localMode) {
+            applyMode(remote = false, silent = false, activity = currentActivity)
+        } else if (managed && localMode) {
+            applyMode(remote = true, silent = true, activity = currentActivity)
         }
     }
 
