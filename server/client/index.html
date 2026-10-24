@@ -425,6 +425,12 @@ body.ctl-locked .tools .menu .menu-item#btnControl { opacity: 1 !important; poin
 .ctl-modal .zonegrid .zg { display: flex; flex-direction: column; gap: 6px; }
 .ctl-modal .zonegrid .zg span { font-size: 12px; color: var(--muted); }
 .ctl-modal footer { display: flex; gap: 10px; justify-content: flex-end; align-items: center; padding: 12px 18px; border-top: 1px solid var(--line); }
+/* 场景预设条：常驻控制屏顶部，一键应用 */
+.ctl-scenes { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: none;
+  padding: 10px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+.ctl-scenes .sc-label { font-size: 12px; color: var(--muted); flex: none; }
+.ctl-scenes .btn.apply { border-color: rgba(63,224,166,.45); color: #7df0c0; }
+.ctl-scenes .btn.apply::before { content: '▶ '; font-size: 10px; }
 </style>
 </head>
 <body>
@@ -560,6 +566,12 @@ body.ctl-locked .tools .menu .menu-item#btnControl { opacity: 1 !important; poin
       <span class="saved-chip" id="ctlServerChip">连接服务端…</span>
       <div class="spacer"></div>
       <button class="btn" id="btnCtlReload" title="立即刷新设备列表">刷新列表</button>
+    </div>
+    <div class="ctl-scenes" id="ctlSceneBar">
+      <span class="sc-label">场景</span>
+      <span id="ctlSceneList" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;"></span>
+      <button class="btn" id="btnCtlSceneSave" title="把当前全场设备的状态保存为一个场景，之后可一键恢复">＋ 存为场景…</button>
+      <button class="btn" id="btnCtlSceneManage" title="场景重命名 / 删除">管理…</button>
     </div>
     <div class="ctl-list" id="ctlDeviceList"></div>
     <div class="ctl-actions" id="ctlActions">
@@ -1101,7 +1113,8 @@ body.ctl-locked .tools .menu .menu-item#btnControl { opacity: 1 !important; poin
    'ctlSwitch','csLocal','csRemote','ctlBadge',
    'controlScreen','btnCtlBack','ctlServerChip','btnCtlReload','ctlDeviceList',
    'ctlSelInfo','selCtlEntry','btnCtlRotate','btnCtlZone','btnCtlHome','btnCtlRelease',
-   'btnCtlRefreshCmd','btnCtlSync','btnCtlAll','btnControl'
+   'btnCtlRefreshCmd','btnCtlSync','btnCtlAll','btnControl',
+   'ctlSceneBar','ctlSceneList','btnCtlSceneSave','btnCtlSceneManage'
   ].forEach(function (id) { el[id] = document.getElementById(id); });
 
   var AUTO_LOGIN_SRC = document.getElementById('autoLoginSrc').textContent;
@@ -2779,6 +2792,8 @@ body.ctl-locked .tools .menu .menu-item#btnControl { opacity: 1 !important; poin
     if (!allOn) ctlPanel.devices.forEach(function (d) { ctlPanel.selected[d.id] = true; });
     renderCtlDevices();
   });
+  el.btnCtlSceneSave.addEventListener('click', ctlSaveSceneDialog);
+  el.btnCtlSceneManage.addEventListener('click', ctlSceneManageDialog);
 
   window.addEventListener('resize', function () { applyZoom(); scaleZoneCells(); });
 
@@ -3022,6 +3037,7 @@ body.ctl-locked .tools .menu .menu-item#btnControl { opacity: 1 !important; poin
 
   var ctlPanel = {
     devices: [],            // 最近一次 /api/ctl/devices
+    scenes: [],             // 最近一次拉取的场景列表（随 devices 一并下发）
     selected: {},           // 勾选的 deviceId 集合
     timer: null,            // 3s 列表轮询（仅 control screen 激活期间）
     modalOpen: false,       // 自定义配置弹层（轮询/分屏/改名，复用 dialogLayer）
@@ -3071,8 +3087,10 @@ body.ctl-locked .tools .menu .menu-item#btnControl { opacity: 1 !important; poin
       var res = await fetch(SERVER_BASE + '/api/ctl/devices', { cache: 'no-store' });
       var json = await res.json();
       ctlPanel.devices = json.devices || [];
+      ctlPanel.scenes = json.scenes || [];
       el.ctlServerChip.textContent = '服务端 v' + CFG.version + ' · ' + ctlPanel.devices.length + ' 台设备';
       renderCtlDevices();
+      renderCtlScenes();
     } catch (e) {
       el.ctlServerChip.textContent = '服务端不可达';
     }
@@ -3470,6 +3488,162 @@ body.ctl-locked .tools .menu .menu-item#btnControl { opacity: 1 !important; poin
       toast(res.ok ? (d.name + ' 开机恢复：' + (value ? '开' : '关')) : '操作失败：HTTP ' + res.status);
     } catch (e) { toast('操作失败：网络不可达'); }
     refreshCtlDevices();
+  }
+
+  /* ---------- 场景预设（设计 §9）：常驻顶部，一键应用 / 存为场景 / 管理 ---------- */
+
+  function renderCtlScenes() {
+    var host = el.ctlSceneList;
+    host.innerHTML = '';
+    if (!ctlPanel.scenes.length) {
+      var tip = document.createElement('span');
+      tip.style.cssText = 'font-size:12px;color:var(--muted);';
+      tip.textContent = '暂无场景 —— 把全场调到某个状态后点「＋ 存为场景」';
+      host.appendChild(tip);
+      return;
+    }
+    ctlPanel.scenes.forEach(function (s) {
+      var btn = document.createElement('button');
+      btn.className = 'btn apply';
+      btn.textContent = s.name + '（' + s.steps.length + '）';
+      btn.title = '一键把 ' + s.steps.length + ' 台设备恢复到该场景（离线设备会补投递）';
+      btn.addEventListener('click', function () { ctlApplyScene(s); });
+      host.appendChild(btn);
+    });
+  }
+
+  async function ctlApplyScene(scene) {
+    try {
+      var res = await fetch(SERVER_BASE + '/api/ctl/scenes/' + encodeURIComponent(scene.id) + '/apply', { method: 'POST' });
+      var json = await res.json();
+      if (!res.ok) { toast('应用失败：' + (json && json.error ? json.error : 'HTTP ' + res.status)); return; }
+      var skipped = json.total - json.applied;
+      toast('场景「' + scene.name + '」已下发 ' + json.applied + '/' + json.total +
+        (skipped ? '（' + skipped + ' 台设备已移除，跳过）' : ''));
+      refreshCtlDevices();
+    } catch (e) { toast('应用失败：网络不可达'); }
+  }
+
+  /** 存为场景：服务端快照当前现场（受控设备取 desired，本地设备把 reported 转等价指令） */
+  function ctlSaveSceneDialog() {
+    var online = ctlPanel.devices.filter(function (d) { return d.online !== 'offline'; }).length;
+    if (!online) { toast('当前没有在线设备，无法保存场景'); return; }
+    var ui = openCtlModal('存为场景', '将捕获 ' + online + ' 台在线设备的当前状态（正在控制的设备记指令，本地设备记当前画面）');
+    var row = document.createElement('div');
+    row.className = 'row';
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = '场景名（如：晨会 / 来访 / 值守）';
+    input.maxLength = 60;
+    input.style.cssText = 'flex:1;background:rgba(9,16,28,.9);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:14px;';
+    row.appendChild(input);
+    var ok = document.createElement('button');
+    ok.className = 'btn primary';
+    ok.textContent = '保存';
+    ok.addEventListener('click', async function () {
+      var name = input.value.trim();
+      if (!name) { toast('请输入场景名'); return; }
+      try {
+        var res = await fetch(SERVER_BASE + '/api/ctl/scenes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: name })
+        });
+        var json = await res.json();
+        if (!res.ok) { toast('保存失败：' + (json && json.error ? json.error : 'HTTP ' + res.status)); return; }
+        var skippedNote = json.skipped && json.skipped.length ? '（' + json.skipped.length + ' 台离线设备未入场景）' : '';
+        toast('场景「' + name + '」已保存：' + json.scene.steps.length + ' 步' + skippedNote);
+      } catch (e) { toast('保存失败：网络不可达'); }
+      closeCtlModal();
+      refreshCtlDevices();
+    });
+    var cancel = document.createElement('button');
+    cancel.className = 'btn';
+    cancel.textContent = '取消';
+    cancel.addEventListener('click', closeCtlModal);
+    ui.list.appendChild(row);
+    ui.footer.appendChild(cancel);
+    ui.footer.appendChild(ok);
+    setTimeout(function () { input.focus(); }, 50);
+  }
+
+  /** 场景管理：重命名 / 删除 */
+  function ctlSceneManageDialog() {
+    if (!ctlPanel.scenes.length) { toast('还没有场景'); return; }
+    var ui = openCtlModal('场景管理', '重命名或删除已保存的场景');
+    ctlPanel.scenes.forEach(function (s) {
+      var row = document.createElement('div');
+      row.className = 'row';
+      var name = document.createElement('span');
+      name.className = 'grow';
+      name.textContent = s.name + '（' + s.steps.length + ' 步）';
+      row.appendChild(name);
+      var rn = document.createElement('button');
+      rn.className = 'mini-btn';
+      rn.textContent = '重命名';
+      rn.addEventListener('click', function () { ctlRenameScene(s); });
+      var del = document.createElement('button');
+      del.className = 'mini-btn';
+      del.textContent = '删除';
+      del.addEventListener('click', async function () {
+        openDialog('删除场景「' + s.name + '」？', '删除后不可恢复。', [
+          { text: '保留', run: function () {} },
+          { text: '删除', primary: true, run: async function () {
+            try {
+              await fetch(SERVER_BASE + '/api/ctl/scenes/' + encodeURIComponent(s.id), { method: 'DELETE' });
+              toast('已删除场景「' + s.name + '」');
+            } catch (e) { toast('删除失败：网络不可达'); }
+            refreshCtlDevices();
+            closeCtlModal();
+          } }
+        ], 'Enter 确认　Esc 取消');
+      });
+      row.appendChild(rn);
+      row.appendChild(del);
+      ui.list.appendChild(row);
+    });
+    var close = document.createElement('button');
+    close.className = 'btn';
+    close.textContent = '关闭';
+    close.addEventListener('click', closeCtlModal);
+    ui.footer.appendChild(close);
+  }
+
+  function ctlRenameScene(scene) {
+    var ui = openCtlModal('场景重命名', scene.id);
+    var row = document.createElement('div');
+    row.className = 'row';
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.value = scene.name;
+    input.maxLength = 60;
+    input.style.cssText = 'flex:1;background:rgba(9,16,28,.9);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:14px;';
+    row.appendChild(input);
+    var ok = document.createElement('button');
+    ok.className = 'btn primary';
+    ok.textContent = '保存';
+    ok.addEventListener('click', async function () {
+      var name = input.value.trim();
+      if (!name) { toast('场景名不能为空'); return; }
+      try {
+        var res = await fetch(SERVER_BASE + '/api/ctl/scenes/' + encodeURIComponent(scene.id), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: name })
+        });
+        toast(res.ok ? '已重命名：' + name : '重命名失败：HTTP ' + res.status);
+      } catch (e) { toast('重命名失败：网络不可达'); }
+      closeCtlModal();
+      refreshCtlDevices();
+    });
+    var cancel = document.createElement('button');
+    cancel.className = 'btn';
+    cancel.textContent = '取消';
+    cancel.addEventListener('click', closeCtlModal);
+    ui.list.appendChild(row);
+    ui.footer.appendChild(cancel);
+    ui.footer.appendChild(ok);
+    setTimeout(function () { input.focus(); }, 50);
   }
 
 

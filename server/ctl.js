@@ -390,7 +390,9 @@ function createCtl({ dataDir, getEntries, log = () => {} }) {
         online: onlineOf(d.lastSeenAt),
         lastSeenAt: d.lastSeenAt || null,
         reported: d.reported
-      }))
+      })),
+      // 场景随列表一并下发（控制屏一次轮询拿全，避免第二个接口）
+      scenes: data.scenes
     };
   }
 

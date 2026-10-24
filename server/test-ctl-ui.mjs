@@ -72,6 +72,11 @@ async function waitUntil(fn, { timeout = 9000, interval = 300, label = '' } = {}
   });
 
   await page.goto(BASE + '/', { waitUntil: 'load' });
+  if (process.env.CTL_UI_DEBUG) {
+    page.on('response', (r) => {
+      if (r.url().includes('/api/ctl/')) console.log('[dbg]', r.status(), r.url().replace(BASE, ''));
+    });
+  }
 
   /* ---------- 1. 打开即注册 ---------- */
   const ok1 = await waitUntil(async () => !!(await page.evaluate(() => localStorage.getItem('tvshow.deviceId'))),
@@ -401,8 +406,70 @@ async function waitUntil(fn, { timeout = 9000, interval = 300, label = '' } = {}
   const unlock21 = await waitUntil(() => page.evaluate(() => !document.body.classList.contains('ctl-locked')), { label: '本机解锁' });
   check('确认后两台设备交还本地、本机立即解锁', rel21 && unlock21);
 
-  /* ---------- 22. 收尾检查 ---------- */
-  check('运行期无 JS 异常与 console 错误（含控制半边）', errors.length === 0, errors);
+  /* ============================ P4 · 场景预设 ============================ */
+
+  /* ---------- 22. 存为场景（服务端快照：本地设备 reported 转指令；控制中设备不入场景） ---------- */
+  // 当前：本机在控制屏（mode=control，不入场景）；二号电视刷新心跳保持在线，reported=page/storage-monitor
+  await beat2({ state: { mode: 'page', entryId: 'storage-monitor' } });
+  await page.click('#btnCtlSceneSave');
+  await page.waitForTimeout(200);
+  await page.fill('.ctl-modal input[type="text"]', '晨会');
+  await page.click('.ctl-modal footer .btn.primary');
+  let scene22 = null;
+  const scene22ok = await waitUntil(async () => {
+    const list = (await api('GET', '/api/ctl/devices')).json.scenes;
+    scene22 = list.find((s) => s.name === '晨会') || null;
+    return !!scene22;
+  }, { label: '场景落盘' });
+  check('存为场景：保存成功且场景条立即出现按钮', scene22ok, scene22);
+  await page.click('#btnCtlReload');
+  const sceneBtn22ok = await waitUntil(() => page.evaluate(() =>
+    !!document.querySelector('#ctlSceneList .btn.apply')), { label: '场景按钮' });
+  const sceneBtn22 = await page.evaluate(() => {
+    const b = document.querySelector('#ctlSceneList .btn.apply');
+    return b ? b.textContent : null;
+  });
+  check('场景条渲染「▶晨会」按钮（含步数）', sceneBtn22ok && /晨会/.test(sceneBtn22 || ''), sceneBtn22);
+  const step22 = scene22 && scene22.steps ? scene22.steps.find((s) => s.deviceId === DEV2) : null;
+  check('快照内容：本地控制的二号电视 reported(page) 转为 show 指令',
+    scene22.steps.length === 1 && step22 && step22.cmd === 'show' &&
+    step22.args.entryId === 'storage-monitor', scene22.steps);
+
+  /* ---------- 23. 应用场景：未受控设备自动接管 ---------- */
+  await page.click('#ctlSceneList .btn.apply');
+  const applied23 = await waitUntil(async () => {
+    const d = await deviceOf(DEV2);
+    return d.managed === true && d.desired && d.desired.cmd === 'show';
+  }, { label: '二号电视被接管' });
+  check('一键应用场景：二号电视收到 show 并自动接管', applied23);
+  const self23 = await deviceOf(deviceId);
+  check('场景不含「控制中」设备：本机不受影响（仍本地）', self23.managed === false, self23.managed);
+
+  /* ---------- 24. 场景管理：重命名与删除 ---------- */
+  await page.click('#btnCtlSceneManage');
+  await page.waitForTimeout(200);
+  await page.click('.ctl-modal .mini-btn:has-text("重命名")');
+  await page.waitForTimeout(200);
+  await page.fill('.ctl-modal input[type="text"]', '晨会V2');
+  await page.click('.ctl-modal footer .btn.primary');
+  const scene24ok = await waitUntil(async () => {
+    const list = (await api('GET', '/api/ctl/devices')).json.scenes;
+    return list.length === 1 && list[0].name === '晨会V2';
+  }, { label: '重命名生效' });
+  check('场景重命名生效', scene24ok);
+  await page.click('#btnCtlSceneManage');
+  await page.waitForTimeout(200);
+  await page.click('.ctl-modal .mini-btn:has-text("删除")');
+  await page.waitForTimeout(200);
+  await page.click('.dialog .item:has-text("删除")');
+  const sceneGone24 = await waitUntil(async () => {
+    const list = (await api('GET', '/api/ctl/devices')).json.scenes;
+    return list.length === 0;
+  }, { label: '场景删除' });
+  check('场景删除生效（列表清空）', sceneGone24);
+
+  /* ---------- 25. 收尾检查 ---------- */
+  check('运行期无 JS 异常与 console 错误（含场景）', errors.length === 0, errors);
 
   await browser.close();
   const pass = results.filter((x) => x.pass).length;
