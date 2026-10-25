@@ -2361,8 +2361,13 @@ select {
         syncFromServer(true);
       }
       if (json.desired) {
+        ctl.pendingRelease = false; // 新指令优先：交还意图已被服务端忽略
         applyCommand(json.desired);
         ctl.ackedSeq = json.desired.seq;
+      } else if (ctl.pendingRelease && json.managed === false) {
+        // 交还意图已送达确认
+        ctl.pendingRelease = false;
+        ctl.lastApplied = null;
       }
     } catch (e) {
       clearTimeout(timer);

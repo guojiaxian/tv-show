@@ -106,6 +106,10 @@ object ControlChannel {
     @Volatile
     private var lastApplied: JSONObject? = null
 
+    /** 交还意图在途：响应确认 managed=false 后才清 lastApplied（失败随下一拍自动重发） */
+    @Volatile
+    private var pendingRelease = false
+
     /* ---------------- 初始化 ---------------- */
 
     /** 幂等初始化；在首个 Activity 的 onCreate 调用（建议 [com.digitalcenter.tvshow.ui.MainActivity]） */
@@ -306,8 +310,10 @@ object ControlChannel {
         // 本机立即解锁（角标移除）；若服务端恰有在途指令则指令优先（忽略本次交还并回下发）
         val la = lastApplied
         if (!localMode && la != null && !followsCommand(la, reported)) {
+            // lastApplied 不在此清除：响应确认 managed=false 才清——本拍失败时
+            // 偏离仍在，意图随下一拍自动重发（幂等），不会丢
             body.put("switchTo", "local")
-            lastApplied = null
+            pendingRelease = true
             applyMode(remote = false, silent = true, activity = currentActivity)
         }
 
@@ -358,6 +364,7 @@ object ControlChannel {
             val cmd = desired.optString("cmd")
             val args = desired.optJSONObject("args") ?: JSONObject()
             if (isDisplayCommand(cmd)) {
+                pendingRelease = false // 新指令优先：交还意图已被服务端忽略
                 lastApplied = JSONObject().put("cmd", cmd).put("args", args)
             }
             mainHandler.post {
@@ -375,9 +382,13 @@ object ControlChannel {
         // 2) 纯模式校正（无指令时）：控制端「取消控制」→ 解锁；服务端记忆 → 接管（boot 恢复）
         if (!managed && !localMode) {
             lastApplied = null
+            pendingRelease = false // 交还意图已送达确认（含自动交还路径）
             applyMode(remote = false, silent = false, activity = currentActivity)
         } else if (managed && localMode) {
             applyMode(remote = true, silent = true, activity = currentActivity)
+        } else if (pendingRelease && !managed && desired == null) {
+            pendingRelease = false
+            lastApplied = null
         }
     }
 

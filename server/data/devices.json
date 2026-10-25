@@ -8,7 +8,6 @@
       "appVersion": "2.0-web",
       "registeredAt": "2026-10-24T11:30:15.841Z",
       "managed": false,
-      "bootRestore": true,
       "desired": null,
       "ackedSeq": 8
     },
@@ -18,16 +17,8 @@
       "kind": "pc",
       "appVersion": "2.0-web",
       "registeredAt": "2026-10-24T11:47:31.437Z",
-      "managed": true,
-      "bootRestore": true,
-      "desired": {
-        "seq": 10,
-        "cmd": "show",
-        "args": {
-          "entryId": "env-monitor"
-        },
-        "issuedAt": "2026-10-24T17:29:10.778Z"
-      },
+      "managed": false,
+      "desired": null,
       "ackedSeq": 5
     }
   ],

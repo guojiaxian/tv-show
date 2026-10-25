@@ -1,5 +1,5 @@
 {
-  "seq": 9,
+  "seq": 10,
   "devices": [
     {
       "id": "dev-e8952f98",
@@ -21,12 +21,12 @@
       "managed": true,
       "bootRestore": true,
       "desired": {
-        "seq": 9,
+        "seq": 10,
         "cmd": "show",
         "args": {
           "entryId": "env-monitor"
         },
-        "issuedAt": "2026-10-24T17:27:29.794Z"
+        "issuedAt": "2026-10-24T17:29:10.778Z"
       },
       "ackedSeq": 5
     }
