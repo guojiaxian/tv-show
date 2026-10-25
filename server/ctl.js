@@ -42,9 +42,12 @@ const MAINTAIN_CMDS = ['refresh', 'sync'];
 const ALL_CMDS = [...DISPLAY_CMDS, ...MAINTAIN_CMDS];
 /** 场景 step 允许的指令（与展示类一致：场景就是一批展示指令的快照） */
 const SCENE_CMDS = DISPLAY_CMDS;
-const ONLINE_SEC = 10;
-/** 离线判定阈值（秒）：回归（重开页面 / 断电重启 / 断网重连）超过该时长即回到本地控制 */
-const RECENT_SEC = Number(process.env.TVSHOW_CTL_RECENT_SEC) || 60;
+/** 心跳周期（秒）：与客户端约定 3 秒一拍 */
+const BEAT_INTERVAL_SEC = 3;
+/** 离线判定：连续 3 次心跳未收到（3 × 3 = 9 秒）即视为离线 */
+const OFFLINE_AFTER_MISSES = 3;
+const OFFLINE_SEC = Number(process.env.TVSHOW_CTL_OFFLINE_SEC) ||
+  BEAT_INTERVAL_SEC * OFFLINE_AFTER_MISSES;
 const MAX_DEVICES = 500;
 const MAX_SCENES = 50;
 const MAX_BODY_BYTES = 256 * 1024;
@@ -315,7 +318,7 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
       // 页面重开（boot）或离线超过阈值后回归，丢弃未确认指令并交还本地，
       // 之后由控制台重新下发才会再次接管。
       const returning = boot ||
-        (prevLastSeen > 0 && Date.now() - prevLastSeen > RECENT_SEC * 1000);
+        (prevLastSeen > 0 && Date.now() - prevLastSeen > OFFLINE_SEC * 1000);
       if (returning && (dev.desired || dev.managed)) {
         log(`[ctl] ${dev.id} 回归即本地控制（${boot ? '页面重开/重启' : '离线回归'}），丢弃未确认指令`);
         dev.desired = null;
@@ -396,12 +399,10 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
 
   /* ---------- 设备列表 / 档案管理 ---------- */
 
+  /** 在线判定：距上次心跳不足 3 次（9 秒）为在线，否则离线 */
   function onlineOf(lastSeenAt) {
     if (!lastSeenAt) return 'offline';
-    const age = (Date.now() - lastSeenAt) / 1000;
-    if (age < ONLINE_SEC) return 'online';
-    if (age < RECENT_SEC) return 'recent';
-    return 'offline';
+    return (Date.now() - lastSeenAt) / 1000 < OFFLINE_SEC ? 'online' : 'offline';
   }
 
   function devicesPayload() {

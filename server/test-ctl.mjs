@@ -291,7 +291,7 @@ const beat = (deviceId, extra = {}) => api('POST', '/api/ctl/beat', { deviceId, 
   r = await api('POST', `/api/ctl/scenes/${sceneId}/apply`);
   check('应用已删场景 404', r.status === 404);
 
-  /* ---------- 11.5 真实离线（>60s）回归：即本地控制，排队指令丢弃 ---------- */
+  /* ---------- 11.5 真实离线（3 次心跳未收到 ≈ 9s）回归：即本地控制，排队指令丢弃 ---------- */
   // 两台设备并行等待一次 61s：一台带未确认排队指令，一台已确认（正在执行）
   await beat('dev-gggg7777'); // 先注册（在线）
   await beat('dev-hhhh8888');
@@ -301,8 +301,8 @@ const beat = (deviceId, extra = {}) => api('POST', '/api/ctl/beat', { deviceId, 
   r = await beat('dev-hhhh8888');
   const hSeq = r.json.desired.seq;
   await beat('dev-hhhh8888', { ackedSeq: hSeq, state: { mode: 'page', entryId: 'storage-monitor' } }); // 已确认跟随
-  console.log('等待 61 秒模拟真实离线回归……');
-  await sleep(61000);
+  console.log('等待 10 秒模拟真实离线回归（3 次心跳未收到）……');
+  await sleep(10000);
   r = await beat('dev-gggg7777');
   check('真离线回归：离线期间排队的指令被丢弃（下次登录仍是本地控制）',
     r.json.desired === null && r.json.managed === false, r.json);

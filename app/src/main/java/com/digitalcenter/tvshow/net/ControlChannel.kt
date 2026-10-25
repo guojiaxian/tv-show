@@ -48,7 +48,8 @@ object ControlChannel {
     private const val KEY_DEVICE_ID = "deviceId"
 
     private const val BEAT_INTERVAL_MS = 3000L
-    private const val BEAT_MAX_BACKOFF_MS = 30_000L
+    /** 失败退避上限 = 3 次心跳（9 秒）：与服务端离线判定对齐，网络恢复后一个周期内即同步状态 */
+    private const val BEAT_MAX_BACKOFF_MS = 9_000L
     private const val BEAT_TIMEOUT_MS = 5000
 
     /** 心跳与档案的状态枚举（与服务端约定） */

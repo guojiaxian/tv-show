@@ -237,6 +237,14 @@ function attachPageLog(page, errors, tag) {
   await page2.keyboard.press('Escape');
 
   /* ---------- 单台快捷操作（卡片右侧按钮，无需勾选） ---------- */
+  // 先把 DEV2 拉回在线（离线拦截会跳过对它的下发）
+  await beat2({ state: { mode: 'home' } });
+  await page2.click('#btnReload');
+  await waitUntil(() => page2.evaluate(() => {
+    const tvCard = Array.from(document.querySelectorAll('#deviceList .card'))
+      .find((c) => c.querySelector('.kind').textContent === 'TV');
+    return tvCard && !!tvCard.querySelector('.chip.onl-online');
+  }), { label: 'TV 在线' });
   // 卡片操作区结构：显示页面下拉（选中项=当前画面）+ 轮询… + 分屏… + 取消控制 + 重命名
   const tvCardOps = await page2.evaluate(() => {
     const card = Array.from(document.querySelectorAll('#deviceList .card')).find((c) => c.querySelector('.kind').textContent === 'TV');

@@ -2858,7 +2858,7 @@ select {
     } finally {
       var delay = ctl.failStreak === 0
         ? CTL_BEAT_MS
-        : Math.min(30000, CTL_BEAT_MS * Math.pow(2, ctl.failStreak));
+        : Math.min(9000, CTL_BEAT_MS * Math.pow(2, ctl.failStreak)); // 退避上限 9s = 3 次心跳（离线判定周期）
       setTimeout(doBeat, delay);
     }
   }

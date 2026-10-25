@@ -375,7 +375,7 @@ footer select {
       var onl = document.createElement('span');
       onl.className = 'chip ' + (d.online === 'online' ? 'onl-online' : 'onl-offline');
       onl.textContent = d.online === 'online' ? '在线' : '离线';
-      onl.title = d.online === 'online' ? '在线（心跳正常）' : d.online === 'recent' ? '刚离线（超过 10 秒无心跳）' : '离线（超过 60 秒无心跳，控制指令不发送）';
+      onl.title = d.online === 'online' ? '在线（心跳正常）' : '离线（连续 3 次心跳未收到，控制指令不发送）';
       var mode = document.createElement('span');
       mode.className = 'chip ' + (d.managed ? 'remote' : 'local');
       mode.textContent = d.managed ? '远程被控' : '本地控制';
