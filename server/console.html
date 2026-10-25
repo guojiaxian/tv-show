@@ -386,6 +386,13 @@ footer select {
         ip.title = '连接来源 IP（DHCP 变化属正常）';
         st.appendChild(ip);
       }
+      if (d.appVersion) {
+        var ver = document.createElement('span');
+        ver.className = 'chip';
+        ver.textContent = 'v' + d.appVersion;
+        ver.title = '客户端版本（电视端排查旧包：低于 v1.8 无互控能力）';
+        st.appendChild(ver);
+      }
       var sm = document.createElement('span');
       sm.textContent = summary(d);
       st.appendChild(onl);
@@ -513,6 +520,10 @@ footer select {
     t = t.filter(function (id) { return !off.some(function (d) { return d.id === id; }); });
     try {
       var json = await api('POST', '/api/ctl/send', { targets: t, cmd: cmd, args: args || {} });
+      if (!json.results.length) {
+        toast('还没有已注册的设备——用电脑或平板打开显示端首页、或在电视安装 1.8 客户端后会自动出现');
+        return false;
+      }
       toast('已下发「' + cmd + '」→ ' + json.results.length + ' 台设备（≤3 秒生效）');
       refresh();
       return true;
@@ -755,20 +766,26 @@ footer select {
       var d = state.devices.find(function (x) { return x.id === s.deviceId; });
       return d && d.online === 'online';
     }).map(function (s) { return s.deviceId; });
-    var offlineCount = scene.steps.length - onlineIds.length;
-    if (!onlineIds.length) { toast('场景内设备均已离线，未下发'); return; }
+    var goneIds = scene.steps.filter(function (s) {
+      return !state.devices.some(function (x) { return x.id === s.deviceId; });
+    }).map(function (s) { return s.deviceId; });
+    var offlineCount = scene.steps.length - onlineIds.length - goneIds.length; // 已删除设备单独计数
+    if (!onlineIds.length && !goneIds.length) { toast('场景内设备均已离线，未下发'); return; }
+    if (!onlineIds.length) { toast('场景内的设备均已从档案移除，未下发'); return; }
     var go = function () {
       api('POST', '/api/ctl/scenes/' + encodeURIComponent(scene.id) + '/apply', { targets: onlineIds })
         .then(function (json) {
           toast('场景「' + scene.name + '」已下发 ' + json.applied + '/' + json.total +
-            (offlineCount ? '（' + offlineCount + ' 台离线设备已跳过）' : ''));
+            (offlineCount ? '（' + offlineCount + ' 台离线设备已跳过' +
+              (goneIds.length ? '，' + goneIds.length + ' 台已移除）' : '）') : ''));
           refresh();
         })
         .catch(function (e) { toast('应用失败：' + e.message); });
     };
+    var goneNote = goneIds.length ? '，' + goneIds.length + ' 台已从档案移除（跳过）' : '';
     if (offlineCount) {
-      confirmModal('部分设备离线', '场景内 ' + offlineCount + ' 台设备当前离线，将只对在线的 ' +
-        onlineIds.length + ' 台下发。', [
+      confirmModal('部分设备离线', '场景内 ' + offlineCount + ' 台设备当前离线' + goneNote +
+        '，将只对在线的 ' + onlineIds.length + ' 台下发。', [
         { text: '取消', run: function () {} },
         { text: '仅对在线设备下发', primary: true, run: go }
       ]);
