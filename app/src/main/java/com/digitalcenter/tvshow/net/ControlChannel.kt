@@ -300,7 +300,7 @@ object ControlChannel {
         val body = JSONObject().apply {
             put("deviceId", id)
             put("kind", "tv")
-            put("appVersion", "1.8")
+            put("appVersion", "2.0")
             put("boot", boot)
             put("ackedSeq", ackedSeq)
             put("state", JSONObject(reported.toString()).putOpt("lastError", lastError ?: JSONObject.NULL))
