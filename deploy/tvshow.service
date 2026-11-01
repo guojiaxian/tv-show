@@ -1,0 +1,17 @@
+[Unit]
+Description=TV Show Center - display aggregation server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/applications/tv-show/server
+ExecStart=/usr/local/bin/node server.js --port 18000
+Restart=always
+RestartSec=3
+User=root
+StandardOutput=append:/root/applications/tv-show/server/server.log
+StandardError=append:/root/applications/tv-show/server/server.log
+
+[Install]
+WantedBy=multi-user.target

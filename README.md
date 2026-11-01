@@ -478,7 +478,7 @@ Uptime Kuma 这类 **history 路由 SPA** 通过代理打开时会渲染出 SPA 
 
 - **前提**：服务器能联网，在 `server/` 目录执行过 `npm install`（安装 `esbuild@0.28.2`，唯一的 npm 依赖）。**没装也能跑**：`transpile.isAvailable()` 返回 false，代理自动退回「原样透传」，服务端照常零依赖启动。
 - **怎么开**：管理后台编辑该入口 → 勾选「**旧内核兼容转译（电视端白屏修复）**」，可选填 `compatTarget`（默认 `chrome66`，格式如 `chrome66` / `es2019` / `safari13`，填错会被 400 拒绝并提示）。落盘字段：`compatTranspile: true` + `compatTarget: "chrome66"`。
-- **只对走代理的入口生效**：电视机侧必须让该入口经服务端代理加载。**客户端 1.2 起**：入口勾选兼容转译后，电视端展示页与 2×2 分区页都会自动改为加载 `{服务器}/proxy/<id>/<上游路径>`（[displayUrlOf()](file:///root/tv-show/app/src/main/java/com/digitalcenter/tvshow/config/AppConfig.kt#L42-L62)），无需人工干预；电脑端则是点开即走代理。**1.1 及更早的电视端没有代理能力**（直连 `entry.url`），服务端转译无从生效——这是 1.2 必须升级的原因。
+- **只对走代理的入口生效**：电视机侧必须让该入口经服务端代理加载。**客户端 1.2 起**：入口勾选兼容转译后，电视端展示页与 2×2 分区页都会自动改为加载 `{服务器}/proxy/<id>/<上游路径>`（[displayUrlOf()](file:///root/applications/tv-show/app/src/main/java/com/digitalcenter/tvshow/config/AppConfig.kt#L42-L62)），无需人工干预；电脑端则是点开即走代理。**1.1 及更早的电视端没有代理能力**（直连 `entry.url`），服务端转译无从生效——这是 1.2 必须升级的原因。
 - **两步手段**：
   1. **语法转译**（`esbuild.transformSync(code, { target, minify: true })`）：吃掉 `??` / `?.` / 类字段 / 静态块等，压过的产物标识符重命名不影响运行时回调注册（无 DI 风险）；输入本身已是压缩产物，转译后体积仅 **+1.9%**（3.32MB → 3.38MB，约 1.1s）——若关掉 `minify` 反而会膨胀 40%，所以必须开。
   2. **运行时垫片**（ES5 写法、存在性守卫，注入在业务脚本之前）：补齐 `globalThis`、`String.replaceAll`、`String.matchAll`、`String.trimStart/trimEnd`、`Array.prototype.flat/flatMap`、`Promise.allSettled`，以及 64 位 / 新数组 API：`BigInt`（含 `asIntN`/`asUintN`）、`DataView.prototype.setBigUint64/getBigUint64`、`Array/String.prototype.at`、`findLast/findLastIndex/toReversed/toSorted/toSpliced/with`、`Object.fromEntries/hasOwn`、`Promise.any`、`queueMicrotask`。清单来自对两个站点产物的实测命中，不是凭经验堆的。
@@ -486,7 +486,7 @@ Uptime Kuma 这类 **history 路由 SPA** 通过代理打开时会渲染出 SPA 
 - **缓存**：内容寻址（`sha256(target + 内容)` 取前 32 位）落盘在 `server/.cache/transpile`（可用 `TVSHOW_TRANSPILE_CACHE` 覆盖），内存 LRU 48MB + 磁盘 256MB（按 mtime 淘汰）。命中的 `.js` 即使带 `?cb=1` 这类查询串也只算一次转译。头行校验不过（版本 / target / 原长不符）即删除重算，缓存损坏可自愈。
 - **三层兜底即回退**：esbuild 不可用 / `transform` 抛错 / 原文不是合法 UTF-8 → **一律回退原文**，绝不返回 502/503。最坏情况退化成「没开这个开关」。
 - **取舍（重要）**：开了转译的入口，其 `.js` 请求**不下发 `If-None-Match`/`If-Modified-Since` 条件头**，并统一 `Cache-Control: no-cache`——因为上游的 ETag 只反映**上游原始内容**，若放行 304，浏览器会一直沿用旧产物，转译结果永远到不了页面。代价是这类 JS 每次回源（有服务端缓存兜底，不重复转译）。
-- **踩过的坑（客户端缓存必须逐字段写全）**：电视机侧把配置缓存在 `files/server-config.json`（[ConfigStore.kt](file:///root/tv-show/app/src/main/java/com/digitalcenter/tvshow/net/ConfigStore.kt#L88-L109)）。缓存写入是**手写字段清单**，漏写任何「解析时会读」的字段，下次启动就会回落到默认值；而此时服务端往往因为版本没变返回 **304**，该字段**再也补不回来**。`compatTranspile` 就曾因此丢失：服务端明明下发为 `true`，电视端因缓存缺字段而按 `false` 直连，白屏照旧。修复后如需让**已装机的旧版本**重新拿到该字段，用 `POST /api/admin/epoch/bump` 抬一次 epoch，所有客户端下次同步会走**全量**。
+- **踩过的坑（客户端缓存必须逐字段写全）**：电视机侧把配置缓存在 `files/server-config.json`（[ConfigStore.kt](file:///root/applications/tv-show/app/src/main/java/com/digitalcenter/tvshow/net/ConfigStore.kt#L88-L109)）。缓存写入是**手写字段清单**，漏写任何「解析时会读」的字段，下次启动就会回落到默认值；而此时服务端往往因为版本没变返回 **304**，该字段**再也补不回来**。`compatTranspile` 就曾因此丢失：服务端明明下发为 `true`，电视端因缓存缺字段而按 `false` 直连，白屏照旧。修复后如需让**已装机的旧版本**重新拿到该字段，用 `POST /api/admin/epoch/bump` 抬一次 epoch，所有客户端下次同步会走**全量**。
 - **现场自诊断（客户端 1.3 起）**：大屏页按【菜单】，信息浮层第二行是**真实加载地址**、第三行标注 **`兼容代理` / `直连`** —— 一眼可确认客户端有没有按预期走代理（若仍显示直连或显示上游地址，说明 APK 未升级或配置未同步）；页面若白屏，「页面无法显示」面板会**直接附上最近一条脚本错误**（含 `SyntaxError` 等，来源文件与行号），现场无 adb 也能定位。
 - **状态自查**：`GET /api/admin/health` 的 `transpile` 字段给出 `{ available, version, reason, defaultTarget, cacheDir, stats:{ hits, misses, failures, outBytes } }`。
 

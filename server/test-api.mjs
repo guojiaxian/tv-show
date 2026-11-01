@@ -264,7 +264,7 @@ const get = (p, h) => api('GET', p, null, h);
 
   /* ---------- 13. 数据落盘可读 ---------- */
   // 读隔离实例自己的数据目录（test-run.mjs 通过 TVSHOW_DATA_DIR 指定），不碰线上数据
-  const dataDir = process.env.TVSHOW_DATA_DIR || '/root/tv-show/server/data';
+  const dataDir = process.env.TVSHOW_DATA_DIR || '/root/applications/tv-show/server/data';
   const onDisk = JSON.parse(readFileSync(`${dataDir}/config.json`, 'utf8'));
   check('数据已持久化到 data/config.json 且版本一致',
     onDisk.version === after.version && Array.isArray(onDisk.entries),
