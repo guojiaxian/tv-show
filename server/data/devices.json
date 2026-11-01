@@ -20,6 +20,16 @@
       "managed": false,
       "desired": null,
       "ackedSeq": 5
+    },
+    {
+      "id": "dev-8a3ef356",
+      "name": "新设备-f356",
+      "kind": "pc",
+      "appVersion": "2.0-web",
+      "registeredAt": "2026-11-01T07:05:52.841Z",
+      "managed": false,
+      "desired": null,
+      "ackedSeq": 0
     }
   ],
   "scenes": []

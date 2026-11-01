@@ -8,7 +8,7 @@
  * 职责：
  *   1) 对外提供配置数据（客户端拉取）：GET /api/config
  *   2) 管理后台的增删改查接口：/api/admin/*
- *   3) 托管三个页面（单端口 18080，不额外起服务）：
+ *   3) 托管页面（单端口 18000，不额外起服务）：
  *        GET /          电脑浏览器客户端（站点首页，别名 /app、/client）
  *        GET /setting   管理（设置）页面
  *        GET /preview   电视端 1:1 预览页
@@ -16,7 +16,7 @@
  * 数据：单个 JSON 文件 server/data/config.json，原子写盘 + 自动备份。
  *
  * 启动：
- *   node server/server.js                  # 默认端口 18080
+ *   node server/server.js                  # 默认端口 18000
  *   node server/server.js --port 9000      # 指定端口
  *   PORT=9000 node server/server.js        # 或用环境变量
  *   node server/server.js --host 127.0.0.1 # 只监听本机（配合反向代理时更安全）

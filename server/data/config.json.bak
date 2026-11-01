@@ -1,10 +1,10 @@
 {
-  "version": 173,
+  "version": 175,
   "epoch": 9,
   "metaRev": 168,
   "orderRev": 86,
   "prunedBeforeRev": 0,
-  "updatedAt": "2026-10-24T11:33:37.232Z",
+  "updatedAt": "2026-11-01T07:06:20.113Z",
   "appTitle": "数智资源中心大屏聚合平台",
   "appSubtitle": "DIGITAL CENTER · DISPLAY HUB",
   "exitConfirm": true,
@@ -86,7 +86,7 @@
         "submitSelector": "#loginBtn",
         "successSelector": ""
       },
-      "rev": 170
+      "rev": 174
     },
     {
       "id": "entry-7f1eb4",
@@ -171,7 +171,7 @@
       "type": "url",
       "title": "云计算平台资源监控",
       "subtitle": "",
-      "url": "http://10.8.11.4:8126/",
+      "url": "http://10.8.11.4:18001/",
       "accent": "#2FD2F5",
       "icon": "default",
       "scale": 0,
@@ -184,7 +184,7 @@
       "turboEnabled": false,
       "turboIntervalSec": 2,
       "turboQuality": 75,
-      "rev": 172
+      "rev": 175
     },
     {
       "id": "entry-72df75",

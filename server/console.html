@@ -559,6 +559,9 @@ footer select {
     if (!explicit && !targets()) { toast('请先勾选目标设备'); return; }
     rotateDraft = [];
     var targetName = explicit ? (state.devices.find(function (d) { return d.id === explicit[0]; }) || {}).name : null;
+    // 「强制原址打开」的页面无法在轮播中内嵌（Web 端轮询会自动跳过它），
+    // 混入会导致 Web 端上报序列与指令不一致 → 误判已脱离 → 自动交还，故这里直接排除
+    var rotatable = state.entries.filter(function (e) { return e.openOriginal !== true; });
     formModal('轮询下发', (targetName ? '目标：' + targetName + '。' : '') +
       '勾选参与页面（↑↓ 调整顺序），确定后立即开始轮询', function (body, foot) {
       var rowIv = document.createElement('div');
@@ -591,7 +594,7 @@ footer select {
       var listBox = document.createElement('div');
       function renderRows() {
         listBox.innerHTML = '';
-        state.entries.forEach(function (e) {
+        rotatable.forEach(function (e) {
           var idx = rotateDraft.indexOf(e.id);
           var row = document.createElement('div');
           row.className = 'row';
@@ -770,6 +773,7 @@ footer select {
       return !state.devices.some(function (x) { return x.id === s.deviceId; });
     }).map(function (s) { return s.deviceId; });
     var offlineCount = scene.steps.length - onlineIds.length - goneIds.length; // 已删除设备单独计数
+    if (!state.devices.length) { toast('设备列表尚未加载，请稍候再试'); return; }
     if (!onlineIds.length && !goneIds.length) { toast('场景内设备均已离线，未下发'); return; }
     if (!onlineIds.length) { toast('场景内的设备均已从档案移除，未下发'); return; }
     var go = function () {
@@ -938,6 +942,8 @@ footer select {
   refreshEntries();
   refresh();
   setInterval(refresh, 3000);
+  // 页面列表低频跟随管理后台（新增/删除页面后下拉与场景快照保持最新）
+  setInterval(refreshEntries, 30000);
 })();
 </script>
 </body>

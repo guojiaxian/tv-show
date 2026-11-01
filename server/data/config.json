@@ -1,10 +1,10 @@
 {
-  "version": 174,
+  "version": 176,
   "epoch": 9,
   "metaRev": 168,
   "orderRev": 86,
   "prunedBeforeRev": 0,
-  "updatedAt": "2026-10-24T11:34:25.117Z",
+  "updatedAt": "2026-11-01T07:06:36.377Z",
   "appTitle": "数智资源中心大屏聚合平台",
   "appSubtitle": "DIGITAL CENTER · DISPLAY HUB",
   "exitConfirm": true,
@@ -15,7 +15,7 @@
       "type": "url",
       "title": "数智资源中心存储集群资源监控",
       "subtitle": "存储集群容量总览 / 分区视图 / 容量趋势",
-      "url": "http://10.8.11.4:1111/",
+      "url": "http://10.8.11.4:18002/",
       "accent": "#2FD2F5",
       "icon": "storage",
       "scale": 0,
@@ -28,7 +28,7 @@
       "turboEnabled": true,
       "turboIntervalSec": 0.5,
       "turboQuality": 75,
-      "rev": 163
+      "rev": 176
     },
     {
       "id": "env-monitor",
@@ -171,7 +171,7 @@
       "type": "url",
       "title": "云计算平台资源监控",
       "subtitle": "",
-      "url": "http://10.8.11.4:8126/",
+      "url": "http://10.8.11.4:18001/",
       "accent": "#2FD2F5",
       "icon": "default",
       "scale": 0,
@@ -184,7 +184,7 @@
       "turboEnabled": false,
       "turboIntervalSec": 2,
       "turboQuality": 75,
-      "rev": 172
+      "rev": 175
     },
     {
       "id": "entry-72df75",
