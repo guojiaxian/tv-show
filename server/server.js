@@ -89,10 +89,10 @@ function parseArgs(argv) {
 
 const args = parseArgs(process.argv.slice(2));
 if (args.help) {
-  console.log('用法: node server.js [--port 18080] [--host 0.0.0.0]');
+  console.log('用法: node server.js [--port 18000] [--host 0.0.0.0]');
   process.exit(0);
 }
-const PORT = Number(args.port || process.env.PORT || 18080);
+const PORT = Number(args.port || process.env.PORT || 18000);
 const HOST = args.host || process.env.HOST || '0.0.0.0';
 
 /* ============================ 数据层 ============================ */

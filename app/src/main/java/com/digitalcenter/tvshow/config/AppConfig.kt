@@ -240,7 +240,7 @@ object ConfigLoader {
     private const val ASSET_NAME = "config.json"
     const val EXTERNAL_FILE_NAME = "config.json"
 
-    const val DEFAULT_SERVER_BASE_URL = "http://10.8.11.4:18080"
+    const val DEFAULT_SERVER_BASE_URL = "http://10.8.11.4:18000"
 
     fun externalFile(context: Context): File? =
         context.getExternalFilesDir(null)?.let { File(it, EXTERNAL_FILE_NAME) }
