@@ -305,7 +305,9 @@ object ControlChannel {
             put("ackedSeq", ackedSeq)
             put("state", JSONObject(reported.toString()).putOpt("lastError", lastError ?: JSONObject.NULL))
         }
-        boot = false
+        // 注意：boot 只有在本拍**成功送达**后才置 false（见下方 responseCode 检查）。
+        // 若在发请求前就清掉，首次心跳因网络故障失败时，下一拍会以 boot=false 重试，
+        // 服务端据此丢失「进程刚启动」的信号，可能继续沿用重启前的受控状态。
         // 现场本地操作偏离指令画面 → 自动交还本地（服务端 managed=false，控制台如实显示）；
         // 本机立即解锁（角标移除）；若服务端恰有在途指令则指令优先（忽略本次交还并回下发）
         val la = lastApplied
@@ -329,6 +331,8 @@ object ControlChannel {
             conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
             val code = conn.responseCode
             if (code != 200) throw IllegalStateException("HTTP $code")
+            // 服务端已收到本拍心跳：之后即使响应解析失败，也不应再以 boot=true 重发
+            boot = false
             val text = conn.inputStream.use { it.readBytes().toString(Charsets.UTF_8) }
             handleResponse(JSONObject(text))
         } finally {
@@ -370,12 +374,13 @@ object ControlChannel {
             mainHandler.post {
                 val activity = currentActivity
                 if (activity == null) {
-                    Log.w(TAG, "指令到达但无前台 Activity，丢弃：$cmd")
+                    // 不确认：服务端会在下一拍重发，等回到前台再应用，避免指令被静默丢弃
+                    Log.w(TAG, "指令到达但无前台 Activity，等待下次心跳重发：$cmd")
                 } else {
                     CommandApplier.apply(activity, cmd, args)
+                    ackedSeq = seq
                 }
             }
-            ackedSeq = seq
             return
         }
 
@@ -386,7 +391,7 @@ object ControlChannel {
             applyMode(remote = false, silent = false, activity = currentActivity)
         } else if (managed && localMode) {
             applyMode(remote = true, silent = true, activity = currentActivity)
-        } else if (pendingRelease && !managed && desired == null) {
+        } else if (pendingRelease && !managed) {
             pendingRelease = false
             lastApplied = null
         }

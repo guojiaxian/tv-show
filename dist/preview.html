@@ -509,7 +509,7 @@
 
 <!-- ==================== 与工程源码同步注入的数据 ==================== -->
 <script id="bootstrap" type="application/json">{
-  "serverBaseUrl": "http://10.8.11.4:18080",
+  "serverBaseUrl": "http://10.8.11.4:18000",
   "sync": {
     "connectTimeoutMs": 3000,
     "readTimeoutMs": 5000,
@@ -524,19 +524,27 @@
     "entries": [
       {
         "id": "storage-monitor",
+        "type": "url",
         "title": "数智资源中心存储集群资源监控",
         "subtitle": "存储集群容量总览 / 分区视图 / 容量趋势",
         "url": "http://10.8.11.4:1111/",
         "accent": "#2FD2F5",
-        "icon": "storage"
+        "icon": "storage",
+        "turboEnabled": true,
+        "turboIntervalSec": 2,
+        "turboQuality": 75
       },
       {
         "id": "env-monitor",
+        "type": "url",
         "title": "数智资源中心机房动环监控",
         "subtitle": "机房动力环境运行状态实时监控",
         "url": "http://10.8.12.130/#/index",
         "accent": "#3FE0A6",
         "icon": "env",
+        "turboEnabled": true,
+        "turboIntervalSec": 2,
+        "turboQuality": 75,
         "autoLogin": {
           "enabled": true,
           "username": "show",
@@ -545,11 +553,15 @@
       },
       {
         "id": "security-cockpit",
+        "type": "url",
         "title": "物探中心网络安全监控与自动化运维平台",
         "subtitle": "网络安全态势监测与自动化运维驾驶舱",
         "url": "http://10.8.11.3/cockpit",
         "accent": "#FFB020",
         "icon": "security",
+        "turboEnabled": true,
+        "turboIntervalSec": 2,
+        "turboQuality": 75,
         "autoLogin": {
           "enabled": true,
           "username": "admin",
@@ -557,6 +569,53 @@
           "usernameSelector": "#username",
           "passwordSelector": "#password",
           "submitSelector": "#loginBtn"
+        }
+      },
+      {
+        "id": "entry-7f1eb4",
+        "type": "url",
+        "title": "虚拟化集群资源监控",
+        "subtitle": "虚拟机资源总览",
+        "url": "https://10.8.16.10:30000/monitor-screen/#/monitor-screen",
+        "accent": "#0AADD1",
+        "icon": "storage",
+        "allowInsecureSsl": true,
+        "compatTranspile": true,
+        "turboEnabled": true,
+        "turboIntervalSec": 2,
+        "turboQuality": 75,
+        "autoLogin": {
+          "enabled": true,
+          "username": "show",
+          "password": "Gjx@gec2023"
+        }
+      },
+      {
+        "id": "entry-a7ab1b",
+        "type": "camera",
+        "title": "机房监控",
+        "subtitle": "内置画面墙 · 直接观看摄像机实时画面",
+        "url": "",
+        "accent": "#2FD2F5",
+        "icon": "storage"
+      },
+      {
+        "id": "entry-7c64f6",
+        "type": "url",
+        "title": "AI大模型服务状态监控",
+        "subtitle": "",
+        "url": "http://10.8.15.208:3001/dashboard",
+        "accent": "#2FD2F5",
+        "icon": "storage",
+        "allowInsecureSsl": true,
+        "compatTranspile": true,
+        "turboEnabled": true,
+        "turboIntervalSec": 2,
+        "turboQuality": 75,
+        "autoLogin": {
+          "enabled": true,
+          "username": "gjx",
+          "password": "Gjx@gec2023"
         }
       }
     ]
@@ -1492,7 +1551,12 @@
    * 3) 同步失败 → 保留兜底内容并显示「离线」
    * ========================================================================== */
   var BOOT = JSON.parse(document.getElementById('bootstrap').textContent);
-  var SERVER_BASE = (BOOT.serverBaseUrl || '').replace(/\/+$/, '');
+  var EMBEDDED_BASE = (BOOT.serverBaseUrl || '').replace(/\/+$/, '');
+  var servedOverHttp = /^https?:$/.test(location.protocol);
+  // 由服务端托管（/preview）时走同源接口，保证预览页与当前服务端数据一致；
+  // 直接以 file:// 打开时才回退到内置 serverBaseUrl（离线测试台场景）。
+  var SERVER_BASE = servedOverHttp ? '' : EMBEDDED_BASE;
+  var SERVER_LABEL = SERVER_BASE || (servedOverHttp ? location.origin : '未配置');
   // 兼容旧格式（顶层直接是配置）
   var FALLBACK = BOOT.fallback || BOOT;
 
@@ -2472,7 +2536,7 @@
   }
 
   async function syncFromServer(force) {
-    if (!SERVER_BASE) {
+    if (!SERVER_BASE && !servedOverHttp) {
       syncState = 'fallback';
       renderSourceChip('服务器地址未配置，展示内置兜底内容');
       if (force) toast('未配置 serverBaseUrl，无法同步');
@@ -2537,7 +2601,7 @@
     else { label = '配置来源：内置兜底'; cls = 'fallback'; }
     chip.textContent = label;
     chip.className = 'src-chip ' + cls;
-    chip.title = errMsg || ('服务器：' + (SERVER_BASE || '未配置'));
+    chip.title = errMsg || ('服务器：' + SERVER_LABEL);
   }
 
   /* ==========================================================================
@@ -2861,7 +2925,7 @@
   renderHome();
   renderSourceChip();
   fitStage();
-  console.log('[预览] 服务器：' + (SERVER_BASE || '未配置') + '，兜底入口数：' + ENTRIES.length +
+  console.log('[预览] 服务器：' + SERVER_LABEL + '，兜底入口数：' + ENTRIES.length +
     '，本机轮询：' + (local.rotation.enabled ? '开启' : '关闭') + '/' + local.rotation.items.length + ' 页');
   syncFromServer(false);
 })();

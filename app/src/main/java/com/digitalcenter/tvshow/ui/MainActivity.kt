@@ -401,14 +401,24 @@ class MainActivity : AppCompatActivity() {
 
     private fun showExitConfirm() {
         if (exitDialog?.isShowing == true) return
+        // 退出提示文案由服务端 meta 下发（管理后台「退出提示文案」），留空时用内置文案
+        val message = config.exitTip.ifBlank { getString(R.string.exit_message) }
         exitDialog = TvDialogs.confirm(
             context = this,
             title = getString(R.string.exit_title),
-            message = getString(R.string.exit_message),
+            message = message,
             confirmText = getString(R.string.exit_confirm),
             cancelText = getString(R.string.exit_cancel)
         ) { finish() }
         exitDialog?.show()
+    }
+
+    override fun onDestroy() {
+        // 清理时钟与「开机自动轮询」延时任务：避免 Activity 已结束时仍启动新页面
+        handler.removeCallbacksAndMessages(null)
+        exitDialog?.dismiss()
+        homeMenuDialog?.dismiss()
+        super.onDestroy()
     }
 
     private fun iconRes(icon: String?): Int = when (icon) {

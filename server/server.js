@@ -639,10 +639,12 @@ async function handle(req, res) {
   }
 
   if (p === '/api/config' && method === 'GET') {
+    // 只有显式 true/1 才强制全量：?full=0、?full=false 按增量处理（旧实现把字符串当真值）
     const full = url.searchParams.get('full');
+    const wantFull = full === '1' || full === 'true';
     const since = url.searchParams.get('since');
     const inm = req.headers['if-none-match'];
-    const result = full
+    const result = wantFull
       ? { status: 200, etag: etagOf(data), body: { full: fullSnapshot(data), version: data.version, epoch: data.epoch } }
       : buildClientPayload(data, { since, ifNoneMatch: inm, searchParams: url.searchParams });
     if (result.status === 304) return sendEmpty(res, 304, { ...CORS, ETag: result.etag });
@@ -705,6 +707,8 @@ async function handle(req, res) {
     const taken = new Set(data.entries.map((e) => e.id));
     const entry = validateEntry(body, { takenIds: taken });
     await mutate((d) => {
+      // 写锁内复查：并发创建同 id 时，validateEntry 的外层检查已过期
+      if (d.entries.some((e) => e.id === entry.id)) throw bad(`ID「${entry.id}」已存在`);
       entry.rev = d.version + 1;
       d.entries.push(entry);
     });
@@ -739,6 +743,9 @@ async function handle(req, res) {
       const entry = validateEntry(body, { existingId: id, existingType: data.entries[idx].type });
       await mutate((d) => {
         const i = d.entries.findIndex((e) => e.id === id);
+        // 外层 idx 校验与写锁之间可能已被并发删除，必须重新定位；
+        // 否则 i=-1 会把 entry 写到数组的 "-1" 属性上（不入数组但接口谎报成功）
+        if (i < 0) throw new HttpError(404, `入口「${id}」不存在`);
         entry.rev = d.version + 1;
         d.entries[i] = entry;
       });
@@ -748,6 +755,8 @@ async function handle(req, res) {
     if (method === 'DELETE') {
       await mutate((d) => {
         const i = d.entries.findIndex((e) => e.id === id);
+        // 必须复查：splice(-1, 1) 会误删数组最后一条（并发重复删除时的数据丢失事故）
+        if (i < 0) throw new HttpError(404, `入口「${id}」不存在`);
         d.entries.splice(i, 1);
         d.tombstones = d.tombstones.filter((t) => t.id !== id);
         d.tombstones.push({ id, rev: d.version + 1 });

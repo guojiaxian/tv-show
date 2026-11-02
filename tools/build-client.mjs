@@ -57,4 +57,4 @@ console.log('  兜底入口数：' + fallback.entries.length +
   '（' + fallback.entries.map((e) => e.title).join('、') + '）');
 console.log('  auto_login.js  ' + kb(loginJs));
 console.log('  合计           ' + kb(html));
-console.log('  访问地址：http://<服务器IP>:18080/          （站点首页，别名 /app）');
+console.log('  访问地址：http://<服务器IP>:18000/          （站点首页，别名 /app）');

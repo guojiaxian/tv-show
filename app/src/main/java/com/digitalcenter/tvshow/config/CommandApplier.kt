@@ -52,8 +52,12 @@ object CommandApplier {
             Log.w(TAG, "指令应用失败：$cmd -> ${e.message}")
             ControlChannel.lastError = "指令应用失败：$cmd（${e.message}）"
         }
-        // 展示类指令 = 强制接管：切画面 + 锁定 + 角标（设计 §8）
-        if (ControlChannel.isDisplayCommand(cmd)) ControlChannel.onDisplayCommandApplied()
+        // 展示类指令 = 强制接管：切画面 + 锁定 + 角标（设计 §8）。
+        // 应用失败（入口已删除 / 序列全不可用等，lastError 非空）时设备实际已回首页，
+        // 不应再进入受控锁定，否则控制台显示「被控」而现场在首页，需等下一拍心跳纠偏。
+        if (ControlChannel.isDisplayCommand(cmd) && ControlChannel.lastError == null) {
+            ControlChannel.onDisplayCommandApplied()
+        }
     }
 
     /* ---------------- show ---------------- */

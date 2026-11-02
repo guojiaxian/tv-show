@@ -116,6 +116,8 @@ class WebDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
     private var zoomPercent = 100
     private var pageError = false
     private var autoFitApplied = false
+    /** 最近一次应用「入口缩放/自动适配」的入口 id：轮询切页时据此重置，避免沿用上一页的缩放 */
+    private var zoomEntryId: String? = null
     /** 当前入口是否经服务端兼容代理加载（决定自动登录由服务端还是客户端注入） */
     private var viaCompatProxy = false
     /** 当前入口是否走极速模式截图包装页（自动登录由服务端完成，客户端不再注入） */
@@ -516,6 +518,13 @@ class WebDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
 
     private fun startLoad() {
         val e = entry ?: return
+        // 每个入口的 scale/autoFit 是独立配置：轮询切页时必须重置，
+        // 否则第二页起会沿用第一页（或上一页自动适配后）的缩放比例。
+        if (zoomEntryId != e.id) {
+            zoomEntryId = e.id
+            zoomPercent = if (e.scale > 0) e.scale.coerceIn(ZOOM_MIN, ZOOM_MAX) else 100
+            autoFitApplied = false
+        }
         // 开启旧内核兼容转译的入口改走服务端反向代理：服务端把现代 JS 降级后再下发，
         // 否则老内核（Chrome 66）解析即抛，页面只会白屏
         viaCompatProxy = e.compatTranspile

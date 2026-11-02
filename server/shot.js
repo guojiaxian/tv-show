@@ -310,6 +310,8 @@ function createShot({ getEntries, dataDir, log }) {
     try {
       fs.mkdirSync(path.dirname(stateFileOf(entry.id)), { recursive: true });
       await st.ctx.storageState({ path: stateFileOf(entry.id) });
+      // 会话文件含站点 Cookie / Bearer Token，仅属主可读写
+      try { fs.chmodSync(stateFileOf(entry.id), 0o600); } catch (e) { /* 忽略 */ }
     } catch (e) {
       logOf(`[shot] ${entry.id} 会话保存失败：${e.message}`);
     }
@@ -368,6 +370,9 @@ function createShot({ getEntries, dataDir, log }) {
       st.loginFails = 0;
     } catch (e) {
       failed = true;
+      // 进入异常态时记录起点：reap() 依赖 coolingSince 判断「无人观看已持续多久」。
+      // 缺这一步时，从未进入过 cooling 的入口会以 15s 周期无限重试，无人观看也不休眠。
+      st.coolingSince = Date.now();
       if (e && e.login) {
         st.status = 'login_failed';
         st.retryAfter = LOGIN_FAIL_RETRY_MS;
@@ -420,6 +425,8 @@ function createShot({ getEntries, dataDir, log }) {
       logOf(`[shot] ${entry.id} 采集已启动（间隔 ${normIntervalSec(entry.turboIntervalSec)}s / 质量 ${normQuality(entry.turboQuality)}）`);
       scheduleNext(st, entry, Date.now());
     } catch (e) {
+      // 同 cycle()：异常态需要 coolingSince 作为无人观看的计时起点
+      st.coolingSince = Date.now();
       if (e && (e.login || /登录/.test(String(e.message)))) {
         st.status = 'login_failed';
         st.retryAfter = LOGIN_FAIL_RETRY_MS;

@@ -320,9 +320,11 @@ class ZoneDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
             override fun onPageFinished(view: WebView?, url: String?) {
                 injectZoneScripts(view, entry)
                 calibrateZoneViewport(slot, entry)
-                // 旧内核 100vh 失效会让分区页面只渲染在上半格，首屏后再补两次
-                handler.postDelayed({ fillZone(view) }, 1500L)
-                handler.postDelayed({ fillZone(view) }, 3500L)
+                // 旧内核 100vh 失效会让分区页面只渲染在上半格，首屏后再补两次。
+                // 期间该格可能已被重建（换页），对已 destroy 的 WebView 调 JS 会抛异常，
+                // 因此执行前确认它仍是该格当前实例。
+                handler.postDelayed({ if (slot.webView === view) fillZone(view) }, 1500L)
+                handler.postDelayed({ if (slot.webView === view) fillZone(view) }, 3500L)
             }
 
             override fun onReceivedError(

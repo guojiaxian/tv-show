@@ -64,8 +64,15 @@ class ConfigStore(context: Context) {
                 put("config", toJson(config))
             }
             tmpFile.writeText(root.toString())
-            if (cacheFile.exists()) cacheFile.delete()
-            tmpFile.renameTo(cacheFile)
+            // 先直接 rename 覆盖（POSIX 上 rename 是原子替换）；
+            // 旧实现「先 delete 再 rename」既破坏原子性，又在 rename 失败时静默丢缓存。
+            if (!tmpFile.renameTo(cacheFile)) {
+                // 个别文件系统不支持覆盖式 rename：退化为删除后重命名，但仍需检查结果
+                cacheFile.delete()
+                if (!tmpFile.renameTo(cacheFile)) {
+                    error("缓存文件重命名失败：${tmpFile.absolutePath} → ${cacheFile.absolutePath}")
+                }
+            }
             true
         }.onFailure { Log.w(TAG, "缓存写入失败", it) }.getOrDefault(false)
     }

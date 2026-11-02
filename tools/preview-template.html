@@ -532,7 +532,12 @@
    * 3) 同步失败 → 保留兜底内容并显示「离线」
    * ========================================================================== */
   var BOOT = JSON.parse(document.getElementById('bootstrap').textContent);
-  var SERVER_BASE = (BOOT.serverBaseUrl || '').replace(/\/+$/, '');
+  var EMBEDDED_BASE = (BOOT.serverBaseUrl || '').replace(/\/+$/, '');
+  var servedOverHttp = /^https?:$/.test(location.protocol);
+  // 由服务端托管（/preview）时走同源接口，保证预览页与当前服务端数据一致；
+  // 直接以 file:// 打开时才回退到内置 serverBaseUrl（离线测试台场景）。
+  var SERVER_BASE = servedOverHttp ? '' : EMBEDDED_BASE;
+  var SERVER_LABEL = SERVER_BASE || (servedOverHttp ? location.origin : '未配置');
   // 兼容旧格式（顶层直接是配置）
   var FALLBACK = BOOT.fallback || BOOT;
 
@@ -1512,7 +1517,7 @@
   }
 
   async function syncFromServer(force) {
-    if (!SERVER_BASE) {
+    if (!SERVER_BASE && !servedOverHttp) {
       syncState = 'fallback';
       renderSourceChip('服务器地址未配置，展示内置兜底内容');
       if (force) toast('未配置 serverBaseUrl，无法同步');
@@ -1577,7 +1582,7 @@
     else { label = '配置来源：内置兜底'; cls = 'fallback'; }
     chip.textContent = label;
     chip.className = 'src-chip ' + cls;
-    chip.title = errMsg || ('服务器：' + (SERVER_BASE || '未配置'));
+    chip.title = errMsg || ('服务器：' + SERVER_LABEL);
   }
 
   /* ==========================================================================
@@ -1901,7 +1906,7 @@
   renderHome();
   renderSourceChip();
   fitStage();
-  console.log('[预览] 服务器：' + (SERVER_BASE || '未配置') + '，兜底入口数：' + ENTRIES.length +
+  console.log('[预览] 服务器：' + SERVER_LABEL + '，兜底入口数：' + ENTRIES.length +
     '，本机轮询：' + (local.rotation.enabled ? '开启' : '关闭') + '/' + local.rotation.items.length + ' 页');
   syncFromServer(false);
 })();

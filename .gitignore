@@ -5,4 +5,6 @@ app/build/
 local.properties
 server/server.log
 server/.cache/
+# 极速模式的浏览器会话缓存（含站点 Cookie / Bearer Token，禁止入库）
+server/data/shot-cache/
 dist/*.apk
