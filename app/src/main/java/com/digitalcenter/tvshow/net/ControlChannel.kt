@@ -77,6 +77,10 @@ object ControlChannel {
     @Volatile
     private var deviceId: String? = null
 
+    /** 应用上下文（心跳上报本机极速模式开关等本机设置时使用） */
+    @Volatile
+    private var appContext: Context? = null
+
     /** 指令应用失败的最近一次原因（随状态上报，控制屏可见） */
     @Volatile
     var lastError: String? = null
@@ -118,6 +122,7 @@ object ControlChannel {
     fun init(context: Context) {
         if (started.getAndSet(true)) return
         val app = context.applicationContext as Application
+        appContext = app.applicationContext
 
         val prefs = app.getSharedPreferences(PREF, Context.MODE_PRIVATE)
         deviceId = prefs.getString(KEY_DEVICE_ID, null) ?: run {
@@ -302,13 +307,17 @@ object ControlChannel {
         val base = com.digitalcenter.tvshow.net.ConfigRepository.serverBaseUrl().trimEnd('/')
         if (base.isBlank() || !base.startsWith("http")) return
 
+        val state = JSONObject(reported.toString())
+            .putOpt("lastError", lastError ?: JSONObject.NULL)
+        // 本机极速模式开关：控制台据此显示「极速：开/关」并下发相反的开关
+        appContext?.let { state.put("turbo", LocalSettings.turbo(it).enabled) }
         val body = JSONObject().apply {
             put("deviceId", id)
             put("kind", "tv")
             put("appVersion", BuildConfig.VERSION_NAME)
             put("boot", boot)
             put("ackedSeq", ackedSeq)
-            put("state", JSONObject(reported.toString()).putOpt("lastError", lastError ?: JSONObject.NULL))
+            put("state", state)
         }
         // 注意：boot 只有在本拍**成功送达**后才置 false（见下方 responseCode 检查）。
         // 若在发请求前就清掉，首次心跳因网络故障失败时，下一拍会以 boot=false 重试，

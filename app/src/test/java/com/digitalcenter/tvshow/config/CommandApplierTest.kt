@@ -55,6 +55,7 @@ class CommandApplierTest {
         assertTrue(ControlChannel.isDisplayCommand("home"))
         assertFalse(ControlChannel.isDisplayCommand("refresh"))
         assertFalse(ControlChannel.isDisplayCommand("sync"))
+        assertFalse(ControlChannel.isDisplayCommand("turbo"))
         assertFalse(ControlChannel.isDisplayCommand("unknown"))
     }
 
@@ -90,6 +91,19 @@ class CommandApplierTest {
         val activity = Robolectric.buildActivity(FakeReloadable::class.java).setup().get()
         CommandApplier.apply(activity, "refresh", JSONObject())
         assertEquals(1, activity.reloads)
+        assertFalse(ControlChannel.locked)
+        assertEquals(null, ControlChannel.lastError)
+    }
+
+    @Test
+    fun turboUpdatesLocalSettingWithoutChangingMode() {
+        val activity = activity()
+        CommandApplier.apply(activity, "turbo", JSONObject().put("enabled", true))
+        assertTrue(LocalSettings.turbo(activity).enabled)
+        assertFalse(ControlChannel.locked)
+
+        CommandApplier.apply(activity, "turbo", JSONObject().put("enabled", false))
+        assertFalse(LocalSettings.turbo(activity).enabled)
         assertFalse(ControlChannel.locked)
         assertEquals(null, ControlChannel.lastError)
     }

@@ -522,6 +522,13 @@ class ZoneDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
         reloadAll()
     }
 
+    /** 极速模式开关变化：四格全部按新地址重新加载 */
+    override fun applyTurboChange() {
+        slots.values.forEach { slot ->
+            cellEntries.getOrNull(slot.position)?.let { entry -> loadZone(slot, entry) }
+        }
+    }
+
     /** 翻转极速模式总开关，4 格全部重载 */
     private fun toggleTurboAndReloadZones() {
         val next = !LocalSettings.turbo(this).enabled

@@ -38,7 +38,7 @@ const ALLOWED_KINDS = ['tv', 'pc', 'tablet'];
 /** 展示类指令：应用后设备自动进入远程被控 */
 const DISPLAY_CMDS = ['show', 'rotate', 'zone', 'home'];
 /** 维护类指令：不改变模式，两种模式下都可用 */
-const MAINTAIN_CMDS = ['refresh', 'sync'];
+const MAINTAIN_CMDS = ['refresh', 'sync', 'turbo'];
 const ALL_CMDS = [...DISPLAY_CMDS, ...MAINTAIN_CMDS];
 /** 场景 step 允许的指令（与展示类一致：场景就是一批展示指令的快照） */
 const SCENE_CMDS = DISPLAY_CMDS;
@@ -239,6 +239,11 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
         return id;
       });
       return { cmd, args: { slots: norm } };
+    }
+
+    if (cmd === 'turbo') {
+      if (typeof args.enabled !== 'boolean') throw bad('turbo 需要 enabled（true / false）');
+      return { cmd, args: { enabled: args.enabled } };
     }
 
     // home / refresh / sync：无参数

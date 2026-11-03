@@ -154,6 +154,44 @@ function attachPageLog(page, errors, tag) {
   await page2.goto(BASE + '/console', { waitUntil: 'load' });
   await page2.click('#btnReload');
 
+  /* ---------- 设备卡：首页选项 + 极速模式开关 ---------- */
+  const cardReady = await waitUntil(() => page2.evaluate((id) =>
+    !!document.querySelector(`[data-device-id="${id}"] .turbo-btn`), deviceId),
+    { timeout: 6000, label: '设备卡片渲染' });
+  const cardUi = await page2.evaluate((id) => {
+    const card = document.querySelector(`[data-device-id="${id}"]`);
+    return {
+      turbo: card && card.querySelector('.turbo-btn') ? card.querySelector('.turbo-btn').textContent : null,
+      home: !!(card && card.querySelector('.entry-sel option[value="__home__"]')),
+      footerHome: !!(document.getElementById('selEntry') &&
+        document.getElementById('selEntry').querySelector('option[value="__home__"]'))
+    };
+  }, deviceId);
+  check('设备卡提供极速开关，单台/勾选下拉均含「首页」',
+    cardReady && cardUi.turbo === '极速：关' && cardUi.home === true && cardUi.footerHome === true, cardUi);
+
+  await page2.click(`[data-device-id="${deviceId}"] .turbo-btn`);
+  const turboOn = await waitUntil(() => page1.evaluate(() => {
+    try { return JSON.parse(localStorage.getItem('tvshow.localSettings') || '{}').turboEnabled === true; }
+    catch (e) { return false; }
+  }), { timeout: 7000, label: '极速开启' });
+  check('控制台极速开关下发到显示端（本机开关变开）', turboOn);
+
+  const turboLabel = await waitUntil(() => page2.evaluate((id) => {
+    const b = document.querySelector(`[data-device-id="${id}"] .turbo-btn`);
+    return !!b && b.textContent === '极速：开';
+  }, deviceId), { timeout: 6000, label: '极速状态回流' });
+  check('显示端心跳上报极速状态，控制台按钮回流为开', turboLabel);
+
+  // 再点一次关掉，避免影响后续用例（此时卡片已按上报状态重建，点击即下发关闭）
+  await page2.click(`[data-device-id="${deviceId}"] .turbo-btn`);
+  const turboOff = await waitUntil(() => page1.evaluate(() => {
+    try { return JSON.parse(localStorage.getItem('tvshow.localSettings') || '{}').turboEnabled === false; }
+    catch (e) { return true; }
+  }), { timeout: 7000, label: '极速关闭' });
+  check('控制台可再次下发关闭极速模式', turboOff);
+
+
   // 控制台不注册为受控设备
   const beforeCount = (await api('GET', '/api/ctl/devices')).json.devices.length;
   await page2.waitForTimeout(3500); // 覆盖一拍心跳周期

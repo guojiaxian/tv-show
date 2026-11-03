@@ -279,7 +279,8 @@ footer select {
   /* ============================ 弹层 ============================ */
 
   function closeModal() { els.mask.hidden = true; els.modalBox.innerHTML = ''; }
-  els.mask.addEventListener('click', function (e) { if (e.target === els.mask) closeModal(); });
+  // 遮罩不响应点击关闭：平板软键盘弹出会改变可视区域，点击输入框附近容易误落到遮罩上，
+  // 导致重命名输入框被直接关掉。统一用「取消 / 关闭」按钮或 Esc 退出弹层。
 
   /** 简易确认弹层：buttons = [{text, primary, run}]（第一个为默认视觉焦点） */
   function confirmModal(title, message, buttons) {
@@ -366,6 +367,11 @@ footer select {
   function renderEntryOptions() {
     var sel = els.selEntry;
     sel.innerHTML = '<option value="">显示页面…</option>';
+    // 首页常驻选项：勾选设备后可从这里直接让对端回首页
+    var home = document.createElement('option');
+    home.value = '__home__';
+    home.textContent = '首页';
+    sel.appendChild(home);
     state.entries.forEach(function (e) {
       var o = document.createElement('option');
       o.value = e.id;
@@ -431,6 +437,7 @@ footer select {
   function buildDeviceCard(d) {
     var card = document.createElement('div');
     card.className = 'card';
+    card.dataset.deviceId = d.id; // 自动化测试与排查用：卡片可直接定位到设备
 
     var ck = document.createElement('input');
     ck.type = 'checkbox';
@@ -506,29 +513,32 @@ footer select {
     var sel = document.createElement('select');
     sel.className = 'entry-sel';
     sel.title = '显示页面：当前选中项即该设备正在显示的画面，改选即切换';
-    // 首项 = 当前画面（非页面态显示状态名；页面态直接选中对应条目）
     var r = d.reported || {};
-    var currentLabel = null;
-    if (r.mode === 'rotate') { currentLabel = '轮询中…'; }
-    else if (r.mode === 'zone') { currentLabel = '分屏中…'; }
-    else if (r.mode === 'home' || r.mode === 'settings') { currentLabel = '首页'; }
-    if (currentLabel) {
+    // 「首页」常驻：无论当前是页面 / 轮询 / 分屏，都可一键切回首页
+    var homeOpt = document.createElement('option');
+    homeOpt.value = '__home__';
+    homeOpt.textContent = '首页';
+    if (r.mode === 'home' || r.mode === 'settings') homeOpt.selected = true;
+    sel.appendChild(homeOpt);
+    // 轮询 / 分屏不是具体页面：插一条当前状态项，避免下拉误选成某个页面
+    if (r.mode === 'rotate' || r.mode === 'zone') {
       var cur = document.createElement('option');
       cur.value = '';
-      cur.textContent = currentLabel;
+      cur.textContent = r.mode === 'rotate' ? '轮询中…' : '分屏中…';
+      cur.selected = true;
       sel.appendChild(cur);
     }
     state.entries.forEach(function (e) {
       var o = document.createElement('option');
       o.value = e.id;
       o.textContent = e.title;
-      if (!currentLabel &&
-          (r.mode === 'page' || r.mode === 'camera') && r.entryId === e.id) {
+      if ((r.mode === 'page' || r.mode === 'camera') && r.entryId === e.id) {
         o.selected = true; // 当前正在显示这一页
       }
       sel.appendChild(o);
     });
     sel.addEventListener('change', function () {
+      if (sel.value === '__home__') { sendCmd('home', {}, [d.id]); return; }
       if (!sel.value) { renderDevices(); return; } // 选回状态项 = 不动作
       sendCmd('show', { entryId: sel.value }, [d.id]);
     });
@@ -543,6 +553,16 @@ footer select {
       });
       ops.appendChild(btn);
     });
+    // 极速模式开关：按设备当前上报状态取反下发（维护类指令，不改变受控模式）
+    var turboOn = !!(d.reported && d.reported.turbo);
+    var turboBtn = document.createElement('button');
+    turboBtn.className = 'btn turbo-btn';
+    turboBtn.textContent = turboOn ? '极速：开' : '极速：关';
+    turboBtn.title = '切换该设备的极速模式（服务端截图展示），当前' + (turboOn ? '开启' : '关闭');
+    turboBtn.addEventListener('click', function () {
+      sendCmd('turbo', { enabled: !turboOn }, [d.id]);
+    });
+    ops.appendChild(turboBtn);
     var rel = document.createElement('button');
     rel.className = 'btn';
     rel.textContent = '取消控制';
@@ -1081,7 +1101,8 @@ footer select {
   els.selEntry.addEventListener('change', function () {
     var id = els.selEntry.value;
     if (!id) return;
-    sendCmd('show', { entryId: id });
+    if (id === '__home__') sendCmd('home');
+    else sendCmd('show', { entryId: id });
     els.selEntry.value = '';
   });
   els.btnRotate.addEventListener('click', function () { rotateDialog(); });

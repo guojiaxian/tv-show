@@ -136,6 +136,28 @@ const beat = (deviceId, extra = {}) => api('POST', '/api/ctl/beat', { deviceId, 
   check('维护类 ack 后 desired 自动清除（无需 boot 恢复）',
     r.json.devices.find((d) => d.id === 'dev-aaaa1111').desired === null);
 
+  /* ---------- 5b. turbo 维护类指令（极速模式开关） ---------- */
+  await api('POST', '/api/ctl/release', { targets: ['dev-aaaa1111'] });
+  r = await api('POST', '/api/ctl/send', {
+    targets: ['dev-aaaa1111'], cmd: 'turbo', args: { enabled: true }
+  });
+  const turboSeq = r.json.seq;
+  r = await api('GET', '/api/ctl/devices');
+  check('turbo 为维护类：不改变 managed',
+    r.json.devices.find((d) => d.id === 'dev-aaaa1111').managed === false);
+  r = await beat('dev-aaaa1111');
+  check('turbo 下发参数为布尔 enabled',
+    r.json.desired && r.json.desired.cmd === 'turbo' &&
+    r.json.desired.args.enabled === true, r.json.desired);
+  await beat('dev-aaaa1111', { ackedSeq: turboSeq });
+  r = await api('GET', '/api/ctl/devices');
+  check('turbo ack 后 desired 自动清除',
+    r.json.devices.find((d) => d.id === 'dev-aaaa1111').desired === null);
+  r = await api('POST', '/api/ctl/send', {
+    targets: ['dev-aaaa1111'], cmd: 'turbo', args: {}
+  });
+  check('turbo 缺少 enabled → 400', r.status === 400, r.status);
+
   /* ---------- 6. rotate / zone 校验与 phaseSync ---------- */
   r = await api('POST', '/api/ctl/send', {
     targets: ['dev-aaaa1111'], cmd: 'rotate',

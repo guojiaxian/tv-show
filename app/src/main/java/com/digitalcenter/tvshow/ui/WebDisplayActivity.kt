@@ -524,6 +524,14 @@ class WebDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
         reloadPage()
     }
 
+    /** 极速模式开关变化：按新开关重算展示地址并重载当前页（轮询中同理） */
+    override fun applyTurboChange() {
+        pageError = false
+        autoFitApplied = false
+        startLoad()
+        showInfoOverlay()
+    }
+
     private fun reloadPage() {
         pageError = false
         autoFitApplied = false

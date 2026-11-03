@@ -34,6 +34,11 @@ object CommandApplier {
     /** 可刷新当前画面的 Activity 实现此接口（refresh 指令作用于栈顶） */
     interface Reloadable {
         fun reloadCurrent()
+
+        /** 极速模式开关变化后按新地址重载；默认退回普通刷新 */
+        fun applyTurboChange() {
+            reloadCurrent()
+        }
     }
 
     fun apply(activity: Activity, cmd: String, args: JSONObject) {
@@ -46,6 +51,7 @@ object CommandApplier {
                 "home" -> goHome(activity)
                 "refresh" -> applyRefresh(activity)
                 "sync" -> ConfigRepository.syncNow(force = true)
+                "turbo" -> applyTurbo(activity, args)
                 else -> Log.w(TAG, "未知指令：$cmd（忽略）")
             }
         } catch (e: Exception) {
@@ -152,5 +158,19 @@ object CommandApplier {
             // 首页没有可刷新的网页：等价于强制同步一次内容
             ConfigRepository.syncNow(force = true)
         }
+    }
+
+    /**
+     * 极速模式开关（维护类指令）：写入本机总开关，当前画面按新地址重载。
+     * 首页 / 设置页无需重载，只保存设置，后续进入展示页时生效。
+     */
+    private fun applyTurbo(activity: Activity, args: JSONObject) {
+        val enabled = if (args.has("enabled")) {
+            args.optBoolean("enabled", false)
+        } else {
+            !LocalSettings.turbo(activity).enabled
+        }
+        LocalSettings.saveTurbo(activity, TurboSetting(enabled))
+        (activity as? Reloadable)?.applyTurboChange()
     }
 }

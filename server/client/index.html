@@ -2744,6 +2744,7 @@ select {
       s = { mode: 'settings' };
     }
     if (ctl.lastError) s.lastError = ctl.lastError;
+    s.turbo = local.turboEnabled === true;
     return s;
   }
 
@@ -2794,6 +2795,14 @@ select {
         else if (state.mode === 'camera') refreshCameraWall();
       } else if (cmd === 'sync') {
         syncFromServer(true);
+      } else if (cmd === 'turbo') {
+        // 极速模式属于本机展示策略：改开关后当前画面按新地址重载，分区页四格全部重载
+        local.turboEnabled = args.enabled === true;
+        saveLocalSettings();
+        renderTurboButton();
+        if (state.mode === 'display' && state.entry) mountFrame(state.entry);
+        if (zones.active) renderZones();
+        toast(local.turboEnabled ? '已开启极速模式（截图展示）' : '已关闭极速模式，恢复真实页面');
       }
     } catch (e) {
       ctl.lastError = '指令应用失败：' + (e && e.message ? e.message : e);
