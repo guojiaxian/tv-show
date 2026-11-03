@@ -10,7 +10,7 @@ if (!BASE) {
   console.error('本脚本会改写控制通道数据，必须跑在隔离实例上：node server/test-run.mjs');
   process.exit(1);
 }
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 const DATA_DIR = process.env.TVSHOW_DATA_DIR;
@@ -329,6 +329,12 @@ const beat = (deviceId, extra = {}) => api('POST', '/api/ctl/beat', { deviceId, 
   if (DATA_DIR) {
     const file = join(DATA_DIR, 'devices.json');
     check('devices.json 已落盘', existsSync(file));
+    check('devices.json 权限为 0600（设备档案不对外可读）',
+      (statSync(file).mode & 0o777) === 0o600, (statSync(file).mode & 0o777).toString(8).padStart(4, '0'));
+    const backup = `${file}.bak`;
+    check('devices.json.bak 权限为 0600',
+      existsSync(backup) && (statSync(backup).mode & 0o777) === 0o600,
+      existsSync(backup) ? (statSync(backup).mode & 0o777).toString(8).padStart(4, '0') : 'missing');
     const disk = JSON.parse(readFileSync(file, 'utf8'));
     check('落盘不含内存态字段（reported/lastSeenAt）',
       disk.devices.every((d) => d.reported === undefined && d.lastSeenAt === undefined));

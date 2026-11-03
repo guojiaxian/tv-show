@@ -248,19 +248,25 @@ function createStore({ dataDir }) {
     return data;
   }
 
-  /** 原子写盘：先写临时文件再 rename，并保留上一次的备份 */
+  /** 原子写盘：先写临时文件再 rename，并保留上一次的备份（数据含明文口令，一律 0600） */
   function persist() {
     const tmp = `${dataFile}.tmp-${process.pid}`;
     const text = JSON.stringify(data, null, 2);
-    fs.writeFileSync(tmp, text, 'utf8');
+    fs.writeFileSync(tmp, text, { encoding: 'utf8', mode: 0o600 });
     if (fs.existsSync(dataFile)) {
       try {
         fs.copyFileSync(dataFile, backupFile);
+        fs.chmodSync(backupFile, 0o600);
       } catch (e) {
         console.warn(`[data] 备份失败：${e.message}`);
       }
     }
     fs.renameSync(tmp, dataFile);
+    try {
+      fs.chmodSync(dataFile, 0o600);
+    } catch (e) {
+      // 个别文件系统不支持 chmod；不影响读写
+    }
   }
 
   function mutate(fn) {

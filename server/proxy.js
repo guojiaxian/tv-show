@@ -54,7 +54,7 @@ const DROP_RESPONSE_HEADERS = new Set([
 
 /**
  * 会阻止 / 干扰同源页面被 iframe 嵌套的响应头，必须剥掉。
- * 注意：被代理页面与 18080 的管理接口同源，这是既有「内网免登录」设计的固有
+ * 注意：被代理页面与 18000 的管理接口同源，这是既有「内网免登录」设计的固有
  * 风险，代理侧只能做入口白名单，详见 README。
  */
 const DROP_FRAME_HEADERS = new Set([
@@ -115,7 +115,7 @@ function upstreamViewOf(value, entry, target) {
       const origin = new URL(entry.url).origin;
       return `${origin}${parsed.upstreamPath}${u.search}`;
     }
-    // 父页面自身地址（18080 的 /app）：退化为上游根，避免上游校验 Referer 时直接失败
+    // 父页面自身地址（18000 的 /app）：退化为上游根，避免上游校验 Referer 时直接失败
     return `${target.origin}/`;
   } catch (e) {
     return `${target.origin}/`;
@@ -561,7 +561,7 @@ function createProxy(opts) {
   const isProxyPath = (pathname) =>
     String(pathname || '') === '/proxy' || String(pathname || '').startsWith(PREFIX);
 
-  /** 拒绝「entry 指向 18080 自身」这种配置，避免形成代理环 */
+  /** 拒绝「entry 指向 18000 自身」这种配置，避免形成代理环 */
   function isSelfTarget(target, req) {
     if (!listenPort) return false;
     const port = Number(target.port || (target.protocol === 'https:' ? 443 : 80));

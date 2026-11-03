@@ -164,15 +164,21 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
       scenes: data.scenes
     };
     const tmp = `${DATA_FILE}.tmp-${process.pid}`;
-    fs.writeFileSync(tmp, JSON.stringify(snapshot, null, 2), 'utf8');
+    fs.writeFileSync(tmp, JSON.stringify(snapshot, null, 2), { encoding: 'utf8', mode: 0o600 });
     if (fs.existsSync(DATA_FILE)) {
       try {
         fs.copyFileSync(DATA_FILE, BACKUP_FILE);
+        fs.chmodSync(BACKUP_FILE, 0o600);
       } catch (e) {
         log(`[ctl] 备份失败：${e.message}`);
       }
     }
     fs.renameSync(tmp, DATA_FILE);
+    try {
+      fs.chmodSync(DATA_FILE, 0o600);
+    } catch (e) {
+      // 个别文件系统不支持 chmod；不影响读写
+    }
   }
 
   /** 串行执行一次「读-改-写」；needPersist=false 时不写盘（纯内存心跳态更新） */

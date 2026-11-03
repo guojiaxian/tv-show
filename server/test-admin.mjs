@@ -4,6 +4,7 @@
  *       以及每一步之后 /api/admin/config 与客户端接口是否一致。
  */
 import fs from 'node:fs';
+import path from 'node:path';
 import { loadChromium, launchOptions } from './test-pw.mjs';
 
 const loaded = loadChromium();
@@ -245,7 +246,20 @@ const apiGet = async (p) => (await fetch(BASE + p)).json();
     final.entries.length === 3 && final.tombstones.length >= 1,
     { appTitle: final.appTitle, entries: final.entries.length, tombstones: final.tombstones.length });
 
-  /* ---------- 11. 无 JS 报错 ---------- */
+  /* ---------- 12. 数据文件权限：配置含明文口令，必须 0600 ---------- */
+  const dataDir = process.env.TVSHOW_DATA_DIR;
+  const modeOf = (name) => {
+    try {
+      return (fs.statSync(path.join(dataDir, name)).mode & 0o777).toString(8).padStart(4, '0');
+    } catch (e) {
+      return 'missing';
+    }
+  };
+  check('config.json 与备份权限为 0600',
+    modeOf('config.json') === '0600' && modeOf('config.json.bak') === '0600',
+    { config: modeOf('config.json'), backup: modeOf('config.json.bak') });
+
+  /* ---------- 13. 无 JS 报错 ---------- */
   check('后台运行期无 JS 报错', errors.length === 0, errors);
 
   await browser.close();

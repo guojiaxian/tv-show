@@ -33,7 +33,7 @@ async function api(method, path, body, headers = {}) {
 const get = (p, h) => api('GET', p, null, h);
 
 (async () => {
-  /* ---------- 0. 页面路由（单端口 18080，无 404 / 无错页） ---------- */
+  /* ---------- 0. 页面路由（单端口 18000，无 404 / 无错页） ---------- */
   const fetchPage = async (p) => {
     const res = await fetch(BASE + p, { redirect: 'manual' });
     const text = res.status === 200 ? await res.text() : '';
