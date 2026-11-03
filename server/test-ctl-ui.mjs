@@ -6,17 +6,14 @@
  *   page2 = 控制台（/console）：纯控制端，自身不注册为受控设备
  *   DEV2  = 模拟电视（API 直接 beat）
  */
-import { createRequire } from 'node:module';
-import fs from 'node:fs';
-const require = createRequire(import.meta.url);
-const { chromium } = require('/root/.pwtest/node_modules/playwright-core');
+import { loadChromium, launchOptions } from './test-pw.mjs';
 
-const PW_DIR = '/root/.cache/ms-playwright';
-const EXEC = fs.readdirSync(PW_DIR)
-  .filter((d) => /^chromium-\d+$/.test(d))
-  .sort()
-  .map((d) => `${PW_DIR}/${d}/chrome-linux64/chrome`)
-  .find((p) => fs.existsSync(p));
+const loaded = loadChromium();
+if (!loaded) {
+  console.log('SKIP 未安装 playwright-core / Chromium，跳过互控端到端验证');
+  process.exit(0);
+}
+
 const BASE = process.env.BASE;
 if (!BASE) {
   console.error('本脚本会改写服务端数据，必须跑在隔离实例上：node server/test-run.mjs');
@@ -64,7 +61,7 @@ function attachPageLog(page, errors, tag) {
 }
 
 (async () => {
-  const browser = await chromium.launch({ executablePath: EXEC, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+  const browser = await loaded.chromium.launch(launchOptions(loaded));
   const errors = [];
 
   /* ---------- 清理前置套件档案（test-run 顺序执行，控制通道档案跨套件共享） ---------- */

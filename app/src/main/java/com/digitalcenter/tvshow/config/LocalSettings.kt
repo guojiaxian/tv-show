@@ -106,19 +106,7 @@ object LocalSettings {
 
     /** 保存轮询设置；[restartClock] 为 true 时把时钟起点重置为当前时刻（从第 1 页重新开始） */
     fun saveRotation(context: Context, setting: RotationSetting, restartClock: Boolean = true) {
-        val interval = setting.intervalSec.coerceIn(MIN_INTERVAL_SEC, MAX_INTERVAL_SEC)
-        val items = setting.items.distinct()
-        val startedAt = if (restartClock || setting.startedAt <= 0L) {
-            System.currentTimeMillis()
-        } else {
-            setting.startedAt
-        }
-        val saved = RotationSetting(
-            enabled = setting.enabled,
-            intervalSec = interval,
-            items = items,
-            startedAt = startedAt
-        )
+        val saved = normalizeRotation(setting, System.currentTimeMillis(), restartClock)
         val obj = JSONObject().apply {
             put("enabled", saved.enabled)
             put("intervalSec", saved.intervalSec)
@@ -127,6 +115,21 @@ object LocalSettings {
         }
         prefs(context).edit().putString(KEY_ROTATION, obj.toString()).apply()
         rotationCache = saved
+    }
+
+    /**
+     * 轮询设置归一化：间隔夹取到允许范围、页面去重、按规则确定时钟起点。
+     * 抽成纯函数，保存与单测共用同一套规则。
+     */
+    fun normalizeRotation(setting: RotationSetting, now: Long, restartClock: Boolean): RotationSetting {
+        val interval = setting.intervalSec.coerceIn(MIN_INTERVAL_SEC, MAX_INTERVAL_SEC)
+        val startedAt = if (restartClock || setting.startedAt <= 0L) now else setting.startedAt
+        return RotationSetting(
+            enabled = setting.enabled,
+            intervalSec = interval,
+            items = setting.items.distinct(),
+            startedAt = startedAt
+        )
     }
 
     /** 读取分区设置，始终保持 4 格（缺省格为空） */

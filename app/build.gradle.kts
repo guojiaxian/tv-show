@@ -83,6 +83,17 @@ android {
         buildConfig = true
     }
 
+    testOptions {
+        // Robolectric 需要读取 manifest / assets（引导配置、注入脚本）
+        unitTests.isIncludeAndroidResources = true
+    }
+
+    lint {
+        abortOnError = true
+        // 发布包的 lint 由 CI 的 lintDebug 覆盖，无需每次 release 构建重复执行
+        checkReleaseBuilds = false
+    }
+
     packaging {
         resources.excludes += setOf("META-INF/*.kotlin_module")
     }
@@ -91,4 +102,7 @@ android {
 dependencies {
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.appcompat:appcompat:1.6.1")
+
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.11.1")
 }

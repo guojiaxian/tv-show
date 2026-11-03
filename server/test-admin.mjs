@@ -3,18 +3,15 @@
  * 覆盖：系统标题修改、新增页面、编辑、上移下移排序、删除、表单校验错误提示、
  *       以及每一步之后 /api/admin/config 与客户端接口是否一致。
  */
-import { createRequire } from 'node:module';
 import fs from 'node:fs';
-const require = createRequire(import.meta.url);
-const { chromium } = require('/root/.pwtest/node_modules/playwright-core');
+import { loadChromium, launchOptions } from './test-pw.mjs';
 
-// 动态探测已安装的 Chromium（ms-playwright 下版本号随升级变化）
-const PW_DIR = '/root/.cache/ms-playwright';
-const EXEC = fs.readdirSync(PW_DIR)
-  .filter((d) => /^chromium-\d+$/.test(d))
-  .sort()
-  .map((d) => `${PW_DIR}/${d}/chrome-linux64/chrome`)
-  .find((p) => fs.existsSync(p));
+const loaded = loadChromium();
+if (!loaded) {
+  console.log('SKIP 未安装 playwright-core / Chromium，跳过管理后台浏览器验证');
+  process.exit(0);
+}
+
 const BASE = process.env.BASE;
 if (!BASE) {
   console.error('本脚本会改写服务端数据，必须跑在隔离实例上：node server/test-run.mjs');
@@ -33,7 +30,7 @@ const check = (name, pass, detail) => {
 const apiGet = async (p) => (await fetch(BASE + p)).json();
 
 (async () => {
-  const browser = await chromium.launch({ executablePath: EXEC, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+  const browser = await loaded.chromium.launch(launchOptions(loaded));
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const page = await ctx.newPage();
   const errors = [];

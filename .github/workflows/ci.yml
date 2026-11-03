@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  server:
+    name: 服务端回归（Node + Playwright）
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - name: 安装服务端依赖（esbuild / playwright-core）
+        working-directory: server
+        run: npm ci
+      - name: 安装 Chromium（浏览器端到端用例）
+        working-directory: server
+        run: npx playwright install --with-deps chromium
+      - name: 隔离实例回归（API / 管理后台 / 同步 / 代理 / 摄像头 / 极速 / 互控）
+        run: node server/test-run.mjs
+
+  android:
+    name: Android 单测与 lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v3
+      - name: Kotlin 单测
+        run: ./gradlew :app:testDebugUnitTest --console=plain
+      - name: Android lint
+        run: ./gradlew :app:lintDebug --console=plain

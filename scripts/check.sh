@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 阶段检查脚本：服务端隔离回归 + Android Kotlin 编译（不打包 APK、不触碰生产数据）
+# 阶段检查脚本：服务端隔离回归 + Kotlin 单测 + Android Kotlin 编译（不打包 APK、不触碰生产数据）
 #
 # 用法：
 #   ./scripts/check.sh
@@ -30,14 +30,19 @@ if [[ -z "${JAVA_HOME:-}" || ! -x "$JAVA_HOME/bin/javac" ]]; then
   exit 1
 fi
 
-echo "==> 1/2 服务端隔离回归（server/test-run.mjs）"
+echo "==> 1/3 服务端隔离回归（server/test-run.mjs）"
 node server/test-run.mjs
 
 echo
-echo "==> 2/2 Android Kotlin 编译（:app:compileDebugKotlin）"
+echo "==> 2/3 Kotlin 单元测试（:app:testDebugUnitTest）"
 # GRADLE_FLAGS 可传 --offline 等额外参数；保持为空时使用标准在线模式
+# shellcheck disable=SC2086
+"$ROOT/gradlew" :app:testDebugUnitTest --console=plain ${GRADLE_FLAGS:-}
+
+echo
+echo "==> 3/3 Android Kotlin 编译（:app:compileDebugKotlin）"
 # shellcheck disable=SC2086
 "$ROOT/gradlew" :app:compileDebugKotlin --console=plain ${GRADLE_FLAGS:-}
 
 echo
-echo "检查通过：服务端回归 + Kotlin 编译均成功（未打包 APK）"
+echo "检查通过：服务端回归 + Kotlin 单测 + Kotlin 编译均成功（未打包 APK）"
