@@ -225,6 +225,56 @@ object ConfigJson {
     /** 判断一个 JSON 对象是否为“全量配置”形态 */
     fun looksLikeConfig(obj: JSONObject?): Boolean =
         obj != null && (obj.has("entries") || obj.has("appTitle"))
+
+    /* ---------------- 序列化（与上面的解析成对维护） ---------------- */
+
+    fun toJson(login: AutoLoginConfig): JSONObject = JSONObject().apply {
+        put("enabled", login.enabled)
+        put("username", login.username)
+        put("password", login.password)
+        put("usernameSelector", login.usernameSelector)
+        put("passwordSelector", login.passwordSelector)
+        put("submitSelector", login.submitSelector)
+        put("successSelector", login.successSelector)
+    }
+
+    /**
+     * 入口序列化（本地缓存用）。
+     *
+     * **新增模型字段时必须同步补在这里**：缓存是离线兜底，漏写字段会在重启后回落默认值，
+     * 而服务端此时通常返回 304（版本未变），该字段就永远补不回来
+     * —— 历史上 compatTranspile 就这样丢过，导致旧内核兼容失效继续白屏。
+     * 与 [parseEntry] 放在同一文件成对维护，避免两处漏改。
+     */
+    fun toJson(entry: DisplayEntry): JSONObject = JSONObject().apply {
+        put("id", entry.id)
+        put("title", entry.title)
+        put("subtitle", entry.subtitle)
+        put("url", entry.url)
+        put("type", entry.type)
+        put("accent", entry.accent)
+        put("icon", entry.icon)
+        put("scale", entry.scale)
+        put("autoFit", entry.autoFit)
+        put("allowInsecureSsl", entry.allowInsecureSsl)
+        put("compatTranspile", entry.compatTranspile)
+        // 极速模式 3 字段同样必须写全（同 compatTranspile 教训）
+        put("turboEnabled", entry.turboEnabled)
+        put("turboIntervalSec", entry.turboIntervalSec)
+        put("turboQuality", entry.turboQuality)
+        entry.autoLogin?.let { put("autoLogin", toJson(it)) }
+    }
+
+    /** 全量配置序列化（写入本地缓存） */
+    fun toJson(config: RemoteConfig): JSONObject = JSONObject().apply {
+        put("appTitle", config.appTitle)
+        put("appSubtitle", config.appSubtitle)
+        put("exitConfirm", config.exitConfirm)
+        put("exitTip", config.exitTip)
+        put("version", config.version)
+        put("epoch", config.epoch)
+        put("entries", JSONArray().apply { config.entries.forEach { put(toJson(it)) } })
+    }
 }
 
 /**
