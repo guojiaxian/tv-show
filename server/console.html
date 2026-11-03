@@ -80,6 +80,21 @@ main { flex: 1; overflow: auto; padding: 16px 22px; display: flex; flex-directio
 .card .ops .sep { width: 1px; align-self: stretch; background: var(--line); margin: 0 2px; }
 .empty { color: var(--muted); font-size: 13px; padding: 26px; text-align: center; }
 
+/* 设备筛选：设备多时按名称 / 类型 / 在线状态快速定位 */
+.filters {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: none;
+  padding: 9px 22px; border-bottom: 1px solid var(--line); background: rgba(13,21,36,.55);
+}
+.filters input[type="search"] {
+  background: rgba(9,16,28,.9); color: var(--text); border: 1px solid var(--line);
+  border-radius: 8px; padding: 7px 12px; font-size: 13px; width: 220px;
+}
+.filters select {
+  background: rgba(9,16,28,.9); color: var(--text); border: 1px solid var(--line);
+  border-radius: 8px; padding: 7px 10px; font-size: 13px;
+}
+.filters .filters-count { margin-left: auto; font-size: 12px; color: var(--muted); }
+
 footer {
   flex: none; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   padding: 12px 22px; border-top: 1px solid var(--line); background: rgba(13,21,36,.9);
@@ -140,6 +155,7 @@ footer select {
   header { flex-wrap: wrap; }
   .card { flex-wrap: wrap; }
   .card .ops { max-width: 100%; }
+  .filters input[type="search"] { width: 100%; }
 }
 </style>
 </head>
@@ -159,6 +175,24 @@ footer select {
   <span class="list" id="sceneList"></span>
   <button class="btn" id="btnSceneSave" title="把当前全场设备的状态保存为一个场景，之后可一键恢复">＋ 存为场景…</button>
   <button class="btn" id="btnSceneManage" title="场景重命名 / 删除">管理…</button>
+</div>
+
+<div class="filters">
+  <input type="search" id="devSearch" placeholder="搜索设备名 / IP…" autocomplete="off">
+  <select id="devKind" title="按设备类型筛选">
+    <option value="">全部类型</option>
+    <option value="tv">电视</option>
+    <option value="pc">电脑</option>
+    <option value="tablet">平板</option>
+  </select>
+  <select id="devOnline" title="按状态筛选">
+    <option value="">全部状态</option>
+    <option value="online">在线</option>
+    <option value="offline">离线</option>
+    <option value="managed">远程被控</option>
+    <option value="local">本地控制</option>
+  </select>
+  <span class="filters-count" id="devCount"></span>
 </div>
 
 <main id="deviceList"></main>
@@ -189,13 +223,17 @@ footer select {
     serverChip: $('serverChip'), btnReload: $('btnReload'), sceneList: $('sceneList'),
     btnSceneSave: $('btnSceneSave'), btnSceneManage: $('btnSceneManage'),
     deviceList: $('deviceList'), selInfo: $('selInfo'), selEntry: $('selEntry'),
+    devSearch: $('devSearch'), devKind: $('devKind'), devOnline: $('devOnline'), devCount: $('devCount'),
     btnRotate: $('btnRotate'), btnZone: $('btnZone'), btnHome: $('btnHome'),
     btnRelease: $('btnRelease'), btnRefreshCmd: $('btnRefreshCmd'),
     btnSync: $('btnSync'), btnAll: $('btnAll'), mask: $('mask'),
     modalBox: $('modalBox'), toast: $('toast')
   };
 
-  var state = { devices: [], scenes: [], entries: [], selected: {}, deviceCards: {} };
+  var state = {
+    devices: [], scenes: [], entries: [], selected: {}, deviceCards: {},
+    filter: { q: '', kind: '', status: '' }
+  };
   /** 3s 轮询防重入：请求未返回时不再叠加下一次 */
   var refreshInFlight = false;
 
@@ -333,6 +371,24 @@ footer select {
     }
     if (r.mode === 'settings') return '本机设置';
     return r.mode || '—';
+  }
+
+  /** 当前筛选条件下可见的设备（默认全部） */
+  function visibleDevices() {
+    var f = state.filter;
+    var q = (f.q || '').trim().toLowerCase();
+    return state.devices.filter(function (d) {
+      if (f.kind && d.kind !== f.kind) return false;
+      if (f.status === 'online' && d.online !== 'online') return false;
+      if (f.status === 'offline' && d.online === 'online') return false;
+      if (f.status === 'managed' && !d.managed) return false;
+      if (f.status === 'local' && d.managed) return false;
+      if (q) {
+        var hay = (d.name + ' ' + (d.ip || '') + ' ' + d.id).toLowerCase();
+        if (hay.indexOf(q) < 0) return false;
+      }
+      return true;
+    });
   }
 
   /** 页面列表签名：页面增删/改名后卡片下拉需要重建 */
@@ -495,6 +551,7 @@ footer select {
     if (!state.devices.length) {
       host.innerHTML = '';
       state.deviceCards = {};
+      els.devCount.textContent = '0 台';
       var e = document.createElement('div');
       e.className = 'empty';
       e.textContent = '还没有设备注册 —— 用电脑或平板打开显示端首页（/），或在电视上安装 1.8 客户端后，会自动出现在这里';
@@ -503,12 +560,32 @@ footer select {
       return;
     }
 
+    var devices = visibleDevices();
+    if (!devices.length) {
+      Object.keys(state.deviceCards).forEach(function (id) {
+        var old = state.deviceCards[id];
+        if (old && old.parentNode) old.parentNode.removeChild(old);
+      });
+      state.deviceCards = {};
+      Array.prototype.forEach.call(host.querySelectorAll('.empty'), function (node) { node.remove(); });
+      var none = document.createElement('div');
+      none.className = 'empty';
+      none.textContent = '没有匹配的设备，请调整搜索或筛选条件';
+      host.appendChild(none);
+      els.devCount.textContent = '0 / ' + state.devices.length + ' 台';
+      renderSelInfo();
+      return;
+    }
+    els.devCount.textContent = devices.length === state.devices.length
+      ? devices.length + ' 台'
+      : devices.length + ' / ' + state.devices.length + ' 台';
+
     // 从空态切换到有设备：清掉空态提示
     Array.prototype.forEach.call(host.querySelectorAll('.empty'), function (node) { node.remove(); });
 
     var entriesSig = entriesSignature();
     var alive = {};
-    state.devices.forEach(function (d) { alive[d.id] = true; });
+    devices.forEach(function (d) { alive[d.id] = true; });
 
     // 删除已不存在的设备卡片
     Object.keys(state.deviceCards).forEach(function (id) {
@@ -520,7 +597,7 @@ footer select {
 
     // 逐台复用或重建；仅内容变化时才替换该卡
     var nodes = [];
-    state.devices.forEach(function (d) {
+    devices.forEach(function (d) {
       var sig = deviceSignature(d, entriesSig);
       var card = state.deviceCards[d.id];
       if (!card || card.__sig !== sig) {
@@ -994,13 +1071,31 @@ footer select {
   els.btnRefreshCmd.addEventListener('click', function () { sendCmd('refresh'); });
   els.btnSync.addEventListener('click', function () { sendCmd('sync'); });
   els.btnAll.addEventListener('click', function () {
-    var allOn = state.devices.length && state.devices.every(function (d) { return state.selected[d.id]; });
-    state.selected = {};
-    if (!allOn) state.devices.forEach(function (d) { state.selected[d.id] = true; });
+    // 只对当前筛选结果生效，避免筛选后「全选」把隐藏设备也选上
+    var vis = visibleDevices();
+    var allOn = vis.length && vis.every(function (d) { return state.selected[d.id]; });
+    vis.forEach(function (d) {
+      if (allOn) delete state.selected[d.id];
+      else state.selected[d.id] = true;
+    });
     renderDevices();
   });
   els.btnSceneSave.addEventListener('click', saveSceneDialog);
   els.btnSceneManage.addEventListener('click', sceneManageDialog);
+
+  /* ---------- 设备筛选 ---------- */
+  els.devSearch.addEventListener('input', function () {
+    state.filter.q = this.value;
+    renderDevices();
+  });
+  els.devKind.addEventListener('change', function () {
+    state.filter.kind = this.value;
+    renderDevices();
+  });
+  els.devOnline.addEventListener('change', function () {
+    state.filter.status = this.value;
+    renderDevices();
+  });
 
   refreshEntries();
   refresh();

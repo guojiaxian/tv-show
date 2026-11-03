@@ -368,7 +368,7 @@ class CameraWallActivity : AppCompatActivity(), CommandApplier.Reloadable {
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
             // 远程被控时锁定展示操作（【返回】豁免——正常退出操作，v6：退出取代取消控制）
-            if (ControlChannel.interceptKeyLocked(event.keyCode, this)) return true
+            if (ControlChannel.interceptKeyLocked(event.keyCode, this, getString(R.string.ctl_locked_camera))) return true
             keyHintShower()
             when (event.keyCode) {
                 KeyEvent.KEYCODE_BACK -> {

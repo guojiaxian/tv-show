@@ -216,14 +216,18 @@ object ControlChannel {
      * 【返回】放行——现场随时可用正常退出操作摆脱当前画面（回首页 / 退出应用）。
      * 返回 true 表示事件已被锁定吞掉。
      */
-    fun interceptKeyLocked(keyCode: Int, context: Context): Boolean {
+    fun interceptKeyLocked(
+        keyCode: Int,
+        context: Context,
+        tip: String = "远程被控中 · 可按【返回】退出当前画面"
+    ): Boolean {
         if (localMode) return false
         // 返回键豁免：受控态下仍可正常退出当前画面（v6：退出操作取代取消控制）
         if (keyCode == android.view.KeyEvent.KEYCODE_BACK) return false
         val now = System.currentTimeMillis()
         if (now - lastLockToastAt > 5000L) {
             lastLockToastAt = now
-            Toast.makeText(context, "远程被控中 · 可按【返回】退出当前画面", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, tip, Toast.LENGTH_SHORT).show()
         }
         return true
     }

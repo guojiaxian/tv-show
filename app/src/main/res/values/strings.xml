@@ -36,6 +36,9 @@
 
     <string name="config_reloaded">配置已重新加载</string>
     <string name="config_missing">未找到有效的配置，已使用内置默认值</string>
+    <string name="home_empty_title">暂无可用页面</string>
+    <string name="home_empty_message">当前没有可展示的页面。\n\n请在电脑浏览器打开 %1$s 添加页面，然后按【菜单】→「立即同步配置」。</string>
+    <string name="home_empty_sync">立即同步</string>
     <string name="entry_unavailable">该入口不存在或已禁用</string>
     <string name="back_to_exit">再按一次【返回】键退出应用</string>
 
@@ -67,6 +70,11 @@
     <string name="turbo_frame_ago">极速模式 · 帧 %1$d 秒前</string>
 
     <!-- 多设备互控（受控通道）：v6 起受控端无取消入口（退出用【返回】），控制台侧确认在 /console -->
+    <string name="ctl_locked_home">远程被控中 · 可按【返回】退出应用</string>
+    <string name="ctl_locked_settings">远程被控中 · 可按【返回】退出设置</string>
+    <string name="ctl_locked_display">远程被控中 · 可按【返回】退出当前画面</string>
+    <string name="ctl_locked_zone">远程被控中 · 可按【返回】退出分屏</string>
+    <string name="ctl_locked_camera">远程被控中 · 可按【返回】退出画面墙</string>
 
     <string name="state_on">已开启</string>
     <string name="state_off">已关闭</string>
@@ -96,6 +104,7 @@
     <string name="zone_hint">方向键 选择分区　　确定 为该分区选择页面　　菜单 控制菜单　　返回 返回首页</string>
     <string name="zone_switched">当前分区：%1$s</string>
     <string name="zone_selected">第 %1$d 格已设为：%2$s</string>
+    <string name="zone_load_failed">%1$s\n\n按【确定】重试该格</string>
 
     <!-- 机房监控画面墙（type=camera 入口，客户端原生拉流渲染） -->
     <string name="camera_card_address">内置画面墙 · 点击直接观看</string>

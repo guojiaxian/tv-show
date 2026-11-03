@@ -82,6 +82,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        binding.emptySync.setOnClickListener { syncFromServer(force = true) }
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         UiUtil.applyImmersive(this)
@@ -134,7 +135,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         // 远程被控时锁定展示操作（【返回】豁免——正常退出操作，v6：退出取代取消控制）
-        if (ControlChannel.interceptKeyLocked(keyCode, this)) return true
+        if (ControlChannel.interceptKeyLocked(keyCode, this, getString(R.string.ctl_locked_home))) return true
         showKeyHint()
         if (keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_INFO) {
             showHomeMenu()
@@ -296,9 +297,15 @@ class MainActivity : AppCompatActivity() {
             renderedCardHeight = 0
             container.removeAllViews()
             firstCard = null
-            Toast.makeText(this, R.string.config_missing, Toast.LENGTH_LONG).show()
+            binding.emptyPanel.visibility = View.VISIBLE
+            binding.emptyMessage.text = getString(
+                R.string.home_empty_message,
+                ConfigRepository.serverBaseUrl().trimEnd('/') + "/setting"
+            )
+            binding.emptyPanel.post { binding.emptySync.requestFocus() }
             return
         }
+        binding.emptyPanel.visibility = View.GONE
 
         val gap = resources.getDimensionPixelSize(R.dimen.card_gap)
         val columns = columnsForScreen()

@@ -209,6 +209,9 @@ const apiGet = async (p) => (await fetch(BASE + p)).json();
     const rows = document.querySelectorAll('#tbody tr');
     Array.from(rows[i].querySelectorAll('button')).find((b) => b.textContent === '删除').click();
   }, delIdx);
+  // 删除改为页面自定义二次确认弹层（不再是原生 confirm）
+  await page.waitForSelector('#confirmMask.show', { timeout: 3000 });
+  await page.click('#confirmOk');
   await page.waitForTimeout(1000);
   const afterDel = await apiGet('/api/admin/config');
   const rowsAfterDel = await page.evaluate(() => document.querySelectorAll('#tbody tr').length);
@@ -226,6 +229,8 @@ const apiGet = async (p) => (await fetch(BASE + p)).json();
   /* ---------- 9. 强制全量刷新 ---------- */
   const epochBefore = (await apiGet('/api/admin/health')).epoch;
   await page.click('#btnBump');
+  await page.waitForSelector('#confirmMask.show', { timeout: 3000 });
+  await page.click('#confirmOk');
   await page.waitForTimeout(900);
   const epochAfter = (await apiGet('/api/admin/health')).epoch;
   const uiEpoch = await page.evaluate(() => document.getElementById('stEpoch').textContent);

@@ -168,7 +168,14 @@ class WebDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
 
     /** 到达间隔边界时切到下一页 */
     private val rotationAdvance = Runnable {
-        if (!rotationActive || rotationEntries.isEmpty()) return@Runnable
+        if (!rotationActive) return@Runnable
+        // 每次切页前对齐最新内容：后台删除的页面立即跳过，避免继续加载失效地址
+        refreshConfigIfChanged()
+        if (rotationEntries.isEmpty()) {
+            Toast.makeText(this, R.string.rotation_unavailable, Toast.LENGTH_LONG).show()
+            finish()
+            return@Runnable
+        }
         rotationIndex = (rotationIndex + 1) % rotationEntries.size
         entry = rotationEntries[rotationIndex]
         Log.i(TAG, "轮询切页 → ${rotationIndex + 1}/${rotationEntries.size} ${entry?.title}")
@@ -796,7 +803,7 @@ class WebDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
             // 远程被控时锁定展示操作（【返回】豁免——正常退出操作，v6：退出取代取消控制）
-            if (ControlChannel.interceptKeyLocked(event.keyCode, this)) return true
+            if (ControlChannel.interceptKeyLocked(event.keyCode, this, getString(R.string.ctl_locked_display))) return true
             when (event.keyCode) {
                 // 返回键：直接回到首页，避免在网页历史中迷失
                 KeyEvent.KEYCODE_BACK -> {
@@ -912,13 +919,19 @@ class WebDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
      * 序列/间隔/时钟起点可能已变，按新设置重新对齐当前页（改动过设置时会从第 1 页重新开始）。
      */
     private fun syncRotationSettings() {
+        refreshConfigIfChanged()
         rotationSetting = LocalSettings.rotation(this)
         val latest = LocalSettings.rotationEntries(config, rotationSetting)
-        if (latest.isEmpty()) return
+        if (latest.isEmpty()) {
+            Toast.makeText(this, R.string.rotation_unavailable, Toast.LENGTH_LONG).show()
+            finish()
+            return
+        }
         rotationEntries = latest
         rotationIndex = computeRotationIndex().coerceIn(0, latest.lastIndex)
         val target = rotationEntries[rotationIndex]
-        if (entry?.id != target.id) {
+        // 对象级比较：页面地址/标题改了也应重新加载，而不只是 id 变化
+        if (entry != target) {
             entry = target
             startLoad()
             showInfoOverlay()
@@ -927,7 +940,24 @@ class WebDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
         renderRotationChip()
     }
 
+    /**
+     * 内容同步可能在本页运行期间完成（心跳触发 ConfigRepository 强制同步）。
+     * 轮询切页前对齐一次快照，保证删除的页面被跳过、新增/改名页面按最新配置使用。
+     */
+    private fun refreshConfigIfChanged(): Boolean {
+        val latest = ConfigRepository.snapshot()
+        if (latest.version == config.version && latest.entries == config.entries) return false
+        config = latest
+        val latestEntries = LocalSettings.rotationEntries(config, rotationSetting)
+        rotationEntries = latestEntries
+        rotationIndex = rotationIndex.coerceIn(0, latestEntries.lastIndex.coerceAtLeast(0))
+        return true
+    }
+
     override fun onPause() {
+        // 按 HOME / 切后台后不再自动切页，避免后台持续加载 WebView
+        handler.removeCallbacks(rotationAdvance)
+        handler.removeCallbacks(rotationTick)
         webView.onPause()
         super.onPause()
     }

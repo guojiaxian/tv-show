@@ -49,6 +49,8 @@ class SettingsActivity : AppCompatActivity() {
     private var config: RemoteConfig = ConfigLoader.defaultConfig()
     private var rotationSetting = RotationSetting()
     private var firstRow: View? = null
+    /** 重建列表后要恢复焦点的行标识，避免每次切换都跳回第一行 */
+    private var focusedRowKey: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -77,7 +79,7 @@ class SettingsActivity : AppCompatActivity() {
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         // 远程被控时锁定设置操作（【返回】豁免——正常退出操作）
-        if (ControlChannel.interceptKeyLocked(keyCode, this)) return true
+        if (ControlChannel.interceptKeyLocked(keyCode, this, getString(R.string.ctl_locked_settings))) return true
         return super.onKeyDown(keyCode, event)
     }
 
@@ -85,13 +87,16 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun renderRows() {
         val container = binding.settingsContainer
+        // 重建前记下当前焦点行的标识，重建后恢复到同一行
+        (container.findFocus()?.tag as? String)?.let { focusedRowKey = it }
         container.removeAllViews()
         firstRow = null
 
         addRow(
             container,
             getString(R.string.rotation_enabled_label),
-            getString(if (rotationSetting.enabled) R.string.state_on else R.string.state_off)
+            getString(if (rotationSetting.enabled) R.string.state_on else R.string.state_off),
+            key = "enabled"
         ) {
             rotationSetting = rotationSetting.copy(enabled = !rotationSetting.enabled)
             persistRotation()
@@ -100,7 +105,8 @@ class SettingsActivity : AppCompatActivity() {
         addRow(
             container,
             getString(R.string.rotation_interval_label),
-            getString(R.string.rotation_interval_value, rotationSetting.intervalSec)
+            getString(R.string.rotation_interval_value, rotationSetting.intervalSec),
+            key = "interval"
         ) { pickInterval() }
 
         addSection(container, getString(R.string.rotation_pages_section))
@@ -113,7 +119,7 @@ class SettingsActivity : AppCompatActivity() {
             } else {
                 getString(R.string.rotation_page_excluded)
             }
-            addRow(container, entry.title, value, onMove = { dir ->
+            addRow(container, entry.title, value, key = "entry:${entry.id}", onMove = { dir ->
                 moveInSequence(entry.id, dir)
             }) {
                 toggleInSequence(entry.id)
@@ -125,7 +131,10 @@ class SettingsActivity : AppCompatActivity() {
         if (config.entries.isEmpty()) {
             Toast.makeText(this, R.string.config_missing, Toast.LENGTH_LONG).show()
         }
-        container.post { firstRow?.requestFocus() }
+        container.post {
+            val target = focusedRowKey?.let { key -> container.findViewWithTag<View>(key) }
+            (target ?: firstRow)?.requestFocus()
+        }
     }
 
     private fun addSection(container: LinearLayout, text: String) {
@@ -146,6 +155,7 @@ class SettingsActivity : AppCompatActivity() {
         container: LinearLayout,
         label: String,
         value: String,
+        key: String? = null,
         onMove: ((Int) -> Boolean)? = null,
         onClick: () -> Unit
     ): View {
@@ -154,6 +164,7 @@ class SettingsActivity : AppCompatActivity() {
         rowBinding.rowValue.text = value
 
         val row = rowBinding.root
+        row.tag = key
         row.setOnClickListener { onClick() }
         if (onMove != null) {
             row.setOnKeyListener { _, keyCode, event ->

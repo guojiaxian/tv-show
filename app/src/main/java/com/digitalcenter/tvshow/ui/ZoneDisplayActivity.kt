@@ -16,6 +16,7 @@ import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -97,7 +98,9 @@ class ZoneDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
         /** 该格 WebView 的名义密度，用于反推真实 dpr 做视口校准 */
         var assumedDensity: Float = 1f,
         var initialScalePercent: Int = 100,
-        var calibrationReloads: Int = 0
+        var calibrationReloads: Int = 0,
+        /** 当前格加载失败：确定键改为重试该格，而不是打开选页弹层 */
+        var hasError: Boolean = false
     )
 
     private val slots = LinkedHashMap<Int, ZoneSlot>()
@@ -224,6 +227,7 @@ class ZoneDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
         slot.webView = null
         slot.container.removeAllViews()
         slot.glow.animate().cancel()
+        slot.hasError = false
 
         val entry = cellEntries.getOrNull(position)
         val cellW = resources.displayMetrics.widthPixels / 2
@@ -315,11 +319,24 @@ class ZoneDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
         return webView
     }
 
+    /** 分区加载失败：格内叠加错误文案；确定键改为重试该格 */
+    private fun showZoneError(slot: ZoneSlot, message: String) {
+        slot.hasError = true
+        slot.status.text = getString(R.string.zone_load_failed, message)
+        slot.status.visibility = View.VISIBLE
+        if (slot.status.parent == null) slot.container.addView(slot.status)
+    }
+
     private fun loadZone(slot: ZoneSlot, entry: DisplayEntry) {
         val webView = slot.webView ?: return
+        // 新一轮加载：先清掉上一轮的错误态，成功/失败由回调重新判定
+        slot.hasError = false
+        if (slot.status.parent === slot.container) slot.container.removeView(slot.status)
 
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
+                // 本次加载已失败（onReceivedError 先到）：保留错误文案，不让 onPageFinished 覆盖
+                if (slot.hasError) return
                 injectZoneScripts(view, entry)
                 calibrateZoneViewport(slot, entry)
                 // 旧内核 100vh 失效会让分区页面只渲染在上半格，首屏后再补两次。
@@ -336,8 +353,19 @@ class ZoneDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
             ) {
                 if (request?.isForMainFrame == true) {
                     Log.w(TAG, "分区 ${entry.id} 加载失败：${error?.description}")
-                    slot.status.text = getString(R.string.error_network)
-                    if (slot.status.parent == null) slot.container.addView(slot.status)
+                    showZoneError(slot, getString(R.string.error_network))
+                }
+            }
+
+            override fun onReceivedHttpError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                errorResponse: WebResourceResponse?
+            ) {
+                val code = errorResponse?.statusCode ?: 0
+                if (request?.isForMainFrame == true && code >= 400) {
+                    Log.w(TAG, "分区 ${entry.id} 返回异常状态码：$code")
+                    showZoneError(slot, getString(R.string.error_http, code))
                 }
             }
 
@@ -480,6 +508,8 @@ class ZoneDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
 
     /** 为当前格选择页面：列出服务端全部页面 + 「不使用」 */
     private fun pickZoneEntry(position: Int) {
+        // 打开选择弹层前对齐最新页面列表（运行期间后台可能新增/删除页面）
+        refreshConfigIfChanged()
         // 弹层标题虽有格位编号，仍先闪一下操作对象，避免"改错格"
         flashZone(position)
         val labels = config.entries.map { it.title } + getString(R.string.zone_cell_unset)
@@ -568,7 +598,7 @@ class ZoneDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
             // 远程被控时锁定展示操作（【返回】豁免——正常退出操作，v6：退出取代取消控制）
-            if (ControlChannel.interceptKeyLocked(event.keyCode, this)) return true
+            if (ControlChannel.interceptKeyLocked(event.keyCode, this, getString(R.string.ctl_locked_zone))) return true
             showKeyHint()
             when (event.keyCode) {
                 KeyEvent.KEYCODE_BACK -> {
@@ -596,7 +626,15 @@ class ZoneDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
                     return true
                 }
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
-                    pickZoneEntry(activePosition)
+                    val slot = slots[activePosition]
+                    val entry = cellEntries.getOrNull(activePosition)
+                    if (slot?.hasError == true && entry != null) {
+                        // 该格加载失败：确定键优先重试，而不是重选页面
+                        loadZone(slot, entry)
+                        flashZone(activePosition)
+                    } else {
+                        pickZoneEntry(activePosition)
+                    }
                     return true
                 }
             }
@@ -612,8 +650,29 @@ class ZoneDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
     override fun onResume() {
         super.onResume()
         slots.values.forEach { it.webView?.onResume() }
+        refreshConfigIfChanged()
         // 多设备互控：上报 2×2 四格内容摘要
         ControlChannel.reportZone(cellEntries.map { it?.id.orEmpty() })
+    }
+
+    /**
+     * 对齐最新内容：页面被删除时自动清空对应格并重建该格 WebView。
+     * 仅在入口集合实际变化时重建，避免每次回到前台都刷新四格。
+     */
+    private fun refreshConfigIfChanged() {
+        val latest = ConfigRepository.snapshot()
+        if (latest.version == config.version && latest.entries == config.entries) return
+        val oldIds = cellEntries.map { it?.id }
+        config = latest
+        zoneSettings = LocalSettings.zones(this)
+        val latestEntries = LocalSettings.zoneEntries(config, zoneSettings)
+        if (latestEntries.map { it?.id } == oldIds) return
+        cellEntries = latestEntries
+        for (pos in 0 until ZONE_COUNT) {
+            if (oldIds.getOrNull(pos) != latestEntries.getOrNull(pos)?.id) renderCell(pos)
+        }
+        updateHint()
+        flashZone(activePosition)
     }
 
     override fun onPause() {
