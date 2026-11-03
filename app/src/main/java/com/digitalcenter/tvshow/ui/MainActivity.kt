@@ -68,6 +68,16 @@ class MainActivity : AppCompatActivity() {
     private lateinit var keyHintShower: () -> Unit
     private var firstCard: View? = null
 
+    /**
+     * 首页宫格的增量渲染状态：内容同步时若入口集合/列数/卡片高度没变，
+     * 只重绑变化的卡片，避免整屏 removeAllViews 造成焦点丢失与闪烁。
+     */
+    private val cardBindings = LinkedHashMap<String, ItemEntryCardBinding>()
+    private val renderedSignatures = HashMap<String, String>()
+    private var renderedEntryIds: List<String> = emptyList()
+    private var renderedColumns = 0
+    private var renderedCardHeight = 0
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -277,11 +287,15 @@ class MainActivity : AppCompatActivity() {
 
     private fun buildGrid() {
         val container = binding.gridContainer
-        container.removeAllViews()
-        firstCard = null
-
         val entries = config.entries
         if (entries.isEmpty()) {
+            cardBindings.clear()
+            renderedSignatures.clear()
+            renderedEntryIds = emptyList()
+            renderedColumns = 0
+            renderedCardHeight = 0
+            container.removeAllViews()
+            firstCard = null
             Toast.makeText(this, R.string.config_missing, Toast.LENGTH_LONG).show()
             return
         }
@@ -290,6 +304,29 @@ class MainActivity : AppCompatActivity() {
         val columns = columnsForScreen()
         val rows = (entries.size + columns - 1) / columns
         val cardHeight = adaptiveCardHeight(rows)
+        val ids = entries.map { it.id }
+        val signatures = entries.associate { it.id to it.toString() }
+
+        // 入口集合/顺序/布局未变：只重绑内容有变化的卡片，保留焦点与动画
+        if (ids == renderedEntryIds &&
+            columns == renderedColumns &&
+            cardHeight == renderedCardHeight &&
+            cardBindings.keys.toList() == ids
+        ) {
+            entries.forEach { entry ->
+                if (renderedSignatures[entry.id] != signatures[entry.id]) {
+                    cardBindings[entry.id]?.let { bindCard(it, entry) }
+                    renderedSignatures[entry.id] = signatures.getValue(entry.id)
+                }
+            }
+            return
+        }
+
+        // 结构变化（增删/排序/列数/卡片高度）：整屏重建
+        cardBindings.clear()
+        renderedSignatures.clear()
+        container.removeAllViews()
+        firstCard = null
 
         entries.chunked(columns).forEachIndexed { rowIndex, rowEntries ->
             // clipChildren=false：焦点卡片放大后允许溢出本行边界，避免被裁掉边缘
@@ -301,6 +338,8 @@ class MainActivity : AppCompatActivity() {
             rowEntries.forEachIndexed { index, entry ->
                 val cardBinding = ItemEntryCardBinding.inflate(layoutInflater, row, false)
                 val card = bindCard(cardBinding, entry)
+                cardBindings[entry.id] = cardBinding
+                renderedSignatures[entry.id] = signatures.getValue(entry.id)
                 if (firstCard == null) firstCard = card
 
                 val lp = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f)
@@ -321,6 +360,9 @@ class MainActivity : AppCompatActivity() {
             container.addView(row, rowParams)
         }
 
+        renderedEntryIds = ids
+        renderedColumns = columns
+        renderedCardHeight = cardHeight
         container.post { firstCard?.requestFocus() }
     }
 

@@ -154,6 +154,9 @@ class WebDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
     private var rotationEntries: List<DisplayEntry> = emptyList()
     private var rotationIndex = 0
 
+    /** 注入脚本只读一次：轮询/刷新反复读 assets 没有意义 */
+    private val assetCache = HashMap<String, String>()
+
     /** 每秒刷新轮询倒计时指示 */
     private val rotationTick = object : Runnable {
         override fun run() {
@@ -598,9 +601,14 @@ class WebDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
         }
     }
 
-    private fun readAsset(path: String): String? = runCatching {
-        assets.open(path).bufferedReader().use { it.readText() }
-    }.onFailure { Log.w(TAG, "读取资源失败：$path", it) }.getOrNull()
+    private fun readAsset(path: String): String? {
+        assetCache[path]?.let { return it }
+        return runCatching {
+            assets.open(path).bufferedReader().use { it.readText() }
+        }.onSuccess { assetCache[path] = it }
+            .onFailure { Log.w(TAG, "读取资源失败：$path", it) }
+            .getOrNull()
+    }
 
     /* ---------------- 显示适配与缩放 ---------------- */
 

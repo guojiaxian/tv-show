@@ -58,6 +58,13 @@ class MjpegReader(
     @Volatile
     private var reusable: Bitmap? = null
 
+    /**
+     * 主线程尚未消费上一帧时置 true：此时新解码的帧直接丢弃，
+     * 避免 10fps 多路流把主线程消息队列堆满、画面越拖越滞后。
+     */
+    @Volatile
+    private var framePending = false
+
     private var thread: Thread? = null
 
     val isRunning: Boolean get() = running.get()
@@ -65,6 +72,7 @@ class MjpegReader(
     fun start() {
         if (!running.compareAndSet(false, true)) return
         reusable = null
+        framePending = false
         thread = Thread({ readLoop() }, "mjpeg").apply {
             isDaemon = true
             start()
@@ -75,6 +83,7 @@ class MjpegReader(
         if (!running.compareAndSet(true, false)) return
         // 关掉连接让阻塞中的 read() 立刻抛错返回，无需等待读超时
         runCatching { connection?.disconnect() }
+        framePending = false
         thread = null
     }
 
@@ -145,10 +154,16 @@ class MjpegReader(
 
     /** 解码并在主线程回调；复用上一帧的 Bitmap 以减少分配 */
     private fun deliver(bytes: ByteArray) {
-        if (!running.get()) return
+        if (!running.get() || framePending) return
         val bitmap = decode(bytes) ?: return
+        framePending = true
         mainHandler.post {
-            if (running.get()) listener.onFrame(bitmap)
+            try {
+                if (running.get()) listener.onFrame(bitmap)
+            } finally {
+                // 主线程消费完才允许投递下一帧
+                framePending = false
+            }
         }
     }
 

@@ -208,11 +208,12 @@ async function waitFor(fn, timeoutMs = 20000, stepMs = 500) {
   if (!shotAvail) {
     skip('停止心跳后活跃数归零（无 Chromium）');
   } else {
-    // COOLING 30s + 回收扫描 5s，放宽到 45s
+    // 最坏路径：观看者超时 12s + COOLING 30s + 回收扫描粒度 5s ≈ 47s；
+    // 45s 会周期性压线失败，放宽到 60s（条件满足即返回，不影响正常耗时）
     const drained = await waitFor(async () => {
       const h = await get('/api/admin/health');
       return h.json.shot.activeEntries === 0 ? h : null;
-    }, 45000, 2000);
+    }, 60000, 2000);
     check('停止心跳后（COOLING 30s）活跃采集数归零', !!drained, drained && drained.json.shot);
     const metaPaused = await get('/shot/shot-page/meta.json');
     check('PAUSED 后 meta.status=paused（帧定格保留）',

@@ -48,35 +48,60 @@ object LocalSettings {
     private const val KEY_ZONES = "zones"
     private const val KEY_TURBO = "turbo"
 
+    /**
+     * 进程内缓存：轮询/极速设置只在设置界面或指令里写入，
+     * 展示页每加载一页都会读一次，频繁读 SharedPreferences + JSON 解析没有必要。
+     * 进程重启或清除应用数据后自然失效；本对象只由本进程写，无跨进程一致性问题。
+     */
+    @Volatile
+    private var rotationCache: RotationSetting? = null
+    @Volatile
+    private var turboCache: TurboSetting? = null
+
     /** 极速模式本机总开关（默认关，关闭时一切照旧） */
     fun turbo(context: Context): TurboSetting {
-        val raw = prefs(context).getString(KEY_TURBO, null) ?: return TurboSetting()
-        return runCatching {
-            TurboSetting(JSONObject(raw).optBoolean("enabled", false))
-        }.getOrDefault(TurboSetting())
+        turboCache?.let { return it }
+        val raw = prefs(context).getString(KEY_TURBO, null)
+        val parsed = if (raw == null) {
+            TurboSetting()
+        } else {
+            runCatching {
+                TurboSetting(JSONObject(raw).optBoolean("enabled", false))
+            }.getOrDefault(TurboSetting())
+        }
+        turboCache = parsed
+        return parsed
     }
 
     fun saveTurbo(context: Context, setting: TurboSetting) {
         val obj = JSONObject().apply { put("enabled", setting.enabled) }
         prefs(context).edit().putString(KEY_TURBO, obj.toString()).apply()
+        turboCache = setting
     }
 
     fun rotation(context: Context): RotationSetting {
-        val raw = prefs(context).getString(KEY_ROTATION, null) ?: return RotationSetting()
-        return runCatching {
-            val obj = JSONObject(raw)
-            RotationSetting(
-                enabled = obj.optBoolean("enabled", false),
-                intervalSec = obj.optInt("intervalSec", DEFAULT_INTERVAL_SEC)
-                    .coerceIn(MIN_INTERVAL_SEC, MAX_INTERVAL_SEC),
-                items = obj.optJSONArray("items")?.let { arr ->
-                    (0 until arr.length()).mapNotNull { i ->
-                        arr.optString(i).takeIf { it.isNotEmpty() }
-                    }
-                } ?: emptyList(),
-                startedAt = obj.optLong("startedAt", 0L)
-            )
-        }.getOrDefault(RotationSetting())
+        rotationCache?.let { return it }
+        val raw = prefs(context).getString(KEY_ROTATION, null)
+        val parsed = if (raw == null) {
+            RotationSetting()
+        } else {
+            runCatching {
+                val obj = JSONObject(raw)
+                RotationSetting(
+                    enabled = obj.optBoolean("enabled", false),
+                    intervalSec = obj.optInt("intervalSec", DEFAULT_INTERVAL_SEC)
+                        .coerceIn(MIN_INTERVAL_SEC, MAX_INTERVAL_SEC),
+                    items = obj.optJSONArray("items")?.let { arr ->
+                        (0 until arr.length()).mapNotNull { i ->
+                            arr.optString(i).takeIf { it.isNotEmpty() }
+                        }
+                    } ?: emptyList(),
+                    startedAt = obj.optLong("startedAt", 0L)
+                )
+            }.getOrDefault(RotationSetting())
+        }
+        rotationCache = parsed
+        return parsed
     }
 
     /** 保存轮询设置；[restartClock] 为 true 时把时钟起点重置为当前时刻（从第 1 页重新开始） */
@@ -88,13 +113,20 @@ object LocalSettings {
         } else {
             setting.startedAt
         }
+        val saved = RotationSetting(
+            enabled = setting.enabled,
+            intervalSec = interval,
+            items = items,
+            startedAt = startedAt
+        )
         val obj = JSONObject().apply {
-            put("enabled", setting.enabled)
-            put("intervalSec", interval)
-            put("items", JSONArray().apply { items.forEach { put(it) } })
-            put("startedAt", startedAt)
+            put("enabled", saved.enabled)
+            put("intervalSec", saved.intervalSec)
+            put("items", JSONArray().apply { saved.items.forEach { put(it) } })
+            put("startedAt", saved.startedAt)
         }
         prefs(context).edit().putString(KEY_ROTATION, obj.toString()).apply()
+        rotationCache = saved
     }
 
     /** 读取分区设置，始终保持 4 格（缺省格为空） */

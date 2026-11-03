@@ -104,6 +104,8 @@ class ZoneDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
     private val handler = Handler(Looper.getMainLooper())
     /** 高亮令牌：后一次高亮会让前一次尚未执行的淡出失效，避免刚点亮就被旧的定时器熄灭 */
     private var flashToken = 0
+    /** 注入脚本只读一次：四格重载时反复读 assets 没有意义 */
+    private val assetCache = HashMap<String, String>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -420,9 +422,14 @@ class ZoneDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
         }
     }
 
-    private fun readAsset(path: String): String? = runCatching {
-        assets.open(path).bufferedReader().use { it.readText() }
-    }.onFailure { Log.w(TAG, "读取资源失败：$path", it) }.getOrNull()
+    private fun readAsset(path: String): String? {
+        assetCache[path]?.let { return it }
+        return runCatching {
+            assets.open(path).bufferedReader().use { it.readText() }
+        }.onSuccess { assetCache[path] = it }
+            .onFailure { Log.w(TAG, "读取资源失败：$path", it) }
+            .getOrNull()
+    }
 
     private fun destroyWebView(webView: WebView) {
         webView.stopLoading()
