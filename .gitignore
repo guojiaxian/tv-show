@@ -3,7 +3,8 @@ node_modules/
 build/
 app/build/
 local.properties
-server/server.log
+# 服务端日志与轮转产物（server.log-YYYYMMDD、.gz 等）
+server/server.log*
 server/.cache/
 # 极速模式的浏览器会话缓存（含站点 Cookie / Bearer Token，禁止入库）
 server/data/shot-cache/

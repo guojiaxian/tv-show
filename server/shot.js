@@ -203,6 +203,8 @@ function createShot({ getEntries, dataDir, log }) {
   let browserBroken = '';
   let launchPromise = null;
   let reapTimer = null;
+  /** 服务端退出中：停止一切新一轮采集/重连调度 */
+  let stopping = false;
 
   /* ---------- 入口查找 ---------- */
 
@@ -308,9 +310,11 @@ function createShot({ getEntries, dataDir, log }) {
     st.loginFails = 0;
     logOf(`[shot] ${entry.id} 登录成功（${Date.now() - t0}ms），保存会话`);
     try {
-      fs.mkdirSync(path.dirname(stateFileOf(entry.id)), { recursive: true });
+      const stateDir = path.dirname(stateFileOf(entry.id));
+      fs.mkdirSync(stateDir, { recursive: true, mode: 0o700 });
+      // 会话目录/文件含站点 Cookie / Bearer Token，仅属主可访问
+      try { fs.chmodSync(stateDir, 0o700); } catch (e) { /* 忽略 */ }
       await st.ctx.storageState({ path: stateFileOf(entry.id) });
-      // 会话文件含站点 Cookie / Bearer Token，仅属主可读写
       try { fs.chmodSync(stateFileOf(entry.id), 0o600); } catch (e) { /* 忽略 */ }
     } catch (e) {
       logOf(`[shot] ${entry.id} 会话保存失败：${e.message}`);
@@ -343,6 +347,7 @@ function createShot({ getEntries, dataDir, log }) {
 
   /** 采集主循环：完成一帧后按「上帧完成时刻 + 间隔」调度下一帧，天然跳帧不积压 */
   async function cycle(st) {
+    if (stopping) return;
     if (st.status !== 'active' && st.status !== 'cooling' && st.status !== 'error' && st.status !== 'login_failed') return;
     const entry = entryById(st.id);
     // 入口被删 / 改成画面墙 / 后台关掉极速 → 停止采集
@@ -387,7 +392,7 @@ function createShot({ getEntries, dataDir, log }) {
   }
 
   function scheduleNext(st, entry, t0) {
-    if (st.status === 'stopped' || st.status === 'starting' || st.status === 'paused') return;
+    if (stopping || st.status === 'stopped' || st.status === 'starting' || st.status === 'paused') return;
     const elapsed = t0 ? Date.now() - t0 : 0;
     const wait = st.retryAfter || normIntervalSec(entry.turboIntervalSec) * 1000;
     st.timer = setTimeout(() => { st.timer = null; cycle(st).catch(() => {}); }, Math.max(wait - elapsed, 100));
@@ -395,6 +400,7 @@ function createShot({ getEntries, dataDir, log }) {
 
   /** 冷/热启动一个入口的采集 */
   async function startEntry(st, entry) {
+    if (stopping) return;
     st.status = 'starting';
     try {
       const b = await ensureBrowser();
@@ -443,7 +449,7 @@ function createShot({ getEntries, dataDir, log }) {
 
   /** 有观看者出现：按当前状态决定冷启动 / 热恢复 */
   function touchEntry(id) {
-    if (!pw) return;
+    if (!pw || stopping) return;
     const entry = entryById(id);
     if (!entry || entry.type === 'camera' || entry.turboEnabled === false) return;
     const st = stateOf(id);
@@ -589,11 +595,41 @@ function createShot({ getEntries, dataDir, log }) {
 
   function start() {
     if (reapTimer) return;
+    stopping = false;
     reapTimer = setInterval(reap, REAP_INTERVAL_MS);
     if (reapTimer.unref) reapTimer.unref();
   }
 
-  return { isShotPath, handle, status, start };
+  /**
+   * 停止全部采集并关闭浏览器（服务端优雅退出用）。
+   * 与 start() 互斥：置 stopping 后不再接受新的采集/重连调度。
+   */
+  async function stop() {
+    stopping = true;
+    if (reapTimer) { clearInterval(reapTimer); reapTimer = null; }
+    const closers = [];
+    for (const st of states.values()) {
+      if (st.timer) { clearTimeout(st.timer); st.timer = null; }
+      st.status = 'stopped';
+      st.viewers.clear();
+      if (st.ctx) {
+        const ctx = st.ctx;
+        st.ctx = null;
+        st.page = null;
+        closers.push(ctx.close().catch(() => {}));
+      }
+    }
+    states.clear();
+    if (browser) {
+      const b = browser;
+      browser = null;
+      launchPromise = null;
+      closers.push(b.close().catch(() => {}));
+    }
+    await Promise.allSettled(closers);
+  }
+
+  return { isShotPath, handle, status, start, stop };
 }
 
 module.exports = { createShot };

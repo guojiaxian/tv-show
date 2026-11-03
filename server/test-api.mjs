@@ -254,6 +254,31 @@ const get = (p, h) => api('GET', p, null, h);
   const badPath = await get('/api/nope');
   check('未知接口返回 404', badPath.status === 404, badPath.json);
 
+  /* ---------- 11.5 请求体保护（413 / 非法 JSON） ---------- */
+  const hugeRes = await fetch(BASE + '/api/admin/entries', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title: 'x'.repeat(300 * 1024), url: 'http://a.com' })
+  });
+  const hugeText = await hugeRes.text().catch(() => '');
+  let hugeJson = null;
+  try { hugeJson = hugeText ? JSON.parse(hugeText) : null; } catch (e) { /* 非 JSON */ }
+  check('请求体超限返回 413 且错误可读',
+    hugeRes.status === 413 && hugeJson && /过大/.test(hugeJson.error || ''),
+    { status: hugeRes.status, body: hugeText.slice(0, 120) });
+
+  const badJsonRes = await fetch(BASE + '/api/admin/meta', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{bad json'
+  });
+  const badJsonText = await badJsonRes.text().catch(() => '');
+  let badJsonBody = null;
+  try { badJsonBody = badJsonText ? JSON.parse(badJsonText) : null; } catch (e) { /* 非 JSON */ }
+  check('非法 JSON 返回 400 且错误可读',
+    badJsonRes.status === 400 && badJsonBody && /JSON/.test(badJsonBody.error || ''),
+    { status: badJsonRes.status, body: badJsonText.slice(0, 120) });
+
   /* ---------- 12. 非法更新不应破坏数据 ---------- */
   const before = (await get('/api/admin/health')).json;
   await api('POST', '/api/admin/entries', { title: '', url: 'http://a.com' });

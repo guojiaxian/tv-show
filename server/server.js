@@ -562,12 +562,17 @@ function serveHtmlFile(res, file, missingHint) {
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let size = 0;
+    let tooLarge = false;
     const chunks = [];
     req.on('data', (c) => {
+      // 超限后只标记并丢弃后续数据，不再 destroy 请求：
+      // 立即 destroy 会让客户端收不到 413 响应，只剩 ECONNRESET。
+      if (tooLarge) return;
       size += c.length;
       if (size > MAX_BODY_BYTES) {
+        tooLarge = true;
+        chunks.length = 0;
         reject(new HttpError(413, '请求体过大'));
-        req.destroy();
         return;
       }
       chunks.push(c);
@@ -825,6 +830,12 @@ function start() {
       const status = err instanceof HttpError ? err.status : 500;
       if (status >= 500) console.error(`[error] ${req.method} ${req.url}`, err);
       if (res.headersSent) return res.end();
+      // 413 用 Connection: close 明确结束本次请求；响应写完再断开，保证客户端能读到 JSON
+      if (status === 413) {
+        sendJson(res, status, { error: err.message || '请求体过大' }, { ...CORS, Connection: 'close' });
+        res.once('finish', () => { try { req.destroy(); } catch (e) { /* 忽略 */ } });
+        return;
+      }
       sendJson(res, status, { error: err.message || '服务端内部错误' }, CORS);
     });
   });
@@ -865,6 +876,48 @@ function start() {
     }
     throw e;
   });
+
+  /* ---------- 优雅退出 ----------
+   * systemd 重启时先收到 SIGTERM：立即停止采集/转码并关闭 HTTP 监听，
+   * 避免 Chromium / ffmpeg 子进程残留导致 stop 任务一直等到 TimeoutStopSec。 */
+  let shuttingDown = false;
+  async function shutdown(signal) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`\n[sys] 收到 ${signal}，开始优雅退出…`);
+
+    // 停止接受新连接；keep-alive 连接最多再等 800ms 后强制断开
+    const closed = new Promise((resolve) => {
+      try { server.close(() => resolve()); } catch (e) { resolve(); }
+    });
+    const forceClose = setTimeout(() => {
+      try { if (server.closeAllConnections) server.closeAllConnections(); } catch (e) { /* 忽略 */ }
+    }, 800);
+    forceClose.unref();
+
+    // 先杀 ffmpeg 转码进程（同步），再关 Chromium 上下文/浏览器（异步，限时 2.5s）
+    try { camera.stopAll(); } catch (e) { console.warn(`[sys] 停止摄像头转码失败：${e.message}`); }
+    try {
+      if (shot && typeof shot.stop === 'function') {
+        await Promise.race([
+          shot.stop().catch(() => {}),
+          new Promise((resolve) => setTimeout(resolve, 2500))
+        ]);
+      }
+    } catch (e) {
+      console.warn(`[sys] 停止极速模式采集失败：${e.message}`);
+    }
+
+    // 给在途 HTTP 响应最多 1s 收尾（无连接时立即返回），避免重启瞬间切断请求
+    await Promise.race([closed, new Promise((resolve) => setTimeout(resolve, 1000))]);
+    clearTimeout(forceClose);
+
+    console.log('[sys] 已停止采集与转码，退出');
+    process.exit(0);
+  }
+
+  process.once('SIGTERM', () => { shutdown('SIGTERM'); });
+  process.once('SIGINT', () => { shutdown('SIGINT'); });
 }
 
 start();

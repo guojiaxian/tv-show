@@ -609,12 +609,16 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
   function readBody(req) {
     return new Promise((resolve, reject) => {
       let size = 0;
+      let tooLarge = false;
       const chunks = [];
       req.on('data', (c) => {
+        // 同 server.js：超限不立即 destroy，保证 413 JSON 能送达客户端
+        if (tooLarge) return;
         size += c.length;
         if (size > MAX_BODY_BYTES) {
+          tooLarge = true;
+          chunks.length = 0;
           reject(new HttpError(413, '请求体过大'));
-          req.destroy();
           return;
         }
         chunks.push(c);
@@ -652,6 +656,11 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
       const status = err instanceof HttpError ? err.status : 500;
       if (status >= 500) log(`[ctl] ${req.method} ${url.pathname} ${err.message}`);
       if (res.headersSent) return res.end();
+      if (status === 413) {
+        sendJson(res, status, { error: err.message || '请求体过大' }, { ...CORS, Connection: 'close' });
+        res.once('finish', () => { try { req.destroy(); } catch (e) { /* 忽略 */ } });
+        return;
+      }
       sendJson(res, status, { error: err.message || '服务端内部错误' }, CORS);
     }
   }

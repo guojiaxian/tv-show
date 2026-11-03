@@ -1,0 +1,22 @@
+# TV Show Center 服务端日志轮转
+#
+# 安装（部署机执行一次）：
+#   cp deploy/tvshow.logrotate /etc/logrotate.d/tvshow
+#   logrotate -d /etc/logrotate.d/tvshow    # 干跑校验
+#
+# 说明：systemd 单元以 StandardOutput=append 方式持有 server.log，
+# Node 进程本身不重开日志文件，因此必须用 copytruncate（复制后截断），
+# 不能依赖 postrotate 重开句柄。目录与文件属主均为 root。
+/root/applications/tv-show/server/server.log {
+    daily
+    size 10M
+    rotate 14
+    dateext
+    dateformat -%Y%m%d
+    missingok
+    notifempty
+    compress
+    delaycompress
+    copytruncate
+    su root root
+}
