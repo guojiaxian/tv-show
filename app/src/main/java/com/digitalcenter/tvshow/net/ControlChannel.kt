@@ -14,6 +14,7 @@ import android.view.Gravity
 import android.widget.FrameLayout
 import android.widget.TextView
 import android.widget.Toast
+import com.digitalcenter.tvshow.BuildConfig
 import com.digitalcenter.tvshow.config.CommandApplier
 import com.digitalcenter.tvshow.config.LocalSettings
 import com.digitalcenter.tvshow.config.RotationSetting
@@ -304,7 +305,7 @@ object ControlChannel {
         val body = JSONObject().apply {
             put("deviceId", id)
             put("kind", "tv")
-            put("appVersion", "2.0")
+            put("appVersion", BuildConfig.VERSION_NAME)
             put("boot", boot)
             put("ackedSeq", ackedSeq)
             put("state", JSONObject(reported.toString()).putOpt("lastError", lastError ?: JSONObject.NULL))
