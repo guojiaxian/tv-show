@@ -12,23 +12,18 @@
  *
  * 用法：node tools/build-client.mjs
  */
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { read, inlineScript, renderTemplate } from './build-common.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const ASSETS = resolve(ROOT, 'app/src/main/assets');
 const TEMPLATE = resolve(ROOT, 'tools/client-template.html');
 const OUTPUT = resolve(ROOT, 'server/client/index.html');
 
-const read = (p) => readFileSync(p, 'utf8');
-
-/** 内联进 <script> 文本节点时，只需转义可以提前结束标签的 "</" */
-const inline = (text) => text.replace(/<\/(script)/gi, '<\\/$1');
-
 const bootstrap = read(resolve(ASSETS, 'config.json'));
 const loginJs = read(resolve(ASSETS, 'js/auto_login.js'));
-const template = read(TEMPLATE);
 
 // 引导配置必须合法，且要能解析出兜底内容（否则客户端启动后无内容可渲染）
 const boot = JSON.parse(bootstrap);
@@ -40,12 +35,10 @@ if (!boot.serverBaseUrl) {
   console.warn('警告：config.json 未配置 serverBaseUrl，以本地文件方式打开时将无内容可同步');
 }
 
-const html = template
-  .replace('__BOOTSTRAP__', () => inline(bootstrap.trim()))
-  .replace('__AUTO_LOGIN_JS__', () => inline(loginJs));
-
-const leftover = html.match(/__BOOTSTRAP__|__AUTO_LOGIN_JS__/);
-if (leftover) throw new Error(`模板占位符未被全部替换：${leftover[0]}`);
+const html = renderTemplate(TEMPLATE, {
+  __BOOTSTRAP__: inlineScript(bootstrap.trim()),
+  __AUTO_LOGIN_JS__: inlineScript(loginJs)
+}, '电脑端客户端模板');
 
 mkdirSync(dirname(OUTPUT), { recursive: true });
 writeFileSync(OUTPUT, html, 'utf8');

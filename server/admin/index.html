@@ -337,7 +337,14 @@
     }, kind === 'err' ? 5200 : 2600);
   }
 
-  async function api(method, path, body) {
+  /**
+   * 共享 JSON 请求助手（构建期注入，见 tools/build-pages.mjs）。
+   *
+   * 管理后台与远程控制台都以「同源相对路径 + JSON」方式调用服务端，
+   * 差异仅在错误文案；这里统一实现，页面侧保留一个三行适配器即可。
+   */
+  async function apiJson(method, path, body, opts) {
+    opts = opts || {};
     var res;
     try {
       res = await fetch(path, {
@@ -346,13 +353,23 @@
         body: body ? JSON.stringify(body) : undefined
       });
     } catch (e) {
-      throw new Error('无法连接服务端：' + e.message);
+      throw new Error((opts.connectPrefix || '') + e.message);
     }
     var text = await res.text();
     var json = null;
-    try { json = text ? JSON.parse(text) : null; } catch (e) { /* 忽略非 JSON */ }
-    if (!res.ok) throw new Error((json && json.error) || ('请求失败（HTTP ' + res.status + '）'));
+    try { json = text ? JSON.parse(text) : null; } catch (e) { /* 非 JSON 响应 */ }
+    if (!res.ok) {
+      var fallback = opts.httpError ? opts.httpError(res.status) : ('HTTP ' + res.status);
+      throw new Error((json && json.error) || fallback);
+    }
     return json;
+  }
+  // 适配器：保留管理页原有的「无法连接服务端 / 请求失败（HTTP xxx）」文案
+  function api(method, path, body) {
+    return apiJson(method, path, body, {
+      connectPrefix: '无法连接服务端：',
+      httpError: function (status) { return '请求失败（HTTP ' + status + '）'; }
+    });
   }
 
   function fmtTime(iso) {

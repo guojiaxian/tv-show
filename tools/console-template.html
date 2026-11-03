@@ -1,0 +1,1106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>大屏聚合平台 · 远程控制</title>
+<!--
+  多设备互控 · 远程控制台（docs/远程控制台-设计方案.md §11 修订版）
+
+  - 纯控制端：本页面不注册为受控设备、不心跳，只调用 /api/ctl/* 接口；
+    打开它的平板/电脑永远不会被自己下发的指令锁住。
+  - 显示端（站点首页 /，或电视 APK 1.8）负责接收指令切换画面。
+  - 单文件、无框架无 CDN，与 admin/index.html 同风格，由服务端 18000 托管在 /console。
+-->
+<style>
+:root {
+  --bg: #0b1220; --panel: #1a2432; --panel2: #223048;
+  --line: rgba(255,255,255,.14); --text: #f3f7ff;
+  --muted: #a9bdd8; --accent: #2FD2F5;
+}
+* { box-sizing: border-box; margin: 0; }
+html, body { height: 100%; }
+body {
+  background: var(--bg); color: var(--text);
+  font: 14px/1.6 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+header {
+  display: flex; align-items: center; gap: 14px; flex: none;
+  padding: 14px 22px; border-bottom: 1px solid var(--line); background: rgba(13,21,36,.9);
+}
+header h1 { font-size: 19px; }
+header .sub { color: var(--muted); font-size: 12px; }
+header .spacer { flex: 1; }
+.btn {
+  background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+  border-radius: 9px; padding: 7px 14px; font-size: 13px; cursor: pointer;
+  white-space: nowrap; line-height: 1.5; display: inline-flex; align-items: center; justify-content: center;
+}
+.btn:hover { border-color: rgba(47,210,245,.5); }
+.btn.primary { background: rgba(47,210,245,.16); border-color: rgba(47,210,245,.55); color: #bfeeff; }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+.btn.apply { border-color: rgba(63,224,166,.45); color: #7df0c0; }
+.btn.apply::before { content: '▶ '; font-size: 10px; }
+a.btn { text-decoration: none; display: inline-block; }
+
+.scenes {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: none;
+  padding: 10px 22px; border-bottom: 1px solid var(--line);
+}
+.scenes .label { font-size: 12px; color: var(--muted); flex: none; }
+.scenes .list { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+main { flex: 1; overflow: auto; padding: 16px 22px; display: flex; flex-direction: column; gap: 10px; }
+.card {
+  display: flex; align-items: center; gap: 12px; padding: 12px 14px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+}
+.card .ck { width: 20px; height: 20px; flex: none; accent-color: var(--accent); cursor: pointer; }
+.card .kind {
+  flex: none; width: 46px; text-align: center; font-size: 11px; color: var(--muted);
+  border: 1px solid var(--line); border-radius: 8px; padding: 4px 0;
+}
+.card .main { flex: 1; min-width: 0; }
+.card .nm { display: flex; align-items: center; gap: 8px; }
+.card .nm b { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card .st { margin-top: 4px; font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.chip.onl-online { color: #3FE0A6; border-color: rgba(63,224,166,.5); background: rgba(63,224,166,.08); }
+.chip.onl-offline { color: #FFB020; border-color: rgba(255,176,32,.55); background: rgba(255,176,32,.1); }
+.chip { border: 1px solid var(--line); border-radius: 999px; padding: 1px 9px; font-size: 11px; }
+.chip.remote { color: #9fe7ff; border-color: rgba(47,210,245,.5); background: rgba(47,210,245,.1); }
+.chip.local { color: #7df0c0; border-color: rgba(63,224,166,.4); }
+.chip.pending { color: #FFB020; border-color: rgba(255,176,32,.5); }
+.card .ops { display: flex; gap: 6px; flex: none; align-items: center; flex-wrap: wrap; justify-content: flex-end; max-width: 60%; }
+.card .ops .btn { padding: 5px 10px; font-size: 12px; }
+.card .ops select {
+  background: rgba(9,16,28,.9); color: var(--text); border: 1px solid var(--line);
+  border-radius: 8px; padding: 5px 8px; font-size: 12px; max-width: 150px;
+}
+.card .ops .sep { width: 1px; align-self: stretch; background: var(--line); margin: 0 2px; }
+.empty { color: var(--muted); font-size: 13px; padding: 26px; text-align: center; }
+
+/* 设备筛选：设备多时按名称 / 类型 / 在线状态快速定位 */
+.filters {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: none;
+  padding: 9px 22px; border-bottom: 1px solid var(--line); background: rgba(13,21,36,.55);
+}
+.filters input[type="search"] {
+  background: rgba(9,16,28,.9); color: var(--text); border: 1px solid var(--line);
+  border-radius: 8px; padding: 7px 12px; font-size: 13px; width: 220px;
+}
+.filters select {
+  background: rgba(9,16,28,.9); color: var(--text); border: 1px solid var(--line);
+  border-radius: 8px; padding: 7px 10px; font-size: 13px;
+}
+.filters .filters-count { margin-left: auto; font-size: 12px; color: var(--muted); }
+
+footer {
+  flex: none; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 12px 22px; border-top: 1px solid var(--line); background: rgba(13,21,36,.9);
+}
+footer .sel-info { font-size: 12px; color: var(--muted); margin-right: auto; }
+footer select {
+  background: rgba(9,16,28,.9); color: var(--text); border: 1px solid var(--line);
+  border-radius: 8px; padding: 7px 10px; font-size: 13px; max-width: 200px;
+}
+
+/* 弹层（确认 / 轮询 / 分屏 / 重命名） */
+#mask {
+  position: fixed; inset: 0; z-index: 50; background: rgba(4,8,16,.66);
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+#mask[hidden] { display: none; }
+.modal {
+  width: min(560px, 92vw); max-height: 84vh; display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(0,0,0,.6); overflow: hidden;
+}
+.modal header { padding: 16px 18px 10px; background: none; border: none; }
+.modal header h3 { font-size: 16px; }
+.modal header p { margin-top: 5px; color: var(--muted); font-size: 12px; }
+.modal .body { padding: 4px 16px 12px; overflow: auto; }
+.modal .row { display: flex; align-items: center; gap: 10px; padding: 8px 4px; font-size: 13px; }
+.modal .row .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.modal label { display: flex; align-items: center; gap: 8px; font-size: 13px; flex-wrap: wrap; }
+.modal select, .modal input[type="text"] {
+  background: rgba(9,16,28,.9); color: var(--text); border: 1px solid var(--line);
+  border-radius: 8px; padding: 8px 12px; font-size: 14px;
+}
+.modal select { font-size: 13px; }
+.modal .zonegrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 4px 0; }
+.modal .zonegrid .zg { display: flex; flex-direction: column; gap: 6px; }
+.modal .zonegrid .zg span { font-size: 12px; color: var(--muted); }
+.modal .zonegrid select { width: 100%; }
+.modal footer {
+  display: flex; gap: 10px; justify-content: flex-end; align-items: center;
+  padding: 12px 18px; border-top: 1px solid var(--line); background: none;
+}
+.confirm-list { display: flex; flex-direction: column; gap: 8px; padding: 10px 16px 16px; }
+.confirm-btn {
+  padding: 12px; text-align: center; border-radius: 10px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--panel2); font-size: 14px;
+}
+.confirm-btn.primary { background: rgba(47,210,245,.16); border-color: rgba(47,210,245,.55); color: #bfeeff; }
+.confirm-btn:hover { border-color: rgba(47,210,245,.5); }
+
+#toast {
+  position: fixed; left: 50%; bottom: 76px; transform: translate(-50%, 14px); z-index: 60;
+  background: rgba(9,16,28,.96); border: 1px solid rgba(47,210,245,.4); color: #ddf2ff;
+  padding: 11px 18px; border-radius: 10px; font-size: 13px; max-width: 74vw;
+  opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s;
+}
+#toast.show { opacity: 1; transform: translate(-50%, 0); }
+@media (max-width: 900px) {
+  header { flex-wrap: wrap; }
+  .card { flex-wrap: wrap; }
+  .card .ops { max-width: 100%; }
+  .filters input[type="search"] { width: 100%; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>远程控制</h1>
+  <span class="sub" id="serverChip">连接服务端…</span>
+  <span class="spacer"></span>
+  <a class="btn" href="/" target="_blank" rel="noopener">显示端首页 ↗</a>
+  <a class="btn" href="/setting" target="_blank" rel="noopener">管理 ↗</a>
+  <button class="btn" id="btnReload" title="立即刷新设备列表">刷新</button>
+</header>
+
+<div class="scenes">
+  <span class="label">场景</span>
+  <span class="list" id="sceneList"></span>
+  <button class="btn" id="btnSceneSave" title="把当前全场设备的状态保存为一个场景，之后可一键恢复">＋ 存为场景…</button>
+  <button class="btn" id="btnSceneManage" title="场景重命名 / 删除">管理…</button>
+</div>
+
+<div class="filters">
+  <input type="search" id="devSearch" placeholder="搜索设备名 / IP…" autocomplete="off">
+  <select id="devKind" title="按设备类型筛选">
+    <option value="">全部类型</option>
+    <option value="tv">电视</option>
+    <option value="pc">电脑</option>
+    <option value="tablet">平板</option>
+  </select>
+  <select id="devOnline" title="按状态筛选">
+    <option value="">全部状态</option>
+    <option value="online">在线</option>
+    <option value="offline">离线</option>
+    <option value="managed">远程被控</option>
+    <option value="local">本地控制</option>
+  </select>
+  <span class="filters-count" id="devCount"></span>
+</div>
+
+<main id="deviceList"></main>
+
+<footer>
+  <span class="sel-info" id="selInfo">未勾选设备</span>
+  <select id="selEntry"><option value="">显示页面…</option></select>
+  <button class="btn" id="btnRotate">轮询</button>
+  <button class="btn" id="btnZone">2×2 分屏</button>
+  <button class="btn" id="btnHome">回首页</button>
+  <button class="btn" id="btnRelease">取消控制</button>
+  <button class="btn" id="btnRefreshCmd">刷新当前页</button>
+  <button class="btn" id="btnSync">强制同步</button>
+  <button class="btn" id="btnAll">全选 / 清空</button>
+</footer>
+
+<div id="mask" hidden><div class="modal" id="modalBox"></div></div>
+<div id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ============================ 基础工具 ============================ */
+
+  var $ = function (id) { return document.getElementById(id); };
+  var els = {
+    serverChip: $('serverChip'), btnReload: $('btnReload'), sceneList: $('sceneList'),
+    btnSceneSave: $('btnSceneSave'), btnSceneManage: $('btnSceneManage'),
+    deviceList: $('deviceList'), selInfo: $('selInfo'), selEntry: $('selEntry'),
+    devSearch: $('devSearch'), devKind: $('devKind'), devOnline: $('devOnline'), devCount: $('devCount'),
+    btnRotate: $('btnRotate'), btnZone: $('btnZone'), btnHome: $('btnHome'),
+    btnRelease: $('btnRelease'), btnRefreshCmd: $('btnRefreshCmd'),
+    btnSync: $('btnSync'), btnAll: $('btnAll'), mask: $('mask'),
+    modalBox: $('modalBox'), toast: $('toast')
+  };
+
+  var state = {
+    devices: [], scenes: [], entries: [], selected: {}, deviceCards: {},
+    filter: { q: '', kind: '', status: '' }
+  };
+  /** 3s 轮询防重入：请求未返回时不再叠加下一次 */
+  var refreshInFlight = false;
+
+  function toast(msg) {
+    els.toast.textContent = msg;
+    els.toast.classList.add('show');
+    clearTimeout(els.toast._t);
+    els.toast._t = setTimeout(function () { els.toast.classList.remove('show'); }, 2400);
+  }
+
+__API_JS__
+  // 适配器：控制台沿用原有错误文案（不额外加连接前缀）
+  function api(method, path, body) {
+    return apiJson(method, path, body);
+  }
+
+  /* ============================ 弹层 ============================ */
+
+  function closeModal() { els.mask.hidden = true; els.modalBox.innerHTML = ''; }
+  els.mask.addEventListener('click', function (e) { if (e.target === els.mask) closeModal(); });
+
+  /** 简易确认弹层：buttons = [{text, primary, run}]（第一个为默认视觉焦点） */
+  function confirmModal(title, message, buttons) {
+    els.modalBox.innerHTML = '';
+    var h = document.createElement('header');
+    h.innerHTML = '<h3></h3>';
+    h.querySelector('h3').textContent = title;
+    if (message) {
+      var p = document.createElement('p');
+      p.textContent = message;
+      h.appendChild(p);
+    }
+    var list = document.createElement('div');
+    list.className = 'confirm-list';
+    buttons.forEach(function (b) {
+      var d = document.createElement('div');
+      d.className = 'confirm-btn' + (b.primary ? ' primary' : '');
+      d.textContent = b.text;
+      d.addEventListener('click', function () { closeModal(); b.run && b.run(); });
+      list.appendChild(d);
+    });
+    els.modalBox.appendChild(h);
+    els.modalBox.appendChild(list);
+    els.mask.hidden = false;
+  }
+
+  /** 表单弹层：build(body, footer) 填充内容 */
+  function formModal(title, subtitle, build) {
+    els.modalBox.innerHTML = '';
+    var h = document.createElement('header');
+    var h3 = document.createElement('h3');
+    h3.textContent = title;
+    h.appendChild(h3);
+    if (subtitle) {
+      var p = document.createElement('p');
+      p.textContent = subtitle;
+      h.appendChild(p);
+    }
+    var body = document.createElement('div');
+    body.className = 'body';
+    var foot = document.createElement('footer');
+    els.modalBox.appendChild(h);
+    els.modalBox.appendChild(body);
+    els.modalBox.appendChild(foot);
+    els.mask.hidden = false;
+    build(body, foot);
+  }
+
+  /* ============================ 数据刷新 ============================ */
+
+  async function refresh() {
+    // 请求未返回时跳过本轮；页面隐藏时暂停轮询，降低平板耗电与服务端压力
+    if (refreshInFlight || document.hidden) return;
+    refreshInFlight = true;
+    try {
+      var json = await api('GET', '/api/ctl/devices');
+      state.devices = json.devices || [];
+      state.scenes = json.scenes || [];
+      els.serverChip.textContent = '· ' + state.devices.length + ' 台设备';
+      renderDevices();
+      renderScenes();
+    } catch (e) {
+      els.serverChip.textContent = '服务端不可达';
+    } finally {
+      refreshInFlight = false;
+    }
+  }
+
+  async function refreshEntries() {
+    if (document.hidden) return;
+    try {
+      var cfg = await api('GET', '/api/admin/config');
+      state.entries = cfg.entries || [];
+      renderEntryOptions();
+      renderDevices(); // 卡片上的「显示页面」下拉跟随最新页面列表
+    } catch (e) { /* 下拉沿用旧列表 */ }
+  }
+
+  function entryOf(id) {
+    for (var i = 0; i < state.entries.length; i++) if (state.entries[i].id === id) return state.entries[i];
+    return null;
+  }
+
+  function renderEntryOptions() {
+    var sel = els.selEntry;
+    sel.innerHTML = '<option value="">显示页面…</option>';
+    state.entries.forEach(function (e) {
+      var o = document.createElement('option');
+      o.value = e.id;
+      o.textContent = e.title;
+      sel.appendChild(o);
+    });
+  }
+
+  /* ============================ 设备列表 ============================ */
+
+  function summary(d) {
+    var r = d.reported;
+    if (!r) return '暂无上报';
+    function t(id) { var e = id && entryOf(id); return e ? e.title : (id || '—'); }
+    if (r.mode === 'home') return '首页';
+    if (r.mode === 'page') return '显示：' + t(r.entryId);
+    if (r.mode === 'camera') return '画面墙：' + t(r.entryId);
+    if (r.mode === 'rotate' && r.rotate) {
+      return '轮询 ' + (Number(r.rotate.index) + 1) + '/' + r.rotate.total + ' · ' + r.rotate.intervalSec + 's';
+    }
+    if (r.mode === 'zone' && r.zone && r.zone.slots) {
+      return '分屏：' + r.zone.slots.map(function (s) { return s ? t(s).slice(0, 6) : '—'; }).join(' / ');
+    }
+    if (r.mode === 'settings') return '本机设置';
+    return r.mode || '—';
+  }
+
+  /** 当前筛选条件下可见的设备（默认全部） */
+  function visibleDevices() {
+    var f = state.filter;
+    var q = (f.q || '').trim().toLowerCase();
+    return state.devices.filter(function (d) {
+      if (f.kind && d.kind !== f.kind) return false;
+      if (f.status === 'online' && d.online !== 'online') return false;
+      if (f.status === 'offline' && d.online === 'online') return false;
+      if (f.status === 'managed' && !d.managed) return false;
+      if (f.status === 'local' && d.managed) return false;
+      if (q) {
+        var hay = (d.name + ' ' + (d.ip || '') + ' ' + d.id).toLowerCase();
+        if (hay.indexOf(q) < 0) return false;
+      }
+      return true;
+    });
+  }
+
+  /** 页面列表签名：页面增删/改名后卡片下拉需要重建 */
+  function entriesSignature() {
+    return state.entries.map(function (e) {
+      return e.id + '\u0001' + e.title + '\u0001' + (e.openOriginal ? '1' : '0');
+    }).join('\u0002');
+  }
+
+  /** 单卡可见内容签名：只有这些字段变化才需要重建该卡（lastSeenAt 等瞬时字段不参与） */
+  function deviceSignature(d, entriesSig) {
+    return JSON.stringify([
+      d.name, d.kind, !!d.managed, d.online || '', d.ip || '', d.appVersion || '',
+      !!d.pending, (d.reported && d.reported.lastError) || '',
+      summary(d), !!state.selected[d.id], entriesSig
+    ]);
+  }
+
+  /** 创建一张设备卡片（内容与事件绑定一次到位） */
+  function buildDeviceCard(d) {
+    var card = document.createElement('div');
+    card.className = 'card';
+
+    var ck = document.createElement('input');
+    ck.type = 'checkbox';
+    ck.className = 'ck';
+    ck.checked = !!state.selected[d.id];
+    ck.addEventListener('change', function () {
+      if (ck.checked) state.selected[d.id] = true;
+      else delete state.selected[d.id];
+      renderSelInfo();
+    });
+    card.appendChild(ck);
+
+    var kind = document.createElement('div');
+    kind.className = 'kind';
+    kind.textContent = d.kind === 'tv' ? 'TV' : d.kind === 'tablet' ? '平板' : 'PC';
+    card.appendChild(kind);
+
+    var main = document.createElement('div');
+    main.className = 'main';
+    var nm = document.createElement('div');
+    nm.className = 'nm';
+    var b = document.createElement('b');
+    b.textContent = d.name;
+    nm.appendChild(b);
+    main.appendChild(nm);
+
+    var st = document.createElement('div');
+    st.className = 'st';
+    var onl = document.createElement('span');
+    onl.className = 'chip ' + (d.online === 'online' ? 'onl-online' : 'onl-offline');
+    onl.textContent = d.online === 'online' ? '在线' : '离线';
+    onl.title = d.online === 'online' ? '在线（心跳正常）' : '离线（连续 3 次心跳未收到，控制指令不发送）';
+    var mode = document.createElement('span');
+    mode.className = 'chip ' + (d.managed ? 'remote' : 'local');
+    mode.textContent = d.managed ? '远程被控' : '本地控制';
+    if (d.ip) {
+      var ip = document.createElement('span');
+      ip.className = 'chip';
+      ip.textContent = 'IP ' + d.ip;
+      ip.title = '连接来源 IP（DHCP 变化属正常）';
+      st.appendChild(ip);
+    }
+    if (d.appVersion) {
+      var ver = document.createElement('span');
+      ver.className = 'chip';
+      ver.textContent = 'v' + d.appVersion;
+      ver.title = '客户端版本（电视端排查旧包：低于 v1.8 无互控能力）';
+      st.appendChild(ver);
+    }
+    var sm = document.createElement('span');
+    sm.textContent = summary(d);
+    st.appendChild(onl);
+    st.appendChild(mode);
+    if (d.pending) {
+      var pend = document.createElement('span');
+      pend.className = 'chip pending';
+      pend.textContent = '待送达';
+      st.appendChild(pend);
+    }
+    if (d.reported && d.reported.lastError) {
+      var err = document.createElement('span');
+      err.className = 'chip pending';
+      err.textContent = d.reported.lastError;
+      st.appendChild(err);
+    }
+    st.appendChild(sm);
+    main.appendChild(st);
+    card.appendChild(main);
+
+    var ops = document.createElement('div');
+    ops.className = 'ops';
+    // 单台快捷操作（对这张卡片直接下发，无需勾选；勾选集操作在底部操作条）
+    var sel = document.createElement('select');
+    sel.className = 'entry-sel';
+    sel.title = '显示页面：当前选中项即该设备正在显示的画面，改选即切换';
+    // 首项 = 当前画面（非页面态显示状态名；页面态直接选中对应条目）
+    var r = d.reported || {};
+    var currentLabel = null;
+    if (r.mode === 'rotate') { currentLabel = '轮询中…'; }
+    else if (r.mode === 'zone') { currentLabel = '分屏中…'; }
+    else if (r.mode === 'home' || r.mode === 'settings') { currentLabel = '首页'; }
+    if (currentLabel) {
+      var cur = document.createElement('option');
+      cur.value = '';
+      cur.textContent = currentLabel;
+      sel.appendChild(cur);
+    }
+    state.entries.forEach(function (e) {
+      var o = document.createElement('option');
+      o.value = e.id;
+      o.textContent = e.title;
+      if (!currentLabel &&
+          (r.mode === 'page' || r.mode === 'camera') && r.entryId === e.id) {
+        o.selected = true; // 当前正在显示这一页
+      }
+      sel.appendChild(o);
+    });
+    sel.addEventListener('change', function () {
+      if (!sel.value) { renderDevices(); return; } // 选回状态项 = 不动作
+      sendCmd('show', { entryId: sel.value }, [d.id]);
+    });
+    ops.appendChild(sel);
+    ['轮询', '分屏'].forEach(function (label) {
+      var btn = document.createElement('button');
+      btn.className = 'btn';
+      btn.textContent = label;
+      btn.addEventListener('click', function () {
+        if (label === '轮询') rotateDialog([d.id]);
+        else zoneDialog([d.id]);
+      });
+      ops.appendChild(btn);
+    });
+    var rel = document.createElement('button');
+    rel.className = 'btn';
+    rel.textContent = '取消控制';
+    rel.addEventListener('click', function () { releaseCmd([d.id]); });
+    ops.appendChild(rel);
+
+    var sep = document.createElement('span');
+    sep.className = 'sep';
+    ops.appendChild(sep);
+
+    var rn = document.createElement('button');
+    rn.className = 'btn';
+    rn.textContent = '重命名';
+    rn.addEventListener('click', function () { renameDialog(d); });
+    ops.appendChild(rn);
+    card.appendChild(ops);
+    return card;
+  }
+
+  function renderDevices() {
+    var host = els.deviceList;
+    // 用户正在卡片下拉里选页面时跳过本轮重渲染（3s 自动刷新不打断操作，下一轮再刷）
+    var ae = document.activeElement;
+    if (ae && ae.tagName === 'SELECT' && host.contains(ae)) return;
+
+    if (!state.devices.length) {
+      host.innerHTML = '';
+      state.deviceCards = {};
+      els.devCount.textContent = '0 台';
+      var e = document.createElement('div');
+      e.className = 'empty';
+      e.textContent = '还没有设备注册 —— 用电脑或平板打开显示端首页（/），或在电视上安装 1.8 客户端后，会自动出现在这里';
+      host.appendChild(e);
+      renderSelInfo();
+      return;
+    }
+
+    var devices = visibleDevices();
+    if (!devices.length) {
+      Object.keys(state.deviceCards).forEach(function (id) {
+        var old = state.deviceCards[id];
+        if (old && old.parentNode) old.parentNode.removeChild(old);
+      });
+      state.deviceCards = {};
+      Array.prototype.forEach.call(host.querySelectorAll('.empty'), function (node) { node.remove(); });
+      var none = document.createElement('div');
+      none.className = 'empty';
+      none.textContent = '没有匹配的设备，请调整搜索或筛选条件';
+      host.appendChild(none);
+      els.devCount.textContent = '0 / ' + state.devices.length + ' 台';
+      renderSelInfo();
+      return;
+    }
+    els.devCount.textContent = devices.length === state.devices.length
+      ? devices.length + ' 台'
+      : devices.length + ' / ' + state.devices.length + ' 台';
+
+    // 从空态切换到有设备：清掉空态提示
+    Array.prototype.forEach.call(host.querySelectorAll('.empty'), function (node) { node.remove(); });
+
+    var entriesSig = entriesSignature();
+    var alive = {};
+    devices.forEach(function (d) { alive[d.id] = true; });
+
+    // 删除已不存在的设备卡片
+    Object.keys(state.deviceCards).forEach(function (id) {
+      if (alive[id]) return;
+      var old = state.deviceCards[id];
+      if (old && old.parentNode) old.parentNode.removeChild(old);
+      delete state.deviceCards[id];
+    });
+
+    // 逐台复用或重建；仅内容变化时才替换该卡
+    var nodes = [];
+    devices.forEach(function (d) {
+      var sig = deviceSignature(d, entriesSig);
+      var card = state.deviceCards[d.id];
+      if (!card || card.__sig !== sig) {
+        var fresh = buildDeviceCard(d);
+        fresh.__sig = sig;
+        if (card && card.parentNode) card.parentNode.replaceChild(fresh, card);
+        state.deviceCards[d.id] = fresh;
+        card = fresh;
+      }
+      nodes.push(card);
+    });
+
+    // 顺序与预期不一致时才移动节点（避免每 3s 无谓重排）
+    nodes.forEach(function (node, i) {
+      if (host.children[i] !== node) host.insertBefore(node, host.children[i] || null);
+    });
+
+    renderSelInfo();
+  }
+
+  function renderSelInfo() {
+    var n = Object.keys(state.selected).length;
+    els.selInfo.textContent = n
+      ? '已勾选 ' + n + ' 台设备（对勾选设备执行以下操作）'
+      : '未勾选设备（先勾选，或点「全选」）';
+  }
+
+  function targets() {
+    var ids = Object.keys(state.selected);
+    return ids.length ? ids : null;
+  }
+
+  /* ============================ 下发操作 ============================ */
+
+  /**
+   * 下发指令。explicit 传入时对指定设备单台下发（卡片快捷操作）；
+   * 否则作用于底部操作条的勾选集。
+   */
+  /** 目标中的离线设备（指令不发送给离线设备：回归后仍是本地控制） */
+  function offlineAmong(ids) {
+    return ids.map(function (id) {
+      return state.devices.find(function (d) { return d.id === id; });
+    }).filter(function (d) { return d && d.online !== 'online'; });
+  }
+
+  async function sendCmd(cmd, args, explicit) {
+    var t = explicit || targets();
+    if (!t) { toast('请先勾选目标设备'); return false; }
+    var off = offlineAmong(t);
+    if (off.length === t.length) {
+      var who = off.map(function (d) { return '「' + d.name + '」'; }).join('、');
+      confirmModal('设备已离线', who + ' 当前离线，指令不会发送（设备上线后仍是本地控制）。', [
+        { text: '知道了', run: function () {} }
+      ]);
+      return false;
+    }
+    if (off.length) {
+      toast('已跳过离线设备：' + off.map(function (d) { return d.name; }).join('、'));
+    }
+    t = t.filter(function (id) { return !off.some(function (d) { return d.id === id; }); });
+    try {
+      var json = await api('POST', '/api/ctl/send', { targets: t, cmd: cmd, args: args || {} });
+      if (!json.results.length) {
+        toast('还没有已注册的设备——用电脑或平板打开显示端首页、或在电视安装 1.8 客户端后会自动出现');
+        return false;
+      }
+      toast('已下发「' + cmd + '」→ ' + json.results.length + ' 台设备（≤3 秒生效）');
+      refresh();
+      return true;
+    } catch (e) {
+      toast('下发失败：' + e.message);
+      return false;
+    }
+  }
+
+  /** 取消控制（退出远程被控一律二次确认）；explicit = 单台，否则勾选集 */
+  function releaseCmd(explicit) {
+    var t = explicit || targets();
+    if (!t) { toast('请先勾选目标设备'); return; }
+    confirmModal('取消控制？', (t.length) + ' 台设备将退出远程被控、恢复本地操作（画面保持不变）。', [
+      { text: '继续控制', run: function () {} },
+      { text: '取消控制，交还本地', primary: true, run: async function () {
+        try {
+          var json = await api('POST', '/api/ctl/release', { targets: t });
+          toast('已交还 ' + json.results.length + ' 台设备');
+        } catch (e) { toast('操作失败：' + e.message); }
+        refresh();
+      } }
+    ]);
+  }
+
+  /* ---------- 轮询弹层 ---------- */
+
+  var rotateDraft = [];
+  var INTERVAL_PRESETS = [5, 10, 15, 20, 30, 45, 60, 120, 300];
+
+  /** 轮询弹层：explicit = 单台目标（卡片快捷），否则勾选集（底部操作条） */
+  function rotateDialog(explicit) {
+    if (!explicit && !targets()) { toast('请先勾选目标设备'); return; }
+    rotateDraft = [];
+    var targetName = explicit ? (state.devices.find(function (d) { return d.id === explicit[0]; }) || {}).name : null;
+    // 「强制原址打开」的页面无法在轮播中内嵌（Web 端轮询会自动跳过它），
+    // 混入会导致 Web 端上报序列与指令不一致 → 误判已脱离 → 自动交还，故这里直接排除
+    var rotatable = state.entries.filter(function (e) { return e.openOriginal !== true; });
+    formModal('轮询下发', (targetName ? '目标：' + targetName + '。' : '') +
+      '勾选参与页面（↑↓ 调整顺序），确定后立即开始轮询', function (body, foot) {
+      var rowIv = document.createElement('div');
+      rowIv.className = 'row';
+      var lb = document.createElement('label');
+      lb.appendChild(document.createTextNode('每页停留'));
+      var selIv = document.createElement('select');
+      INTERVAL_PRESETS.forEach(function (s) {
+        var o = document.createElement('option');
+        o.value = String(s);
+        o.textContent = s + ' 秒';
+        selIv.appendChild(o);
+      });
+      selIv.value = '15';
+      lb.appendChild(selIv);
+      rowIv.appendChild(lb);
+
+      var rowSync = document.createElement('div');
+      rowSync.className = 'row';
+      var lb2 = document.createElement('label');
+      var ckSync = document.createElement('input');
+      ckSync.type = 'checkbox';
+      ckSync.checked = false; // 多屏同步切换默认关（评审决议）
+      lb2.appendChild(ckSync);
+      var sp = document.createElement('span');
+      sp.textContent = '多屏同步切换（各设备翻页时机一致，依赖内网时钟）';
+      lb2.appendChild(sp);
+      rowSync.appendChild(lb2);
+
+      var listBox = document.createElement('div');
+      function renderRows() {
+        listBox.innerHTML = '';
+        rotatable.forEach(function (e) {
+          var idx = rotateDraft.indexOf(e.id);
+          var row = document.createElement('div');
+          row.className = 'row';
+          var ck = document.createElement('input');
+          ck.type = 'checkbox';
+          ck.checked = idx >= 0;
+          ck.addEventListener('change', function () {
+            if (ck.checked) rotateDraft.push(e.id);
+            else rotateDraft = rotateDraft.filter(function (x) { return x !== e.id; });
+            renderRows();
+          });
+          var name = document.createElement('span');
+          name.className = 'grow';
+          name.textContent = (idx >= 0 ? (idx + 1) + '. ' : '') + e.title;
+          row.appendChild(ck);
+          row.appendChild(name);
+          if (idx >= 0) {
+            ['↑', '↓'].forEach(function (dir) {
+              var btn = document.createElement('button');
+              btn.className = 'btn';
+              btn.style.padding = '3px 10px';
+              btn.textContent = dir;
+              btn.addEventListener('click', function () {
+                var j = dir === '↑' ? idx - 1 : idx + 1;
+                if (j < 0 || j >= rotateDraft.length) return;
+                var tmp = rotateDraft[idx];
+                rotateDraft[idx] = rotateDraft[j];
+                rotateDraft[j] = tmp;
+                renderRows();
+              });
+              row.appendChild(btn);
+            });
+          }
+          listBox.appendChild(row);
+        });
+      }
+      renderRows();
+
+      body.appendChild(rowIv);
+      body.appendChild(rowSync);
+      body.appendChild(listBox);
+
+      var cancel = document.createElement('button');
+      cancel.className = 'btn';
+      cancel.textContent = '取消';
+      cancel.addEventListener('click', closeModal);
+      var ok = document.createElement('button');
+      ok.className = 'btn primary';
+      ok.textContent = '下发轮询';
+      ok.addEventListener('click', function () {
+        if (!rotateDraft.length) { toast('请至少勾选一个页面'); return; }
+        if (sendCmd('rotate', {
+          intervalSec: Number(selIv.value),
+          items: rotateDraft.slice(),
+          phaseSync: ckSync.checked
+        }, explicit)) closeModal();
+      });
+      foot.appendChild(cancel);
+      foot.appendChild(ok);
+    });
+  }
+
+  /* ---------- 分屏弹层 ---------- */
+
+  /** 分屏弹层：explicit = 单台目标（卡片快捷），否则勾选集 */
+  function zoneDialog(explicit) {
+    if (!explicit && !targets()) { toast('请先勾选目标设备'); return; }
+    var draft = [null, null, null, null];
+    formModal('2×2 分屏下发', '为四个分区各指定页面（或「不使用」），确定后进入分屏', function (body, foot) {
+      var grid = document.createElement('div');
+      grid.className = 'zonegrid';
+      draft.forEach(function (_, pos) {
+        var cell = document.createElement('div');
+        cell.className = 'zg';
+        var sp = document.createElement('span');
+        sp.textContent = '第 ' + (pos + 1) + ' 格';
+        var sel = document.createElement('select');
+        var none = document.createElement('option');
+        none.value = '';
+        none.textContent = '不使用';
+        sel.appendChild(none);
+        state.entries.forEach(function (e) {
+          var o = document.createElement('option');
+          o.value = e.id;
+          o.textContent = e.title;
+          sel.appendChild(o);
+        });
+        sel.addEventListener('change', function () { draft[pos] = sel.value || null; });
+        cell.appendChild(sp);
+        cell.appendChild(sel);
+        grid.appendChild(cell);
+      });
+      body.appendChild(grid);
+
+      var cancel = document.createElement('button');
+      cancel.className = 'btn';
+      cancel.textContent = '取消';
+      cancel.addEventListener('click', closeModal);
+      var ok = document.createElement('button');
+      ok.className = 'btn primary';
+      ok.textContent = '下发分屏';
+      ok.addEventListener('click', function () {
+        if (!draft.some(function (s) { return s; })) { toast('至少为一格指定页面'); return; }
+        if (sendCmd('zone', { slots: draft.slice() }, explicit)) closeModal();
+      });
+      foot.appendChild(cancel);
+      foot.appendChild(ok);
+    });
+  }
+
+  /* ---------- 重命名 ---------- */
+
+  function renameDialog(d) {
+    formModal('重命名设备', d.id, function (body, foot) {
+      var row = document.createElement('div');
+      row.className = 'row';
+      var input = document.createElement('input');
+      input.type = 'text';
+      input.value = d.name;
+      input.maxLength = 60;
+      input.style.flex = '1';
+      row.appendChild(input);
+      body.appendChild(row);
+      var cancel = document.createElement('button');
+      cancel.className = 'btn';
+      cancel.textContent = '取消';
+      cancel.addEventListener('click', closeModal);
+      var ok = document.createElement('button');
+      ok.className = 'btn primary';
+      ok.textContent = '保存';
+      ok.addEventListener('click', async function () {
+        var name = input.value.trim();
+        if (!name) { toast('设备名不能为空'); return; }
+        try {
+          await api('PUT', '/api/ctl/device/' + encodeURIComponent(d.id), { name: name });
+          toast('已重命名：' + name);
+        } catch (e) { toast('重命名失败：' + e.message); }
+        closeModal();
+        refresh();
+      });
+      foot.appendChild(cancel);
+      foot.appendChild(ok);
+      setTimeout(function () { input.focus(); }, 50);
+    });
+  }
+
+  /* ============================ 场景 ============================ */
+
+  function renderScenes() {
+    var host = els.sceneList;
+    host.innerHTML = '';
+    if (!state.scenes.length) {
+      var tip = document.createElement('span');
+      tip.style.cssText = 'font-size:12px;color:var(--muted);';
+      tip.textContent = '暂无场景 —— 把全场调到某个状态后点「＋ 存为场景」';
+      host.appendChild(tip);
+      return;
+    }
+    state.scenes.forEach(function (s) {
+      var btn = document.createElement('button');
+      btn.className = 'btn apply';
+      btn.textContent = s.name + '（' + s.steps.length + '）';
+      btn.title = '一键把 ' + s.steps.length + ' 台设备恢复到该场景（离线设备不发送）';
+      btn.addEventListener('click', function () { applyScene(s); });
+      host.appendChild(btn);
+    });
+  }
+
+  /** 应用场景：离线设备不发送（回归后仍是本地控制）；部分离线先确认 */
+  function applyScene(scene) {
+    var onlineIds = scene.steps.filter(function (s) {
+      var d = state.devices.find(function (x) { return x.id === s.deviceId; });
+      return d && d.online === 'online';
+    }).map(function (s) { return s.deviceId; });
+    var goneIds = scene.steps.filter(function (s) {
+      return !state.devices.some(function (x) { return x.id === s.deviceId; });
+    }).map(function (s) { return s.deviceId; });
+    var offlineCount = scene.steps.length - onlineIds.length - goneIds.length; // 已删除设备单独计数
+    if (!state.devices.length) { toast('设备列表尚未加载，请稍候再试'); return; }
+    if (!onlineIds.length && !goneIds.length) { toast('场景内设备均已离线，未下发'); return; }
+    if (!onlineIds.length) { toast('场景内的设备均已从档案移除，未下发'); return; }
+    var go = function () {
+      api('POST', '/api/ctl/scenes/' + encodeURIComponent(scene.id) + '/apply', { targets: onlineIds })
+        .then(function (json) {
+          toast('场景「' + scene.name + '」已下发 ' + json.applied + '/' + json.total +
+            (offlineCount ? '（' + offlineCount + ' 台离线设备已跳过' +
+              (goneIds.length ? '，' + goneIds.length + ' 台已移除）' : '）') : ''));
+          refresh();
+        })
+        .catch(function (e) { toast('应用失败：' + e.message); });
+    };
+    var goneNote = goneIds.length ? '，' + goneIds.length + ' 台已从档案移除（跳过）' : '';
+    if (offlineCount) {
+      confirmModal('部分设备离线', '场景内 ' + offlineCount + ' 台设备当前离线' + goneNote +
+        '，将只对在线的 ' + onlineIds.length + ' 台下发。', [
+        { text: '取消', run: function () {} },
+        { text: '仅对在线设备下发', primary: true, run: go }
+      ]);
+    } else {
+      go();
+    }
+  }
+
+  function saveSceneDialog() {
+    var online = state.devices.filter(function (d) { return d.online !== 'offline'; }).length;
+    if (!online) { toast('当前没有在线设备，无法保存场景'); return; }
+    formModal('存为场景', '将捕获 ' + online + ' 台在线设备的当前状态（正在控制的设备记指令，本地设备记当前画面）', function (body, foot) {
+      var row = document.createElement('div');
+      row.className = 'row';
+      var input = document.createElement('input');
+      input.type = 'text';
+      input.placeholder = '场景名（如：晨会 / 来访 / 值守）';
+      input.maxLength = 60;
+      input.style.flex = '1';
+      row.appendChild(input);
+      body.appendChild(row);
+      var cancel = document.createElement('button');
+      cancel.className = 'btn';
+      cancel.textContent = '取消';
+      cancel.addEventListener('click', closeModal);
+      var ok = document.createElement('button');
+      ok.className = 'btn primary';
+      ok.textContent = '保存';
+      ok.addEventListener('click', async function () {
+        var name = input.value.trim();
+        if (!name) { toast('请输入场景名'); return; }
+        try {
+          var json = await api('POST', '/api/ctl/scenes', { name: name });
+          var note = json.skipped && json.skipped.length ? '（' + json.skipped.length + ' 台离线设备未入场景）' : '';
+          toast('场景「' + name + '」已保存：' + json.scene.steps.length + ' 步' + note);
+        } catch (e) { toast('保存失败：' + e.message); }
+        closeModal();
+        refresh();
+      });
+      foot.appendChild(cancel);
+      foot.appendChild(ok);
+      setTimeout(function () { input.focus(); }, 50);
+    });
+  }
+
+  function sceneManageDialog() {
+    if (!state.scenes.length) { toast('还没有场景'); return; }
+    formModal('场景管理', '重命名或删除已保存的场景', function (body, foot) {
+      state.scenes.forEach(function (s) {
+        var row = document.createElement('div');
+        row.className = 'row';
+        var name = document.createElement('span');
+        name.className = 'grow';
+        name.textContent = s.name + '（' + s.steps.length + ' 步）';
+        row.appendChild(name);
+        var rn = document.createElement('button');
+        rn.className = 'btn';
+        rn.style.padding = '5px 10px';
+        rn.textContent = '重命名';
+        rn.addEventListener('click', function () { renameSceneDialog(s); });
+        var del = document.createElement('button');
+        del.className = 'btn';
+        del.style.padding = '5px 10px';
+        del.textContent = '删除';
+        del.addEventListener('click', function () {
+          confirmModal('删除场景「' + s.name + '」？', '删除后不可恢复。', [
+            { text: '保留', run: function () {} },
+            { text: '删除', primary: true, run: async function () {
+              try {
+                await api('DELETE', '/api/ctl/scenes/' + encodeURIComponent(s.id));
+                toast('已删除场景「' + s.name + '」');
+              } catch (e) { toast('删除失败：' + e.message); }
+              refresh();
+            } }
+          ]);
+        });
+        row.appendChild(rn);
+        row.appendChild(del);
+        body.appendChild(row);
+      });
+      var close = document.createElement('button');
+      close.className = 'btn';
+      close.textContent = '关闭';
+      close.addEventListener('click', closeModal);
+      foot.appendChild(close);
+    });
+  }
+
+  function renameSceneDialog(scene) {
+    formModal('场景重命名', scene.id, function (body, foot) {
+      var row = document.createElement('div');
+      row.className = 'row';
+      var input = document.createElement('input');
+      input.type = 'text';
+      input.value = scene.name;
+      input.maxLength = 60;
+      input.style.flex = '1';
+      row.appendChild(input);
+      body.appendChild(row);
+      var cancel = document.createElement('button');
+      cancel.className = 'btn';
+      cancel.textContent = '取消';
+      cancel.addEventListener('click', closeModal);
+      var ok = document.createElement('button');
+      ok.className = 'btn primary';
+      ok.textContent = '保存';
+      ok.addEventListener('click', async function () {
+        var name = input.value.trim();
+        if (!name) { toast('场景名不能为空'); return; }
+        try {
+          await api('PUT', '/api/ctl/scenes/' + encodeURIComponent(scene.id), { name: name });
+          toast('已重命名：' + name);
+        } catch (e) { toast('重命名失败：' + e.message); }
+        closeModal();
+        refresh();
+      });
+      foot.appendChild(cancel);
+      foot.appendChild(ok);
+      setTimeout(function () { input.focus(); }, 50);
+    });
+  }
+
+  /* ============================ 事件绑定与启动 ============================ */
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !els.mask.hidden) closeModal();
+  });
+  els.btnReload.addEventListener('click', refresh);
+  els.selEntry.addEventListener('change', function () {
+    var id = els.selEntry.value;
+    if (!id) return;
+    sendCmd('show', { entryId: id });
+    els.selEntry.value = '';
+  });
+  els.btnRotate.addEventListener('click', function () { rotateDialog(); });
+  els.btnZone.addEventListener('click', function () { zoneDialog(); });
+  els.btnHome.addEventListener('click', function () { sendCmd('home'); });
+  els.btnRelease.addEventListener('click', function () { releaseCmd(); });
+  els.btnRefreshCmd.addEventListener('click', function () { sendCmd('refresh'); });
+  els.btnSync.addEventListener('click', function () { sendCmd('sync'); });
+  els.btnAll.addEventListener('click', function () {
+    // 只对当前筛选结果生效，避免筛选后「全选」把隐藏设备也选上
+    var vis = visibleDevices();
+    var allOn = vis.length && vis.every(function (d) { return state.selected[d.id]; });
+    vis.forEach(function (d) {
+      if (allOn) delete state.selected[d.id];
+      else state.selected[d.id] = true;
+    });
+    renderDevices();
+  });
+  els.btnSceneSave.addEventListener('click', saveSceneDialog);
+  els.btnSceneManage.addEventListener('click', sceneManageDialog);
+
+  /* ---------- 设备筛选 ---------- */
+  els.devSearch.addEventListener('input', function () {
+    state.filter.q = this.value;
+    renderDevices();
+  });
+  els.devKind.addEventListener('change', function () {
+    state.filter.kind = this.value;
+    renderDevices();
+  });
+  els.devOnline.addEventListener('change', function () {
+    state.filter.status = this.value;
+    renderDevices();
+  });
+
+  refreshEntries();
+  refresh();
+  setInterval(refresh, 3000);
+  // 页面列表低频跟随管理后台（新增/删除页面后下拉与场景快照保持最新）
+  setInterval(refreshEntries, 30000);
+  // 从后台切回时立即补一次，避免等待下一个轮询周期
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) { refresh(); refreshEntries(); }
+  });
+})();
+</script>
+</body>
+</html>
