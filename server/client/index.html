@@ -1033,8 +1033,7 @@ select {
     // 每个入口的打开方式：'auto' | 'proxy' | 'direct'
     proxyModes: {},
     // 极速模式本机总开关（默认关）；各页刷新率/是否参与由服务端配置统一下发
-    turboEnabled: false,
-    exitGuard: true
+    turboEnabled: false
   };
 
   var state = { mode: 'home', entry: null, focusNodes: [], focus: null, zoomPercent: 100, loadingTimer: null };
@@ -1117,7 +1116,6 @@ select {
       }
       local.proxyModes = obj.proxyModes && typeof obj.proxyModes === 'object' ? obj.proxyModes : {};
       local.turboEnabled = obj.turboEnabled === true;
-      local.exitGuard = obj.exitGuard !== false;
     } catch (e) { /* 脏数据就用默认值 */ }
   }
 
@@ -2168,12 +2166,6 @@ select {
 
     /* --- 电脑端 --- */
     var c2 = card('电脑端偏好', '这些设置只影响本机浏览器，不会同步到服务端与电视端。');
-    c2.appendChild(rowSwitch('关闭页面时确认', '对应电视端的「退出确认」，关闭标签页时浏览器会再问一次', local.exitGuard, function (v) {
-      local.exitGuard = v;
-      saveLocalSettings();
-      markSettingsSaved();
-    }));
-    c2.appendChild(rowNote('退出确认文案（由服务端下发）：' + (CFG.exitTip || '—')));
     c2.appendChild(rowButton('清除本机展示设置', '仅清空本机的轮询与分区配置，不影响服务端内容', '清除', function () {
       local.rotation = { enabled: false, intervalSec: 15, items: [], startedAt: 0 };
       local.zones = [0, 1, 2, 3].map(function (p) { return { position: p, entryId: '' }; });
@@ -2466,6 +2458,9 @@ select {
     if (isFullscreen()) return true;
     // 自动化环境（无头浏览器）没有浏览器外壳，outer==inner 恒成立，启发式失真——直接排除
     if (navigator.webdriver) return false;
+    // 平板/手机浏览器在地址栏收起时 outerHeight ≈ innerHeight，会被误判为全屏而永久隐藏顶栏；
+    // 只有无触点的桌面浏览器才用 F11 启发式（平板用全屏按钮即可）
+    if (navigator.maxTouchPoints > 0 || 'ontouchstart' in window) return false;
     return window.outerHeight > 0 && window.innerHeight > 0 &&
       window.outerHeight - window.innerHeight < 50;
   }
@@ -2479,14 +2474,8 @@ select {
   }
   window.addEventListener('resize', syncTopbarVisibility);
 
-  window.addEventListener('beforeunload', function (e) {
-    if (CFG.exitConfirm && local.exitGuard) {
-      e.preventDefault();
-      e.returnValue = CFG.exitTip || '';
-      return CFG.exitTip || '';
-    }
-    return undefined;
-  });
+  /* 浏览器端不拦截关闭标签页：避免触发浏览器原生的「离开此网站？」弹窗；
+     电视端的退出确认由 Android 客户端负责，与网页无关。 */
 
   /* ============================ 菜单（对应电视端【菜单】键） ============================ */
 

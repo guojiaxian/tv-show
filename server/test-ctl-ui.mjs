@@ -77,6 +77,33 @@ function attachPageLog(page, errors, tag) {
   attachPageLog(page1, errors, '[显示端]');
 
   await page1.goto(BASE + '/', { waitUntil: 'load' });
+
+  /* ---------- 浏览器端关闭行为与平板顶栏 ---------- */
+  // 不应注册 beforeunload 拦截，否则关闭标签页会弹浏览器原生「离开此网站？」
+  const unloadPrevented = await page1.evaluate(() => {
+    const ev = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(ev);
+    return ev.defaultPrevented;
+  });
+  check('浏览器端不拦截关闭标签页（无「离开此网站」确认）', !unloadPrevented);
+
+  // 平板触屏：地址栏收起时 outerHeight≈innerHeight，不能被误判为全屏而隐藏顶栏
+  const tabletCtx = await browser.newContext({
+    viewport: { width: 1024, height: 768 }, hasTouch: true, isMobile: true
+  });
+  const tablet = await tabletCtx.newPage();
+  // 只验证布局，不让平板页注册成受控设备（否则会改变后续用例的设备数断言）
+  await tablet.route('**/api/ctl/beat', (route) => route.abort());
+  await tablet.goto(BASE + '/', { waitUntil: 'load' });
+  await tablet.setViewportSize({ width: 1024, height: 700 });
+  await tablet.waitForTimeout(300);
+  const tabletTopbar = await tablet.evaluate(() => {
+    const el = document.getElementById('topbar');
+    return !!el && getComputedStyle(el).display !== 'none';
+  });
+  check('平板触屏视口下顶栏保持可见（设置 / 远程控制可进入）', tabletTopbar);
+  await tabletCtx.close();
+
   // 顶栏「远程控制」按钮位于「分区展示」与「全屏」之间，点击新标签打开 /console
   const consoleEntry = await page1.evaluate(() => {
     const btn = document.getElementById('btnConsole');
