@@ -1,7 +1,6 @@
 package com.digitalcenter.tvshow.ui
 
 import android.annotation.SuppressLint
-import android.content.res.Configuration
 import android.graphics.Color
 import android.net.http.SslError
 import android.os.Bundle
@@ -17,7 +16,6 @@ import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
-import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
@@ -41,7 +39,6 @@ import com.digitalcenter.tvshow.net.ConfigRepository
 import com.digitalcenter.tvshow.net.ControlChannel
 import com.digitalcenter.tvshow.util.UiUtil
 import com.digitalcenter.tvshow.util.ViewportFit
-import kotlin.math.roundToInt
 
 /**
  * 分区展示：2×2 拼接大屏，四个分区各占屏幕四分之一。
@@ -67,8 +64,6 @@ class ZoneDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
 
     companion object {
         private const val TAG = "ZoneDisplay"
-        private const val NAV_SCRIPT = "js/tv_nav.js"
-        private const val LOGIN_SCRIPT = "js/auto_login.js"
         /** 高亮保持时长，之后淡出（毫秒） */
         private const val FLASH_HOLD_MS = 600L
         private const val FLASH_FADE_MS = 320L
@@ -108,7 +103,7 @@ class ZoneDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
     /** 高亮令牌：后一次高亮会让前一次尚未执行的淡出失效，避免刚点亮就被旧的定时器熄灭 */
     private var flashToken = 0
     /** 注入脚本只读一次：四格重载时反复读 assets 没有意义 */
-    private val assetCache = HashMap<String, String>()
+    private val scripts = AssetScriptCache(this, TAG)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -223,7 +218,7 @@ class ZoneDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
     /** 渲染单独一格：销毁旧 WebView 后按本机设置重建（选完页面只刷新这一格） */
     private fun renderCell(position: Int) {
         val slot = slots[position] ?: return
-        slot.webView?.let { destroyWebView(it) }
+        slot.webView?.let { WebViewFactory.destroy(it) }
         slot.webView = null
         slot.container.removeAllViews()
         slot.glow.animate().cancel()
@@ -268,55 +263,36 @@ class ZoneDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
      */
     private fun createZoneWebView(slot: ZoneSlot, entry: DisplayEntry, cellWidthPx: Int): WebView? {
         if (cellWidthPx <= 0) return null
-        val densityDpi = (160f * cellWidthPx / ZONE_MIN_WIDTH)
-            .roundToInt()
-            .coerceIn(40, 1000)
-
-        val zoneConfig = Configuration(resources.configuration)
-        zoneConfig.densityDpi = densityDpi
-        val zoneContext = createConfigurationContext(zoneConfig)
-        slot.assumedDensity = zoneContext.resources.displayMetrics.density
+        val created = WebViewFactory.create(
+            context = this,
+            hostWidthPx = cellWidthPx,
+            targetCssWidth = ZONE_MIN_WIDTH,
+            uaVersionSuffix = "TvShowCenter-Zone/1.0",
+            minDensityDpi = 40
+        )
+        slot.assumedDensity = created.density
         slot.calibrationReloads = 0
-        slot.initialScalePercent = ViewportFit.scalePercent(
+        slot.initialScalePercent = WebViewFactory.applyInitialScale(
             this,
+            created.webView,
             cellWidthPx,
             slot.assumedDensity,
             ZONE_MIN_WIDTH
         )
 
-        val webView = WebView(zoneContext)
-        webView.setBackgroundColor(Color.BLACK)
         // 遥控器按键全部由本 Activity 处理（方向键选格 / 确定选页面），WebView 不抢焦点
-        webView.isFocusable = false
-        webView.isFocusableInTouchMode = false
-        // 四个 WebView 同时运行，禁用不必要的缓存与缩放以降低开销
-        webView.settings.apply {
-            javaScriptEnabled = true
-            domStorageEnabled = true
-            // 与展示页一致：忽略页面 viewport meta，布局宽度由 setInitialScale 决定
-            useWideViewPort = false
-            loadWithOverviewMode = false
-            setSupportZoom(false)
-            builtInZoomControls = false
-            displayZoomControls = false
-            mediaPlaybackRequiresUserGesture = false
-            mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-            cacheMode = WebSettings.LOAD_DEFAULT
-            allowFileAccess = false
-            allowContentAccess = false
-            userAgentString = "$userAgentString TvShowCenter-Zone/1.0"
-        }
-        webView.setInitialScale(slot.initialScalePercent)
-        webView.webChromeClient = object : WebChromeClient() {}
+        created.webView.isFocusable = false
+        created.webView.isFocusableInTouchMode = false
+        created.webView.webChromeClient = object : WebChromeClient() {}
 
-        val cssHeight = resources.displayMetrics.heightPixels / 2 * 160 / densityDpi
+        val cssHeight = resources.displayMetrics.heightPixels / 2 * 160 / created.densityDpi
         Log.i(
             TAG,
             "分区 ${entry.id}：目标 ${ZONE_MIN_WIDTH}×$ZONE_MIN_HEIGHT，格宽 ${cellWidthPx}px " +
-                "→ densityDpi=$densityDpi（CSS 视口 ${ZONE_MIN_WIDTH}×${cssHeight}…），" +
+                "→ densityDpi=${created.densityDpi}（CSS 视口 ${ZONE_MIN_WIDTH}×${cssHeight}…），" +
                 "initialScale=${slot.initialScalePercent}%"
         )
-        return webView
+        return created.webView
     }
 
     /** 分区加载失败：格内叠加错误文案；确定键改为重试该格 */
@@ -342,8 +318,8 @@ class ZoneDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
                 // 旧内核 100vh 失效会让分区页面只渲染在上半格，首屏后再补两次。
                 // 期间该格可能已被重建（换页），对已 destroy 的 WebView 调 JS 会抛异常，
                 // 因此执行前确认它仍是该格当前实例。
-                handler.postDelayed({ if (slot.webView === view) fillZone(view) }, 1500L)
-                handler.postDelayed({ if (slot.webView === view) fillZone(view) }, 3500L)
+                handler.postDelayed({ if (slot.webView === view) view?.let { WebViewFactory.fillViewport(it, TAG) } }, 1500L)
+                handler.postDelayed({ if (slot.webView === view) view?.let { WebViewFactory.fillViewport(it, TAG) } }, 3500L)
             }
 
             override fun onReceivedError(
@@ -411,13 +387,13 @@ class ZoneDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
             )
             if (!changed) return@evaluateJavascript
             slot.calibrationReloads++
-            slot.initialScalePercent = ViewportFit.scalePercent(
+            slot.initialScalePercent = WebViewFactory.applyInitialScale(
                 this,
+                webView,
                 cellWidthPx,
                 slot.assumedDensity,
                 ZONE_MIN_WIDTH
             )
-            webView.setInitialScale(slot.initialScalePercent)
             webView.reload()
         }
     }
@@ -425,46 +401,18 @@ class ZoneDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
     @SuppressLint("SetJavaScriptEnabled")
     private fun injectZoneScripts(webView: WebView?, entry: DisplayEntry) {
         if (webView == null) return
-        readAsset(NAV_SCRIPT)?.let { webView.evaluateJavascript(it, null) }
+        scripts.read(WebViewFactory.NAV_SCRIPT)?.let { webView.evaluateJavascript(it, null) }
         val login = entry.autoLogin
         // 极速模式包装页无需自动登录（服务端无头浏览器已完成登录）
         if (!entry.compatTranspile && !LocalSettings.turbo(this).enabled &&
             login != null && login.enabled && login.password.isNotEmpty()
         ) {
-            readAsset(LOGIN_SCRIPT)?.let { script ->
-                webView.evaluateJavascript(
-                    "window.__TV_AUTOLOGIN_DONE__=false;" +
-                        "window.__TV_AUTOLOGIN__=${WebDisplayActivity.autoLoginJson(login)};\n$script",
-                    null
-                )
+            scripts.read(WebViewFactory.LOGIN_SCRIPT)?.let { script ->
+                WebViewFactory.injectAutoLogin(webView, login, script)
             }
         }
         // 旧内核 100vh 解析错误 → 分区页面只占上半格，注入修补脚本
-        fillZone(webView)
-    }
-
-    /** 注入 [ViewportFit.FILL_SCRIPT]，把因 100vh 失效而塌陷的分区页面重新撑满 */
-    private fun fillZone(webView: WebView?) {
-        webView?.evaluateJavascript(ViewportFit.FILL_SCRIPT) { result ->
-            Log.d(TAG, "分区 100vh 修补（改写元素数）：$result")
-        }
-    }
-
-    private fun readAsset(path: String): String? {
-        assetCache[path]?.let { return it }
-        return runCatching {
-            assets.open(path).bufferedReader().use { it.readText() }
-        }.onSuccess { assetCache[path] = it }
-            .onFailure { Log.w(TAG, "读取资源失败：$path", it) }
-            .getOrNull()
-    }
-
-    private fun destroyWebView(webView: WebView) {
-        webView.stopLoading()
-        webView.loadUrl("about:blank")
-        webView.clearHistory()
-        webView.removeAllViews()
-        webView.destroy()
+        WebViewFactory.fillViewport(webView, TAG)
     }
 
     /* ---------------- 当前分区：移动与选择页面 ---------------- */
@@ -683,7 +631,7 @@ class ZoneDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
         slots.values.forEach { slot ->
-            slot.webView?.let { destroyWebView(it) }
+            slot.webView?.let { WebViewFactory.destroy(it) }
             slot.webView = null
         }
         slots.clear()

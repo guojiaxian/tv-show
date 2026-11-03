@@ -3,9 +3,7 @@ package com.digitalcenter.tvshow.ui
 import android.annotation.SuppressLint
 import android.app.Dialog
 import android.content.Intent
-import android.content.res.Configuration
 import android.graphics.Bitmap
-import android.graphics.Color
 import android.net.Uri
 import android.net.http.SslError
 import android.os.Bundle
@@ -21,14 +19,12 @@ import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
-import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.digitalcenter.tvshow.R
-import com.digitalcenter.tvshow.config.AutoLoginConfig
 import com.digitalcenter.tvshow.config.ConfigLoader
 import com.digitalcenter.tvshow.config.DisplayEntry
 import com.digitalcenter.tvshow.config.LocalSettings
@@ -42,8 +38,6 @@ import com.digitalcenter.tvshow.net.ConfigRepository
 import com.digitalcenter.tvshow.net.ControlChannel
 import com.digitalcenter.tvshow.util.UiUtil
 import com.digitalcenter.tvshow.util.ViewportFit
-import org.json.JSONObject
-import kotlin.math.roundToInt
 
 /**
  * 大屏展示页：使用 WebView 加载指定 IP + 端口的展示页面，
@@ -56,18 +50,14 @@ class WebDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
         /** 轮询播放模式：按本机轮询设置自动切页 */
         const val EXTRA_ROTATION = "extra_rotation"
         private const val TAG = "WebDisplay"
-        private const val NAV_SCRIPT = "js/tv_nav.js"
-        private const val LOGIN_SCRIPT = "js/auto_login.js"
         private const val ZOOM_MIN = 50
         private const val ZOOM_MAX = 200
         private const val ZOOM_STEP = 10
         private const val OVERLAY_DURATION_MS = 3000L
 
-        /** 大屏页面的目标 CSS 视口：1920×1080（16:9），页面一律按此宽度布局 */
-        private const val TARGET_CSS_WIDTH = 1920
-        private const val TARGET_CSS_HEIGHT = 1080
-        private const val DENSITY_DPI_MIN = 60
-        private const val DENSITY_DPI_MAX = 1000
+        /** 大屏页面的目标 CSS 视口：统一定义在 [WebViewFactory]，避免两处数值漂移 */
+        private const val TARGET_CSS_WIDTH = WebViewFactory.TARGET_CSS_WIDTH
+        private const val TARGET_CSS_HEIGHT = WebViewFactory.TARGET_CSS_HEIGHT
 
         /** 视口不达标时最多重载几次（校准密度因子用，一次即可收敛） */
         private const val MAX_CALIBRATION_RELOADS = 2
@@ -92,20 +82,6 @@ class WebDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
                 "var r=e.getBoundingClientRect();" +
                 "if(r.width>=20&&r.height>=20){n++;if(n>=2)return 1;}}" +
                 "return 0;}catch(e){return 1;}})()"
-
-        /** 生成注入用的自动登录配置 JSON（分区展示也会复用） */
-        fun autoLoginJson(login: AutoLoginConfig): String = JSONObject().apply {
-            put("enabled", true)
-            put("username", login.username)
-            put("password", login.password)
-            put("usernameSelector", login.usernameSelector)
-            put("passwordSelector", login.passwordSelector)
-            put("submitSelector", login.submitSelector)
-            put("successSelector", login.successSelector)
-            put("maxAttempts", 3)
-            // 跨页面重载累计上限，防止站点登录失败时陷入「重载 → 再登录」死循环
-            put("maxTotalAttempts", 3)
-        }.toString()
     }
 
     private lateinit var binding: ActivityWebBinding
@@ -155,7 +131,7 @@ class WebDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
     private var rotationIndex = 0
 
     /** 注入脚本只读一次：轮询/刷新反复读 assets 没有意义 */
-    private val assetCache = HashMap<String, String>()
+    private val scripts = AssetScriptCache(this, TAG)
 
     /** 每秒刷新轮询倒计时指示 */
     private val rotationTick = object : Runnable {
@@ -315,24 +291,27 @@ class WebDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
      */
     private fun createDisplayWebView(): WebView {
         val metrics = resources.displayMetrics
-        val densityDpi = (160f * metrics.widthPixels / TARGET_CSS_WIDTH)
-            .roundToInt()
-            .coerceIn(DENSITY_DPI_MIN, DENSITY_DPI_MAX)
+        val created = WebViewFactory.create(
+            context = this,
+            hostWidthPx = metrics.widthPixels,
+            targetCssWidth = TARGET_CSS_WIDTH,
+            uaVersionSuffix = "TvShowCenter/1.0",
+            configure = {
+                databaseEnabled = true
+                loadsImagesAutomatically = true
+            }
+        )
+        displayDensity = created.density
 
-        val config = Configuration(resources.configuration)
-        config.densityDpi = densityDpi
-        val displayContext = createConfigurationContext(config)
-        displayDensity = displayContext.resources.displayMetrics.density
-
-        val cssWidth = metrics.widthPixels * 160 / densityDpi
-        val cssHeight = metrics.heightPixels * 160 / densityDpi
+        val cssWidth = metrics.widthPixels * 160 / created.densityDpi
+        val cssHeight = metrics.heightPixels * 160 / created.densityDpi
         Log.i(
             TAG,
-            "屏幕 ${metrics.widthPixels}×${metrics.heightPixels}px, densityDpi=$densityDpi " +
+            "屏幕 ${metrics.widthPixels}×${metrics.heightPixels}px, densityDpi=${created.densityDpi} " +
                 "→ WebView CSS 视口 ${cssWidth}×${cssHeight}"
         )
 
-        return WebView(displayContext)
+        return created.webView
     }
 
     /**
@@ -343,13 +322,13 @@ class WebDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
      * 页面加载完成后还会实测 innerWidth 反向校准。必须在 loadUrl 之前调用。
      */
     private fun applyViewportScale() {
-        initialScalePercent = ViewportFit.scalePercent(
+        initialScalePercent = WebViewFactory.applyInitialScale(
             this,
+            webView,
             resources.displayMetrics.widthPixels,
             displayDensity,
             TARGET_CSS_WIDTH
         )
-        webView.setInitialScale(initialScalePercent)
         Log.i(
             TAG,
             "强制视口：initialScale=$initialScalePercent%（名义密度 $displayDensity，" +
@@ -393,30 +372,9 @@ class WebDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun setupWebView() {
-        webView.setBackgroundColor(Color.BLACK)
+        // 通用设置（含 JS/视口/UA）已在 [WebViewFactory.create] 中统一施加
         webView.isFocusable = true
         webView.isFocusableInTouchMode = true
-
-        webView.settings.apply {
-            javaScriptEnabled = true
-            domStorageEnabled = true
-            databaseEnabled = true
-            // 忽略页面自带的 viewport meta：布局宽度完全由 setInitialScale 决定，
-            // 否则页面写死 width=device-width 时视口会跟着电视密度跑偏（960/980）
-            useWideViewPort = false
-            loadWithOverviewMode = false
-            // 缩放由应用统一控制（菜单键 → 放大/缩小），避免与遥控器方向键冲突
-            setSupportZoom(false)
-            builtInZoomControls = false
-            displayZoomControls = false
-            mediaPlaybackRequiresUserGesture = false
-            mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-            cacheMode = WebSettings.LOAD_DEFAULT
-            allowFileAccess = false
-            allowContentAccess = false
-            loadsImagesAutomatically = true
-            userAgentString = "$userAgentString TvShowCenter/1.0"
-        }
 
         applyViewportScale()
 
@@ -444,8 +402,8 @@ class WebDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
                 scheduleBlankCheck()
                 // 首屏后再补两次：SPA 常在第一帧之后才挂载全高骨架，
                 // 而旧内核的 100vh 修补必须作用在已生成的节点上
-                handler.postDelayed({ if (!pageError) applyViewportFill() }, 1500L)
-                handler.postDelayed({ if (!pageError) applyViewportFill() }, 3500L)
+                handler.postDelayed({ if (!pageError) WebViewFactory.fillViewport(webView, TAG) }, 1500L)
+                handler.postDelayed({ if (!pageError) WebViewFactory.fillViewport(webView, TAG) }, 3500L)
                 view?.requestFocus()
 
                 if (!autoFitApplied) {
@@ -577,7 +535,7 @@ class WebDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
 
     private fun injectScripts() {
         // 1) 遥控器焦点导航引擎
-        readAsset(NAV_SCRIPT)?.let { webView.evaluateJavascript(it, null) }
+        scripts.read(WebViewFactory.NAV_SCRIPT)?.let { webView.evaluateJavascript(it, null) }
 
         // 2) 自动登录（按入口配置启用）
         //    走兼容代理时，服务端已在 HTML 里注入了同款脚本（标记 __TV_AUTOLOGIN_SERVER__），
@@ -585,12 +543,8 @@ class WebDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
         //    极速模式同理：登录由服务端无头浏览器完成，包装页无需登录脚本
         val login = entry?.autoLogin
         if (!viaCompatProxy && !viaTurbo && login != null && login.enabled && login.password.isNotEmpty()) {
-            readAsset(LOGIN_SCRIPT)?.let { script ->
-                webView.evaluateJavascript(
-                    "window.__TV_AUTOLOGIN_DONE__=false;" +
-                        "window.__TV_AUTOLOGIN__=${autoLoginJson(login)};\n$script",
-                    null
-                )
+            scripts.read(WebViewFactory.LOGIN_SCRIPT)?.let { script ->
+                WebViewFactory.injectAutoLogin(webView, login, script)
             }
         }
 
@@ -598,23 +552,7 @@ class WebDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
         applyZoom()
 
         // 4) 修补旧内核 100vh 解析错误导致的「只占上半屏」
-        applyViewportFill()
-    }
-
-    /** 注入 [ViewportFit.FILL_SCRIPT]，把因 100vh 失效而塌陷的页面骨架重新撑满 */
-    private fun applyViewportFill() {
-        webView.evaluateJavascript(ViewportFit.FILL_SCRIPT) { result ->
-            Log.d(TAG, "100vh 修补结果（改写元素数）：$result")
-        }
-    }
-
-    private fun readAsset(path: String): String? {
-        assetCache[path]?.let { return it }
-        return runCatching {
-            assets.open(path).bufferedReader().use { it.readText() }
-        }.onSuccess { assetCache[path] = it }
-            .onFailure { Log.w(TAG, "读取资源失败：$path", it) }
-            .getOrNull()
+        WebViewFactory.fillViewport(webView, TAG)
     }
 
     /* ---------------- 显示适配与缩放 ---------------- */
@@ -976,13 +914,7 @@ class WebDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
         handler.removeCallbacksAndMessages(null)
         overlayToken++
         controlDialog?.dismiss()
-        webView.apply {
-            stopLoading()
-            loadUrl("about:blank")
-            clearHistory()
-            removeAllViews()
-            destroy()
-        }
+        WebViewFactory.destroy(webView)
         super.onDestroy()
     }
 }
