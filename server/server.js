@@ -33,6 +33,16 @@ const camera = require('./camera');
 const transpile = require('./transpile');
 const { createShot } = require('./shot');
 const { createCtl } = require('./ctl');
+const {
+  HttpError,
+  bad,
+  requireString,
+  sendJson,
+  sendEmpty,
+  serveHtmlFile,
+  readBody,
+  CORS
+} = require('./http-util');
 
 /* ============================ 配置与常量 ============================ */
 
@@ -72,7 +82,6 @@ const DEFAULT_CAMERAS = {
   logo: 'wutan-logo.png',
   logoCell: 5
 };
-const MAX_BODY_BYTES = 256 * 1024;
 /** 保留的删除痕迹条数上限，超出后抬高 prunedBeforeRev 并裁剪 */
 const MAX_TOMBSTONES = 200;
 
@@ -347,21 +356,6 @@ function mutate(fn) {
 
 /* ============================ 校验 ============================ */
 
-class HttpError extends Error {
-  constructor(status, message) {
-    super(message);
-    this.status = status;
-  }
-}
-const bad = (msg) => new HttpError(400, msg);
-
-function requireString(v, name, { max = 500, allowEmpty = false } = {}) {
-  const s = v === undefined || v === null ? '' : String(v).trim();
-  if (!s && !allowEmpty) throw bad(`${name} 不能为空`);
-  if (s.length > max) throw bad(`${name} 长度不能超过 ${max}`);
-  return s;
-}
-
 /** 校验并规范化一个入口；existingId 用于更新场景（允许沿用自身 id） */
 function validateEntry(body, { existingId = null, existingType = null, takenIds = new Set() } = {}) {
   if (!body || typeof body !== 'object') throw bad('请求体必须是 JSON 对象');
@@ -525,75 +519,6 @@ function fullSnapshot(d) {
     cameras: { enabled: d.cameras.enabled, count: d.cameras.count, titles: d.cameras.titles }
   };
 }
-
-/* ============================ HTTP 工具 ============================ */
-
-function sendJson(res, status, body, extraHeaders = {}) {
-  const text = JSON.stringify(body);
-  res.writeHead(status, {
-    'Content-Type': 'application/json; charset=utf-8',
-    'Content-Length': Buffer.byteLength(text),
-    'Cache-Control': 'no-store',
-    ...extraHeaders
-  });
-  res.end(text);
-}
-
-function sendEmpty(res, status, extraHeaders = {}) {
-  res.writeHead(status, { 'Cache-Control': 'no-store', ...extraHeaders });
-  res.end();
-}
-
-/**
- * 托管一个静态 HTML 页面（客户端 / 管理页 / 预览页）。
- * 三个页面都是构建或源码产物，文件缺失时给出可执行的补救命令，避免只看到 404。
- */
-function serveHtmlFile(res, file, missingHint) {
-  if (!fs.existsSync(file)) return sendJson(res, 500, { error: missingHint });
-  const html = fs.readFileSync(file);
-  res.writeHead(200, {
-    'Content-Type': 'text/html; charset=utf-8',
-    'Content-Length': html.length,
-    'Cache-Control': 'no-store'
-  });
-  res.end(html);
-}
-
-function readBody(req) {
-  return new Promise((resolve, reject) => {
-    let size = 0;
-    let tooLarge = false;
-    const chunks = [];
-    req.on('data', (c) => {
-      // 超限后只标记并丢弃后续数据，不再 destroy 请求：
-      // 立即 destroy 会让客户端收不到 413 响应，只剩 ECONNRESET。
-      if (tooLarge) return;
-      size += c.length;
-      if (size > MAX_BODY_BYTES) {
-        tooLarge = true;
-        chunks.length = 0;
-        reject(new HttpError(413, '请求体过大'));
-        return;
-      }
-      chunks.push(c);
-    });
-    req.on('end', () => {
-      if (!chunks.length) return resolve({});
-      try {
-        resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')));
-      } catch (e) {
-        reject(bad('请求体不是合法 JSON'));
-      }
-    });
-    req.on('error', reject);
-  });
-}
-
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type,If-None-Match'
-};
 
 /* ============================ 路由 ============================ */
 
