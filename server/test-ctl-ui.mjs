@@ -571,6 +571,37 @@ function attachPageLog(page, errors, tag) {
   const renamedDev = await waitUntil(async () => (await deviceOf(DEV2)).name === '二号电视', { label: '设备重命名' });
   check('设备重命名生效（服务端与列表同步）', renamedDev);
 
+  /* ---------- 删除设备 / 已移除恢复 ---------- */
+  await beat2(); // 保证 DEV2 在档案中
+  const cardBeforeDel = await waitUntil(() => page2.evaluate(() =>
+    !!document.querySelector('[data-device-id="dev-test0002"] .del-btn')), { label: 'DEV2 卡片' });
+  await page2.click('[data-device-id="dev-test0002"] .del-btn');
+  await page2.click('#modalBox .confirm-btn:has-text("删除")');
+  const cardGone = await waitUntil(() => page2.evaluate(() =>
+    !document.querySelector('[data-device-id="dev-test0002"]')), { timeout: 6000, label: '删除后卡片消失' });
+  const listGone = await waitUntil(async () => !(await deviceOf(DEV2)), { label: '服务端档案移除' });
+  check('控制台删除设备：卡片消失且服务端档案移除', cardBeforeDel && cardGone && listGone);
+
+  const blockedUi = await waitUntil(() => page2.evaluate(() => {
+    const btn = document.getElementById('btnBlocked');
+    return !!btn && !btn.hidden && Number(document.getElementById('blockedCount').textContent) >= 1;
+  }), { timeout: 6000, label: '已移除入口' });
+  check('删除后出现「已移除」入口', blockedUi);
+
+  await page2.click('#btnBlocked');
+  await page2.waitForSelector('#modalBox .restore-btn', { timeout: 3000 });
+  const restoreClicked = await page2.evaluate(() => {
+    const rows = Array.from(document.querySelectorAll('#modalBox .row'));
+    const row = rows.find((r) => r.textContent.includes('二号电视'));
+    if (!row) return false;
+    row.querySelector('.restore-btn').click();
+    return true;
+  });
+  await beat2();
+  const cardBack = await waitUntil(() => page2.evaluate(() =>
+    !!document.querySelector('[data-device-id="dev-test0002"]')), { timeout: 8000, label: '恢复后回归' });
+  check('从「已移除」恢复后设备重新注册并回到列表', restoreClicked && cardBack);
+
   /* ---------- 收尾 ---------- */
   check('两页运行期均无 JS 异常与 console 错误', errors.length === 0, errors);
 
