@@ -92,6 +92,11 @@ const apiGet = async (p) => (await fetch(BASE + p)).json();
   const modalShown = await page.evaluate(() => document.getElementById('mask').classList.contains('show'));
   check('点击新增弹出表单', modalShown, modalShown);
 
+  // 点击遮罩空白处不应关闭：只能通过「保存 / 取消」退出，避免误触丢失编辑内容
+  await page.mouse.click(5, 5);
+  const maskAfterOutside = await page.evaluate(() => document.getElementById('mask').classList.contains('show'));
+  check('点击弹窗外不关闭设置弹窗', maskAfterOutside, maskAfterOutside);
+
   await page.fill('#fTitle', '联调测试大屏');
   await page.fill('#fSubtitle', '由管理后台创建');
   await page.fill('#fUrl', 'http://10.8.11.77:9090/');

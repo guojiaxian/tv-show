@@ -509,7 +509,7 @@
     }
     $('confirmOk').onclick = function () { close(); onOk && onOk(); };
     $('confirmCancel').onclick = close;
-    mask.onclick = function (e) { if (e.target === mask) close(); };
+    // 点击遮罩不关闭：避免平板误触 / 软键盘弹出导致可视区域变化时误关确认框
     mask.classList.add('show');
     setTimeout(function () { $('confirmOk').focus(); }, 30);
   }
@@ -594,7 +594,7 @@
 
   $('btnNew').addEventListener('click', function () { openForm(null); });
   $('btnCancel').addEventListener('click', closeForm);
-  $('mask').addEventListener('click', function (ev) { if (ev.target === $('mask')) closeForm(); });
+  // 设置弹窗只能通过「保存 / 取消」关闭；点击遮罩不关闭，避免现场误触丢失正在编辑的内容
   document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape' && $('mask').classList.contains('show')) closeForm(); });
 
   $('btnSave').addEventListener('click', async function () {
