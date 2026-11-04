@@ -954,8 +954,13 @@ footer select {
             await api('DELETE', '/api/ctl/device/' + encodeURIComponent(d.id));
             delete state.selected[d.id];
             renderSelInfo();
-            toast('已删除：' + d.name);
-            refresh();
+            await refresh();
+            // 二次确认服务端确实已移除；若仍存在则明确提示，不假装成功
+            if (state.devices.some(function (x) { return x.id === d.id; })) {
+              toast('删除未生效：服务端仍有该设备，请刷新后重试');
+            } else {
+              toast('已删除：' + d.name);
+            }
           } catch (e) { toast('删除失败：' + e.message); }
         }
       }
@@ -981,7 +986,7 @@ footer select {
         info.appendChild(nm);
         var idText = document.createElement('span');
         idText.style.cssText = 'color:var(--muted);font-size:12px;';
-        idText.textContent = '  ' + b.id;
+        idText.textContent = '  ' + b.id + (b.addr ? ' · ' + b.addr : '');
         info.appendChild(idText);
         row.appendChild(info);
         var restore = document.createElement('button');

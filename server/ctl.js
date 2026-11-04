@@ -90,6 +90,9 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
       out.push({
         id,
         name: String(b.name || `新设备-${id.slice(-4)}`).slice(0, 60),
+        // 删除时一并记下类型与来源 IP：设备清缓存/重装后换了新 id，也能按同 IP + 同类型拦住
+        kind: ALLOWED_KINDS.includes(b.kind) ? b.kind : 'pc',
+        addr: String(b.addr || ''),
         removedAt: b.removedAt || new Date().toISOString()
       });
     }
@@ -107,6 +110,8 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
       kind,
       appVersion: String(raw.appVersion || '').slice(0, 20),
       registeredAt: raw.registeredAt || new Date().toISOString(),
+      // 最近一次心跳来源 IP（落盘）：离线设备被删除后，仍可按 IP 兜底拦住换 id 的重新注册
+      lastAddr: String(raw.lastAddr || ''),
       managed: raw.managed === true,
       desired: normalizeDesired(raw.desired),
       ackedSeq: Number.isFinite(Number(raw.ackedSeq)) ? Number(raw.ackedSeq) : 0,
@@ -180,6 +185,7 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
         kind: d.kind,
         appVersion: d.appVersion,
         registeredAt: d.registeredAt,
+        lastAddr: d.lastAddr || '',
         managed: d.managed,
         desired: d.desired,
         ackedSeq: d.ackedSeq
@@ -285,13 +291,30 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
     return raw.startsWith('::ffff:') ? raw.slice(7) : raw;
   }
 
+  /**
+   * 是否属于「已移除设备」。
+   * 1) 同 deviceId：直接拦截（常规路径，重启/重装都稳定）；
+   * 2) 新 deviceId：同 IP + 同类型也拦截——浏览器清缓存、无痕模式会换 id，
+   *    否则删除后下一拍心跳就会以「新设备-xxxx」重新注册。
+   *    已存在的其他设备不受影响；回环地址（自动化测试）不做 IP 兜底。
+   */
+  function isRemovedDevice(deviceId, kind, remoteAddr) {
+    if (data.blocked.some((b) => b.id === deviceId)) return true;
+    const ip = normalizeIp(remoteAddr);
+    if (!ip || ip === '::1' || ip.startsWith('127.')) return false;
+    if (data.devices.some((d) => d.id === deviceId)) return false; // 不误伤同 IP 的既有设备
+    return data.blocked.some((b) => b.addr === ip && b.kind === kind);
+  }
+
   async function handleBeat(body, remoteAddr) {
     const deviceId = String(body.deviceId || '').trim();
     if (!DEVICE_ID_PATTERN.test(deviceId)) {
       throw bad('deviceId 格式应为小写字母/数字/短横线（≤64 字符）');
     }
+    const kind = ALLOWED_KINDS.includes(body.kind) ? body.kind : 'pc';
     // 已从控制台移除：心跳照常响应（避免设备端报错），但不再注册、不再出现在列表
-    if (data.blocked.some((b) => b.id === deviceId)) {
+    if (isRemovedDevice(deviceId, kind, remoteAddr)) {
+      log(`[ctl] 拦截已移除设备心跳：${deviceId}（${kind} @ ${normalizeIp(remoteAddr)}）`);
       return {
         ok: true,
         blocked: true,
@@ -301,7 +324,6 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
         content: getContentVersion ? getContentVersion() : null
       };
     }
-    const kind = ALLOWED_KINDS.includes(body.kind) ? body.kind : 'pc';
     const state = body.state && typeof body.state === 'object' ? body.state : { mode: 'home' };
     const ackedSeq = Number.isFinite(Number(body.ackedSeq)) ? Number(body.ackedSeq) : 0;
     const boot = body.boot === true;
@@ -327,8 +349,13 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
       // 身份字段每次心跳刷新（appVersion 可随升级变化；name 不覆盖，以档案为准）
       dev.kind = kind;
       dev.appVersion = String(body.appVersion || '').slice(0, 20);
-      // 连接来源 IP（仅内存，随 DHCP 变化属正常；控制台展示用）
-      dev.remoteIp = normalizeIp(remoteAddr);
+      // 连接来源 IP（内存 + 变化时落盘；控制台展示与「删除后 IP 兜底」都用它）
+      const ip = normalizeIp(remoteAddr);
+      dev.remoteIp = ip;
+      if (ip && ip !== dev.lastAddr) {
+        dev.lastAddr = ip;
+        dirty = true;
+      }
       dev.reported = state;
       const prevLastSeen = dev.lastSeenAt; // 回归判定要用「上一次」心跳时间
       dev.lastSeenAt = Date.now();
@@ -494,8 +521,15 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
       const dev = d.devices[idx];
       d.devices.splice(idx, 1);
       // 写入墓碑：否则在线设备下一拍心跳（≤3 秒）就会重新注册
-      const entry = { id: dev.id, name: dev.name, removedAt: new Date().toISOString() };
+      const entry = {
+        id: dev.id,
+        name: dev.name,
+        kind: dev.kind,
+        addr: normalizeIp(dev.remoteIp || dev.lastAddr), // 供新 id 的 IP 兜底拦截使用
+        removedAt: new Date().toISOString()
+      };
       d.blocked = d.blocked.filter((b) => b.id !== dev.id).concat(entry);
+      log(`[ctl] 移除设备：${dev.id}「${dev.name}」（${dev.kind} @ ${entry.addr || '-'}）`);
       return { ok: true, deleted: dev.id, blocked: entry };
     });
   }
@@ -506,6 +540,7 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
       const before = d.blocked.length;
       d.blocked = d.blocked.filter((b) => b.id !== id);
       if (d.blocked.length === before) throw new HttpError(404, `已移除列表中没有设备「${id}」`);
+      log(`[ctl] 恢复设备：${id}（下次心跳重新注册）`);
       return { ok: true, restored: id };
     });
   }
