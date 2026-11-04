@@ -239,6 +239,17 @@ const beat = (deviceId, extra = {}) => api('POST', '/api/ctl/beat', { deviceId, 
   r = await api('PUT', '/api/ctl/device/dev-none', { name: 'x' });
   check('更新不存在设备 404', r.status === 404);
 
+  /* ---------- 9b. 设备类型手动切换（PC / PAD / TV） ---------- */
+  r = await api('PUT', '/api/ctl/device/dev-aaaa1111', { kind: 'tablet' });
+  check('手动改设备类型受理', r.status === 200 && r.json.device.kind === 'tablet', r.json);
+  r = await beat('dev-aaaa1111', { kind: 'pc' });
+  r = await api('GET', '/api/ctl/devices');
+  check('手动类型不被下一次心跳覆盖',
+    r.json.devices.find((d) => d.id === 'dev-aaaa1111').kind === 'tablet');
+  r = await api('PUT', '/api/ctl/device/dev-aaaa1111', { kind: 'phone' });
+  check('非法设备类型 400', r.status === 400);
+  await api('PUT', '/api/ctl/device/dev-aaaa1111', { kind: 'pc' }); // 还原，避免影响后续用例
+
   r = await api('DELETE', '/api/ctl/device/dev-bbbb2222');
   check('删除设备受理（仅暂时移除）', r.status === 200);
   r = await beat('dev-bbbb2222', { kind: 'tablet' });

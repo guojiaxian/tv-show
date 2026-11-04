@@ -269,6 +269,17 @@ function attachPageLog(page, errors, tag) {
   check('控制台设备列表：显示端（PC）+ 二号电视（TV，本地控制，含 IP）',
     !!twoCards && cards.length === 2 && cards.some((c) => c.kind === 'PC') &&
     cards.some((c) => c.kind === 'TV' && /本地控制/.test(c.chip) && /IP 127\.0\.0\.1/.test(c.chip)), cards);
+
+  const chipOrder = await page2.evaluate(() => {
+    const card = Array.from(document.querySelectorAll('#deviceList .card'))
+      .find((c) => c.querySelector('.kind').textContent === 'TV');
+    return Array.from(card.querySelectorAll('.st .chip')).map((x) => x.textContent);
+  });
+  check('卡片状态顺序：在线/离线 → 本地/远程控制 → 版本 → IP，且无「暂无上报」',
+    chipOrder.length >= 4 && ['在线', '离线'].includes(chipOrder[0]) &&
+    ['本地控制', '远程控制'].includes(chipOrder[1]) &&
+    /^v/.test(chipOrder[2]) && /^IP /.test(chipOrder[3]) &&
+    !chipOrder.some((t) => t.includes('暂无上报')), chipOrder);
   const h1 = await page2.evaluate(() => document.querySelector('header h1').textContent);
   const ipShown = await page2.evaluate(() =>
     Array.from(document.querySelectorAll('#deviceList .card .st .chip')).some((c) => /^IP /.test(c.textContent)));
@@ -619,6 +630,34 @@ function attachPageLog(page, errors, tag) {
   const cardBack = await waitUntil(() => page2.evaluate(() =>
     !!document.querySelector('[data-device-id="dev-test0002"]')), { timeout: 8000, label: '心跳后回归' });
   check('设备下次心跳后自动重新出现（临时移除）', cardBack);
+
+  /* ---------- 设备类型点击切换（PC → PAD → TV） ---------- */
+  const kindBefore = (await deviceOf(deviceId)).kind;
+  await page2.click(`[data-device-id="${deviceId}"] .kind`);
+  const toPad = await waitUntil(async () => {
+    const k = (await deviceOf(deviceId)).kind;
+    const txt = await page2.evaluate((id) =>
+      document.querySelector(`[data-device-id="${id}"] .kind`).textContent, deviceId);
+    return k === 'tablet' && txt === 'PAD';
+  }, { timeout: 6000, label: '类型改 PAD' });
+  const padText = await page2.evaluate((id) =>
+    document.querySelector(`[data-device-id="${id}"] .kind`).textContent, deviceId);
+  check('点击设备类型 PC → PAD 并落盘', kindBefore === 'pc' && !!toPad && padText === 'PAD');
+
+  await page2.click(`[data-device-id="${deviceId}"] .kind`);
+  const toTv = await waitUntil(async () => {
+    const k = (await deviceOf(deviceId)).kind;
+    const txt = await page2.evaluate((id) =>
+      document.querySelector(`[data-device-id="${id}"] .kind`).textContent, deviceId);
+    return k === 'tv' && txt === 'TV';
+  }, { timeout: 6000, label: '类型改 TV' });
+  check('再次点击 PAD → TV', !!toTv);
+  // 客户端心跳仍上报 pc：手动类型不能被覆盖
+  await api('POST', '/api/ctl/beat', {
+    deviceId, kind: 'pc', appVersion: '2.0-web', ackedSeq: 0, state: { mode: 'home', turbo: false }
+  });
+  check('手动设备类型不被心跳上报覆盖', (await deviceOf(deviceId)).kind === 'tv');
+  await api('PUT', '/api/ctl/device/' + deviceId, { kind: 'pc' }); // 还原
 
   /* ---------- 收尾 ---------- */
   check('两页运行期均无 JS 异常与 console 错误', errors.length === 0, errors);

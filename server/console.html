@@ -62,13 +62,15 @@ main { flex: 1; overflow: auto; padding: 16px 22px; display: flex; flex-directio
 .card .kind {
   flex: none; width: 46px; text-align: center; font-size: 11px; color: var(--muted);
   border: 1px solid var(--line); border-radius: 8px; padding: 4px 0;
+  cursor: pointer; user-select: none;
 }
+.card .kind:hover { color: var(--accent); border-color: rgba(47,210,245,.5); }
 .card .main { flex: 1; min-width: 0; }
 .card .nm { display: flex; align-items: center; gap: 8px; }
 .card .nm b { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card .st { margin-top: 4px; font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .chip.onl-online { color: #3FE0A6; border-color: rgba(63,224,166,.5); background: rgba(63,224,166,.08); }
-.chip.onl-offline { color: #FFB020; border-color: rgba(255,176,32,.55); background: rgba(255,176,32,.1); }
+.chip.onl-offline { color: #FFD24A; border-color: rgba(255,210,74,.55); background: rgba(255,210,74,.1); }
 .chip { border: 1px solid var(--line); border-radius: 999px; padding: 1px 9px; font-size: 11px; }
 .chip.remote { color: #9fe7ff; border-color: rgba(47,210,245,.5); background: rgba(47,210,245,.1); }
 .chip.local { color: #7df0c0; border-color: rgba(63,224,166,.4); }
@@ -184,15 +186,15 @@ footer select {
   <input type="search" id="devSearch" placeholder="搜索设备名 / IP…" autocomplete="off">
   <select id="devKind" title="按设备类型筛选">
     <option value="">全部类型</option>
-    <option value="tv">电视</option>
-    <option value="pc">电脑</option>
-    <option value="tablet">平板</option>
+    <option value="pc">PC</option>
+    <option value="tablet">PAD</option>
+    <option value="tv">TV</option>
   </select>
   <select id="devOnline" title="按状态筛选">
     <option value="">全部状态</option>
     <option value="online">在线</option>
     <option value="offline">离线</option>
-    <option value="managed">远程被控</option>
+    <option value="managed">远程控制</option>
     <option value="local">本地控制</option>
   </select>
   <span class="filters-count" id="devCount"></span>
@@ -387,7 +389,7 @@ footer select {
 
   function summary(d) {
     var r = d.reported;
-    if (!r) return '暂无上报';
+    if (!r) return '';
     function t(id) { var e = id && entryOf(id); return e ? e.title : (id || '—'); }
     if (r.mode === 'home') return '首页';
     if (r.mode === 'page') return '显示：' + t(r.entryId);
@@ -438,6 +440,11 @@ footer select {
     ]);
   }
 
+  /** 设备类型：控制台点击可循环切换 PC → PAD → TV（手动设置后心跳不再覆盖） */
+  var KIND_CYCLE = ['pc', 'tablet', 'tv'];
+  var KIND_LABEL = { pc: 'PC', tablet: 'PAD', tv: 'TV' };
+  function kindLabel(k) { return KIND_LABEL[k] || 'PC'; }
+
   /** 创建一张设备卡片（内容与事件绑定一次到位） */
   function buildDeviceCard(d) {
     var card = document.createElement('div');
@@ -457,7 +464,16 @@ footer select {
 
     var kind = document.createElement('div');
     kind.className = 'kind';
-    kind.textContent = d.kind === 'tv' ? 'TV' : d.kind === 'tablet' ? '平板' : 'PC';
+    kind.textContent = kindLabel(d.kind);
+    kind.title = '设备类型：' + kindLabel(d.kind) + '（点击切换 PC → PAD → TV）';
+    kind.addEventListener('click', async function () {
+      var next = KIND_CYCLE[(KIND_CYCLE.indexOf(d.kind) + 1) % KIND_CYCLE.length];
+      try {
+        await api('PUT', '/api/ctl/device/' + encodeURIComponent(d.id), { kind: next });
+        toast('设备类型已改为 ' + kindLabel(next));
+        refresh();
+      } catch (e) { toast('修改类型失败：' + e.message); }
+    });
     card.appendChild(kind);
 
     var main = document.createElement('div');
@@ -471,20 +487,18 @@ footer select {
 
     var st = document.createElement('div');
     st.className = 'st';
+    // 固定顺序：在线/离线 → 本地/远程控制 → 版本 → IP（无上报时不显示占位文案）
     var onl = document.createElement('span');
     onl.className = 'chip ' + (d.online === 'online' ? 'onl-online' : 'onl-offline');
     onl.textContent = d.online === 'online' ? '在线' : '离线';
     onl.title = d.online === 'online' ? '在线（心跳正常）' : '离线（连续 3 次心跳未收到，控制指令不发送）';
+    st.appendChild(onl);
+
     var mode = document.createElement('span');
     mode.className = 'chip ' + (d.managed ? 'remote' : 'local');
-    mode.textContent = d.managed ? '远程被控' : '本地控制';
-    if (d.ip) {
-      var ip = document.createElement('span');
-      ip.className = 'chip';
-      ip.textContent = 'IP ' + d.ip;
-      ip.title = '连接来源 IP（DHCP 变化属正常）';
-      st.appendChild(ip);
-    }
+    mode.textContent = d.managed ? '远程控制' : '本地控制';
+    st.appendChild(mode);
+
     if (d.appVersion) {
       var ver = document.createElement('span');
       ver.className = 'chip';
@@ -492,10 +506,13 @@ footer select {
       ver.title = '客户端版本（电视端排查旧包：低于 v1.8 无互控能力）';
       st.appendChild(ver);
     }
-    var sm = document.createElement('span');
-    sm.textContent = summary(d);
-    st.appendChild(onl);
-    st.appendChild(mode);
+    if (d.ip) {
+      var ip = document.createElement('span');
+      ip.className = 'chip';
+      ip.textContent = 'IP ' + d.ip;
+      ip.title = '连接来源 IP（DHCP 变化属正常）';
+      st.appendChild(ip);
+    }
     if (d.pending) {
       var pend = document.createElement('span');
       pend.className = 'chip pending';
@@ -508,7 +525,6 @@ footer select {
       err.textContent = d.reported.lastError;
       st.appendChild(err);
     }
-    st.appendChild(sm);
     main.appendChild(st);
     card.appendChild(main);
 

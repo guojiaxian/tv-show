@@ -85,6 +85,8 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
       id,
       name: String(raw.name || `新设备-${id.slice(-4)}`).slice(0, 60),
       kind,
+      // 控制台手动改过类型：后续心跳不得再用客户端上报的 kind 覆盖
+      kindManual: raw.kindManual === true,
       appVersion: String(raw.appVersion || '').slice(0, 20),
       registeredAt: raw.registeredAt || new Date().toISOString(),
       managed: raw.managed === true,
@@ -155,6 +157,7 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
         id: d.id,
         name: d.name,
         kind: d.kind,
+        kindManual: d.kindManual === true,
         appVersion: d.appVersion,
         registeredAt: d.registeredAt,
         managed: d.managed,
@@ -290,8 +293,8 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
         dirty = true;
         log(`[ctl] 设备注册：${dev.id}（${kind}）「${dev.name}」`);
       }
-      // 身份字段每次心跳刷新（appVersion 可随升级变化；name 不覆盖，以档案为准）
-      dev.kind = kind;
+      // 身份字段每次心跳刷新（appVersion 可随升级变化；kind 以控制台手动设置为准）
+      if (!dev.kindManual) dev.kind = kind;
       dev.appVersion = String(body.appVersion || '').slice(0, 20);
       // 连接来源 IP（仅内存，随 DHCP 变化属正常；控制台展示用）
       dev.remoteIp = normalizeIp(remoteAddr);
@@ -447,7 +450,13 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
         if (!name) throw bad('设备名不能为空');
         dev.name = name;
       }
-      return { ok: true, device: { id: dev.id, name: dev.name } };
+      if (body.kind !== undefined) {
+        if (!ALLOWED_KINDS.includes(body.kind)) throw bad('设备类型只能是 pc / tablet / tv');
+        dev.kind = body.kind;
+        // 手动类型优先：后续心跳不再用客户端上报的 kind 覆盖
+        dev.kindManual = true;
+      }
+      return { ok: true, device: { id: dev.id, name: dev.name, kind: dev.kind } };
     });
   }
 
