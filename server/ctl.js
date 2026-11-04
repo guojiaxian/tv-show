@@ -87,8 +87,14 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
       kind,
       // 控制台手动改过类型：后续心跳不得再用客户端上报的 kind 覆盖
       kindManual: raw.kindManual === true,
+      // 同一台机器的其他浏览器 / 旧档案 id：心跳按别名归并到主记录
+      aliases: Array.isArray(raw.aliases)
+        ? Array.from(new Set(raw.aliases.map(String).filter((a) => DEVICE_ID_PATTERN.test(a) && a !== id))).slice(0, 16)
+        : [],
       appVersion: String(raw.appVersion || '').slice(0, 20),
       registeredAt: raw.registeredAt || new Date().toISOString(),
+      // 上次心跳来源 IP 落盘：服务端重启后仍能把同一 IP 的历史档案归并成一行
+      remoteIp: typeof raw.lastIp === 'string' && raw.lastIp ? raw.lastIp : null,
       managed: raw.managed === true,
       desired: normalizeDesired(raw.desired),
       ackedSeq: Number.isFinite(Number(raw.ackedSeq)) ? Number(raw.ackedSeq) : 0,
@@ -158,8 +164,10 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
         name: d.name,
         kind: d.kind,
         kindManual: d.kindManual === true,
+        aliases: d.aliases || [],
         appVersion: d.appVersion,
         registeredAt: d.registeredAt,
+        lastIp: d.remoteIp || '',
         managed: d.managed,
         desired: d.desired,
         ackedSeq: d.ackedSeq
@@ -265,6 +273,46 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
     return raw.startsWith('::ffff:') ? raw.slice(7) : raw;
   }
 
+  /**
+   * 可作为设备归并键的 IP：仅内网 IPv4（10/8、172.16/12、192.168/16）。
+   * 排除回环（自动化/本机多开）、公网与 IPv6——经 NAT 或反向代理时多个物理
+   * 设备会共享同一来源地址，按 IP 归并会把它们错误地合并成一台。
+   */
+  function isMergeableIp(ip) {
+    const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(String(ip || ''));
+    if (!m) return false;
+    const p = m.slice(1).map(Number);
+    if (p.some((n) => n > 255)) return false;
+    if (p[0] === 127) return false;
+    if (p[0] === 10) return true;
+    if (p[0] === 192 && p[1] === 168) return true;
+    return p[0] === 172 && p[1] >= 16 && p[1] <= 31;
+  }
+
+  /** 同一 IP（同一台机器）的多条档案合并：保留注册更早的一条，其余 id 记为别名 */
+  function mergeDevices(d, a, b) {
+    const keep = (a.registeredAt || '') <= (b.registeredAt || '') ? a : b;
+    const drop = keep === a ? b : a;
+    const aliases = new Set([...(keep.aliases || []), drop.id, ...(drop.aliases || [])]);
+    aliases.delete(keep.id);
+    keep.aliases = Array.from(aliases);
+    // 记录合并：名称继承、手动类型优先、受控指令取较新者
+    if (/^新设备-/.test(keep.name) && !/^新设备-/.test(drop.name)) keep.name = drop.name;
+    if (drop.kindManual && !keep.kindManual) {
+      keep.kind = drop.kind;
+      keep.kindManual = true;
+    }
+    keep.managed = keep.managed || drop.managed;
+    if (!keep.desired || (drop.desired && drop.desired.seq > keep.desired.seq)) keep.desired = drop.desired;
+    keep.ackedSeq = Math.max(keep.ackedSeq || 0, drop.ackedSeq || 0);
+    keep.lastSeenAt = Math.max(keep.lastSeenAt || 0, drop.lastSeenAt || 0);
+    if (!keep.reported) keep.reported = drop.reported;
+    if (!keep.remoteIp) keep.remoteIp = drop.remoteIp;
+    d.devices = d.devices.filter((x) => x.id !== drop.id);
+    log(`[ctl] 同一 IP（${keep.remoteIp || a.remoteIp || b.remoteIp || '?'}）设备合并：${drop.id} → ${keep.id}`);
+    return keep;
+  }
+
   async function handleBeat(body, remoteAddr) {
     const deviceId = String(body.deviceId || '').trim();
     if (!DEVICE_ID_PATTERN.test(deviceId)) {
@@ -275,12 +323,36 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
     const ackedSeq = Number.isFinite(Number(body.ackedSeq)) ? Number(body.ackedSeq) : 0;
     const boot = body.boot === true;
     const switchTo = body.switchTo === 'local' || body.switchTo === 'remote' ? body.switchTo : null;
+    // 仅对真实内网网卡地址按 IP 归并：回环（本机调试 / 自动化）多开不能并成一台
+    const ip = normalizeIp(remoteAddr);
+    const mergeIp = isMergeableIp(ip) ? ip : '';
 
     // 落盘判定（设计 §5.2）：心跳态（reported/lastSeenAt/ackedSeq）仅内存；
     // 注册、模式翻转、desired 清除才写盘。dirty 在 mutate 回调内同步置位。
     let dirty = false;
     const result = await mutate((d) => {
-      let dev = d.devices.find((x) => x.id === deviceId);
+      // 设备 id 或别名命中同一条档案（同一台机器的另一个浏览器使用不同 id）
+      let dev = d.devices.find((x) => x.id === deviceId) ||
+        d.devices.find((x) => (x.aliases || []).includes(deviceId));
+      // 已有多条同 IP 档案：合并为一条，避免控制台出现两行
+      if (dev && mergeIp && !(dev.aliases || []).includes(deviceId)) {
+        const dup = d.devices.find((x) => x.id !== dev.id && x.remoteIp === mergeIp);
+        if (dup) {
+          dev = mergeDevices(d, dev, dup);
+          dirty = true;
+        }
+      }
+      // 全新的 id 但同一 IP 已有在线档案：作为别名并入，不新增设备
+      if (!dev && mergeIp) {
+        const sameIp = d.devices.find((x) => x.remoteIp === mergeIp);
+        if (sameIp) {
+          dev = sameIp;
+          dev.aliases = Array.from(new Set([...(dev.aliases || []), deviceId]))
+            .filter((a) => a !== dev.id);
+          dirty = true;
+          log(`[ctl] ${deviceId} 与 ${dev.id} 同一 IP（${mergeIp}），并入同一设备`);
+        }
+      }
       if (!dev) {
         if (d.devices.length >= MAX_DEVICES) throw bad('设备档案已满，无法注册新设备');
         dev = normalizeDevice({
@@ -368,9 +440,11 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
     if (targetIds.includes('*')) return data.devices.slice();
     const found = [];
     for (const t of targetIds.map(String)) {
-      const dev = data.devices.find((x) => x.id === t);
+      // 兼容合并前控制台里遗留的别名 id：同一台机器的旧档案 id 也能下发
+      const dev = data.devices.find((x) => x.id === t) ||
+        data.devices.find((x) => (x.aliases || []).includes(t));
       if (!dev) throw bad(`设备「${t}」不存在或尚未注册`);
-      found.push(dev);
+      if (!found.includes(dev)) found.push(dev);
     }
     return found;
   }
@@ -426,6 +500,8 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
           id: d.id,
           name: d.name,
           kind: d.kind,
+          // 同一台机器合并掉的旧档案 id（排障用：控制台仍以主 id 操作）
+          aliases: d.aliases || [],
           appVersion: d.appVersion,
           managed: d.managed,
           desired: d.desired,

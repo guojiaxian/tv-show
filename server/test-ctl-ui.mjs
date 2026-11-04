@@ -299,6 +299,14 @@ function attachPageLog(page, errors, tag) {
     (!dev1a.desired || dev1a.desired.seq < dev2a.desired.seq), { dev2: dev2a.desired, dev1: dev1a.desired });
   const pendingShown = await page2.evaluate(() => !!document.querySelector('#deviceList .chip.pending'));
   check('下发后列表立即出现「待送达」角标', pendingShown);
+  // 回归：卡片下拉/底部下拉获得焦点时，列表曾整体停止重渲染，必须手动点「刷新」
+  // 才能看到「远程控制」；这里要求下发后不刷新页面也能在 0.6s 内自动切换。
+  const remoteNow = await waitUntil(() => page2.evaluate(() => {
+    const card = Array.from(document.querySelectorAll('#deviceList .card'))
+      .find((c) => c.querySelector('.kind').textContent === 'TV');
+    return !!card && Array.from(card.querySelectorAll('.st .chip')).some((x) => x.textContent === '远程控制');
+  }), { timeout: 600, interval: 100, label: '即时变远程控制' });
+  check('下发后卡片即时由「本地控制」变为「远程控制」（无需手动刷新）', remoteNow);
   const b2 = await beat2({ state: { mode: 'page', entryId: 'env-monitor' } });
   check('二号电视心跳领到指令（模拟电视端 beat）', b2.json.desired && b2.json.desired.cmd === 'show', b2.json);
 

@@ -610,11 +610,15 @@ footer select {
     return card;
   }
 
-  function renderDevices() {
+  function renderDevices(force) {
     var host = els.deviceList;
-    // 用户正在卡片下拉里选页面时跳过本轮重渲染（3s 自动刷新不打断操作，下一轮再刷）
+    // 用户正在某张卡片的下拉里选页面时，只暂缓重建这一张卡（其余卡片与状态照常刷新）。
+    // 旧实现直接整体 return：下拉一旦获得焦点，列表就不再自动更新，
+    // 必须手动点「刷新」或点击别处才会看到「远程控制」等状态变化。
     var ae = document.activeElement;
-    if (ae && ae.tagName === 'SELECT' && host.contains(ae)) return;
+    var focusCard = ae && ae.tagName === 'SELECT' && host.contains(ae)
+      ? ae.closest('.card') : null;
+    var focusId = !force && focusCard ? focusCard.dataset.deviceId : null;
 
     if (!state.devices.length) {
       host.innerHTML = '';
@@ -668,7 +672,7 @@ footer select {
     devices.forEach(function (d) {
       var sig = deviceSignature(d, entriesSig);
       var card = state.deviceCards[d.id];
-      if (!card || card.__sig !== sig) {
+      if (!card || (card.__sig !== sig && d.id !== focusId)) {
         var fresh = buildDeviceCard(d);
         fresh.__sig = sig;
         if (card && card.parentNode) card.parentNode.replaceChild(fresh, card);
@@ -711,6 +715,20 @@ footer select {
     }).filter(function (d) { return d && d.online !== 'online'; });
   }
 
+  /**
+   * 下发成功后的即时反馈：先把服务端必然产生的状态改到本地并重绘，
+   * 再走一轮轮询对齐真实结果。避免「已下发却还显示本地控制，要手动刷新」。
+   */
+  function applySentLocally(cmd, ids) {
+    var isDisplay = ['show', 'rotate', 'zone', 'home'].indexOf(cmd) >= 0;
+    state.devices.forEach(function (d) {
+      if (ids.indexOf(d.id) < 0) return;
+      if (isDisplay) d.managed = true; // 展示类指令 = 强制接管（与服务端一致）
+      d.pending = true;
+    });
+    renderDevices(true);
+  }
+
   async function sendCmd(cmd, args, explicit) {
     var t = explicit || targets();
     if (!t) { toast('请先勾选目标设备'); return false; }
@@ -733,6 +751,7 @@ footer select {
         return false;
       }
       toast('已下发「' + cmd + '」→ ' + json.results.length + ' 台设备（≤3 秒生效）');
+      applySentLocally(cmd, t);
       refresh();
       return true;
     } catch (e) {
@@ -1184,6 +1203,11 @@ footer select {
   els.devOnline.addEventListener('change', function () {
     state.filter.status = this.value;
     renderDevices();
+  });
+
+  // 卡片下拉失焦后立即补一次渲染（聚焦期间暂缓的那张卡不再等到下一轮轮询）
+  els.deviceList.addEventListener('focusout', function () {
+    setTimeout(function () { renderDevices(); }, 0);
   });
 
   refreshEntries();
