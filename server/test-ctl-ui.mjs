@@ -190,6 +190,35 @@ function attachPageLog(page, errors, tag) {
     catch (e) { return true; }
   }), { timeout: 7000, label: '极速关闭' });
   check('控制台可再次下发关闭极速模式', turboOff);
+  const consoleBackOff = await waitUntil(() => page2.evaluate((id) => {
+    const b = document.querySelector(`[data-device-id="${id}"] .turbo-btn`);
+    return !!b && b.textContent === '极速：关';
+  }, deviceId), { timeout: 8000, label: '控制台回到关' });
+  check('控制台按钮随心跳回落为关', consoleBackOff);
+
+  /* ---------- 客户端本机切换极速：状态必须回流到控制台 ---------- */
+  // 回归：deviceSignature 曾漏掉 reported.turbo，本机切换后卡片不重建，控制台永远显示旧状态
+  await page1.bringToFront();
+  await page1.click('#btnMore');
+  await page1.waitForFunction(() => !document.getElementById('moreMenu').hidden, null, { timeout: 2000 });
+  await page1.click('#btnTurbo');
+  await page2.bringToFront();
+  const localOn = await waitUntil(() => page2.evaluate((id) => {
+    const b = document.querySelector(`[data-device-id="${id}"] .turbo-btn`);
+    return !!b && b.textContent === '极速：开';
+  }, deviceId), { timeout: 9000, label: '本机切换上报·开' });
+  check('客户端本机开启极速后，控制台卡片状态回流为开', localOn);
+
+  await page1.bringToFront();
+  await page1.click('#btnMore');
+  await page1.waitForFunction(() => !document.getElementById('moreMenu').hidden, null, { timeout: 2000 });
+  await page1.click('#btnTurbo');
+  await page2.bringToFront();
+  const localOff = await waitUntil(() => page2.evaluate((id) => {
+    const b = document.querySelector(`[data-device-id="${id}"] .turbo-btn`);
+    return !!b && b.textContent === '极速：关';
+  }, deviceId), { timeout: 9000, label: '本机切换上报·关' });
+  check('客户端本机关闭极速后，控制台卡片状态回流为关', localOff);
 
 
   // 控制台不注册为受控设备

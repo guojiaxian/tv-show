@@ -432,6 +432,8 @@ footer select {
     return JSON.stringify([
       d.name, d.kind, !!d.managed, d.online || '', d.ip || '', d.appVersion || '',
       !!d.pending, (d.reported && d.reported.lastError) || '',
+      // 极速开关状态必须参与签名：否则设备本机切换后卡片不重建，按钮与点击取反都停在旧值
+      !!(d.reported && d.reported.turbo),
       summary(d), !!state.selected[d.id], entriesSig
     ]);
   }
