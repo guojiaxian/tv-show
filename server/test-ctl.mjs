@@ -240,22 +240,10 @@ const beat = (deviceId, extra = {}) => api('POST', '/api/ctl/beat', { deviceId, 
   check('更新不存在设备 404', r.status === 404);
 
   r = await api('DELETE', '/api/ctl/device/dev-bbbb2222');
-  check('删除设备受理', r.status === 200);
-  const removed = r.json.blocked;
-  check('删除写入墓碑并保留设备名', !!removed && removed.id === 'dev-bbbb2222' && !!removed.name, removed);
-  r = await beat('dev-bbbb2222', { kind: 'tablet' });
-  check('已删除设备心跳被拦截（不重新注册）', r.json.blocked === true, r.json);
-  r = await api('GET', '/api/ctl/devices');
-  check('已删除设备不再出现在控制列表',
-    !r.json.devices.some((d) => d.id === 'dev-bbbb2222') &&
-    r.json.blocked.some((b) => b.id === 'dev-bbbb2222'));
-  r = await api('POST', '/api/ctl/device/dev-bbbb2222/restore', {});
-  check('恢复已移除设备受理', r.status === 200, r);
+  check('删除设备受理（仅暂时移除）', r.status === 200);
   r = await beat('dev-bbbb2222', { kind: 'tablet' });
   r = await api('GET', '/api/ctl/devices');
-  check('恢复后下次心跳重新注册', r.json.devices.some((d) => d.id === 'dev-bbbb2222'));
-  r = await api('POST', '/api/ctl/device/dev-none/restore', {});
-  check('恢复不存在的已移除设备 404', r.status === 404);
+  check('删除后下次心跳自动重新注册', r.json.devices.some((d) => d.id === 'dev-bbbb2222'));
 
   /* ---------- 10.5 脱离即交还：设备端 switchTo local 自动翻转为本地控制 ---------- */
   // 干净起点：下发 show 并 ack（受控态）

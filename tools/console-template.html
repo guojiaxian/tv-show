@@ -196,7 +196,6 @@ footer select {
     <option value="local">本地控制</option>
   </select>
   <span class="filters-count" id="devCount"></span>
-  <button class="btn" id="btnBlocked" hidden title="查看已移除设备并恢复到控制列表">已移除 <span id="blockedCount">0</span></button>
 </div>
 
 <main id="deviceList"></main>
@@ -228,7 +227,6 @@ footer select {
     btnSceneSave: $('btnSceneSave'), btnSceneManage: $('btnSceneManage'),
     deviceList: $('deviceList'), selInfo: $('selInfo'), selEntry: $('selEntry'),
     devSearch: $('devSearch'), devKind: $('devKind'), devOnline: $('devOnline'), devCount: $('devCount'),
-    btnBlocked: $('btnBlocked'), blockedCount: $('blockedCount'),
     btnRotate: $('btnRotate'), btnZone: $('btnZone'), btnHome: $('btnHome'),
     btnRelease: $('btnRelease'), btnRefreshCmd: $('btnRefreshCmd'),
     btnSync: $('btnSync'), btnAll: $('btnAll'), mask: $('mask'),
@@ -237,7 +235,6 @@ footer select {
 
   var state = {
     devices: [], scenes: [], entries: [], selected: {}, deviceCards: {},
-    blocked: [],
     filter: { q: '', kind: '', status: '' }
   };
   /** 3s 轮询防重入：请求未返回时不再叠加下一次 */
@@ -319,9 +316,7 @@ __API_JS__
       var json = await api('GET', '/api/ctl/devices');
       state.devices = json.devices || [];
       state.scenes = json.scenes || [];
-      state.blocked = json.blocked || [];
       els.serverChip.textContent = '· ' + state.devices.length + ' 台设备';
-      renderBlockedButton();
       renderDevices();
       renderScenes();
     } catch (e) {
@@ -379,12 +374,6 @@ __API_JS__
     }
     if (r.mode === 'settings') return '本机设置';
     return r.mode || '—';
-  }
-
-  /** 已移除设备入口：仅有墓碑时显示（数量即恢复列表长度） */
-  function renderBlockedButton() {
-    els.blockedCount.textContent = String(state.blocked.length);
-    els.btnBlocked.hidden = state.blocked.length === 0;
   }
 
   /** 当前筛选条件下可见的设备（默认全部） */
@@ -556,11 +545,11 @@ __API_JS__
     rel.textContent = '取消控制';
     rel.addEventListener('click', function () { releaseCmd([d.id]); });
     ops.appendChild(rel);
-    // 删除：从控制列表移除并写墓碑，在线设备的心跳不会把它重新带回来
+    // 删除：仅从列表暂时移除，设备下次心跳会自动重新出现
     var del = document.createElement('button');
     del.className = 'btn danger del-btn';
     del.textContent = '删除';
-    del.title = '从控制列表移除该设备（可在「已移除」中恢复）';
+    del.title = '从列表暂时移除该设备（下次心跳会自动重新出现）';
     del.addEventListener('click', function () { deleteDeviceDialog(d); });
     ops.appendChild(del);
 
@@ -916,11 +905,11 @@ __API_JS__
     });
   }
 
-  /* ============================ 设备删除 / 恢复 ============================ */
+  /* ============================ 设备删除 ============================ */
 
-  /** 删除设备：确认后写入墓碑，避免在线设备下一拍心跳（≤3 秒）重新出现 */
+  /** 删除设备：仅从列表暂时移除，设备下次心跳（≤3 秒）会自动重新出现 */
   function deleteDeviceDialog(d) {
-    confirmModal('删除设备', '将「' + d.name + '」从控制列表移除；它的心跳会被忽略，不会自动重新出现（可在顶部「已移除」中恢复）。', [
+    confirmModal('删除设备', '将「' + d.name + '」从控制列表暂时移除；设备下次心跳（≤3 秒）会自动重新出现。', [
       { text: '取消' },
       {
         text: '删除', danger: true, run: async function () {
@@ -928,61 +917,12 @@ __API_JS__
             await api('DELETE', '/api/ctl/device/' + encodeURIComponent(d.id));
             delete state.selected[d.id];
             renderSelInfo();
-            await refresh();
-            // 二次确认服务端确实已移除；若仍存在则明确提示，不假装成功
-            if (state.devices.some(function (x) { return x.id === d.id; })) {
-              toast('删除未生效：服务端仍有该设备，请刷新后重试');
-            } else {
-              toast('已删除：' + d.name);
-            }
+            toast('已移除：' + d.name + '（下次心跳自动回到列表）');
+            refresh();
           } catch (e) { toast('删除失败：' + e.message); }
         }
       }
     ]);
-  }
-
-  /** 已移除设备：恢复后下一次心跳重新注册 */
-  function blockedDialog() {
-    formModal('已移除设备', '这些设备的心跳已被忽略，不会出现在控制列表；恢复后下一次心跳（≤3 秒）重新注册。', function (body, foot) {
-      if (!state.blocked.length) {
-        var none = document.createElement('div');
-        none.className = 'empty';
-        none.textContent = '暂无已移除设备';
-        body.appendChild(none);
-      }
-      state.blocked.forEach(function (b) {
-        var row = document.createElement('div');
-        row.className = 'row';
-        var info = document.createElement('div');
-        info.className = 'grow';
-        var nm = document.createElement('b');
-        nm.textContent = b.name;
-        info.appendChild(nm);
-        var idText = document.createElement('span');
-        idText.style.cssText = 'color:var(--muted);font-size:12px;';
-        idText.textContent = '  ' + b.id + (b.addr ? ' · ' + b.addr : '');
-        info.appendChild(idText);
-        row.appendChild(info);
-        var restore = document.createElement('button');
-        restore.className = 'btn restore-btn';
-        restore.textContent = '恢复';
-        restore.addEventListener('click', async function () {
-          try {
-            await api('POST', '/api/ctl/device/' + encodeURIComponent(b.id) + '/restore', {});
-            toast('已恢复：' + b.name + '（等待设备下次心跳）');
-            closeModal();
-            refresh();
-          } catch (e) { toast('恢复失败：' + e.message); }
-        });
-        row.appendChild(restore);
-        body.appendChild(row);
-      });
-      var close = document.createElement('button');
-      close.className = 'btn';
-      close.textContent = '关闭';
-      close.addEventListener('click', closeModal);
-      foot.appendChild(close);
-    });
   }
 
   /* ============================ 场景 ============================ */
@@ -1162,7 +1102,6 @@ __API_JS__
     if (e.key === 'Escape' && !els.mask.hidden) closeModal();
   });
   els.btnReload.addEventListener('click', refresh);
-  els.btnBlocked.addEventListener('click', blockedDialog);
   els.selEntry.addEventListener('change', function () {
     var id = els.selEntry.value;
     if (!id) return;

@@ -9,8 +9,7 @@
  *   POST /api/ctl/release           控制端「取消控制」：managed=false + desired 清空
  *   GET  /api/ctl/devices           设备列表（含在线判定 / 待送达标记）
  *   PUT  /api/ctl/device/:id        改名 / 开关 bootRestore
- *   DELETE /api/ctl/device/:id      从控制列表移除（写入墓碑，心跳不再重新注册）
- *   POST /api/ctl/device/:id/restore 恢复已移除设备（下一次心跳重新注册）
+ *   DELETE /api/ctl/device/:id      从控制列表暂时移除（设备下次心跳会自动重新注册）
  *   POST /api/ctl/scenes            保存场景（直接传 steps 或快照当前现场）
  *   POST /api/ctl/scenes/:id/apply  应用场景（逐台下发，seq 逐台自增）
  *   PUT  /api/ctl/scenes/:id        场景重命名
@@ -74,29 +73,7 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
   /* ---------- 数据层 ---------- */
 
   function seedData() {
-    return { seq: 0, devices: [], scenes: [], blocked: [] };
-  }
-
-  /** 已移除设备（墓碑）：保留名称用于「恢复」列表，后续心跳不再重新注册 */
-  function normalizeBlocked(raw) {
-    if (!Array.isArray(raw)) return [];
-    const seen = new Set();
-    const out = [];
-    for (const b of raw) {
-      if (!b || typeof b !== 'object') continue;
-      const id = String(b.id || '');
-      if (!DEVICE_ID_PATTERN.test(id) || seen.has(id)) continue;
-      seen.add(id);
-      out.push({
-        id,
-        name: String(b.name || `新设备-${id.slice(-4)}`).slice(0, 60),
-        // 删除时一并记下类型与来源 IP：设备清缓存/重装后换了新 id，也能按同 IP + 同类型拦住
-        kind: ALLOWED_KINDS.includes(b.kind) ? b.kind : 'pc',
-        addr: String(b.addr || ''),
-        removedAt: b.removedAt || new Date().toISOString()
-      });
-    }
-    return out;
+    return { seq: 0, devices: [], scenes: [] };
   }
 
   function normalizeDevice(raw) {
@@ -110,8 +87,6 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
       kind,
       appVersion: String(raw.appVersion || '').slice(0, 20),
       registeredAt: raw.registeredAt || new Date().toISOString(),
-      // 最近一次心跳来源 IP（落盘）：离线设备被删除后，仍可按 IP 兜底拦住换 id 的重新注册
-      lastAddr: String(raw.lastAddr || ''),
       managed: raw.managed === true,
       desired: normalizeDesired(raw.desired),
       ackedSeq: Number.isFinite(Number(raw.ackedSeq)) ? Number(raw.ackedSeq) : 0,
@@ -158,13 +133,11 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
         const scenes = Array.isArray(parsed.scenes)
           ? parsed.scenes.map(normalizeScene).filter(Boolean)
           : [];
-        const blocked = normalizeBlocked(parsed.blocked);
-        const active = devices.filter((d) => !blocked.some((b) => b.id === d.id));
         const seq = Math.max(0, Number(parsed.seq) || 0);
         // seq 不得小于任何已下发 desired 的 seq，否则旧指令会被判为“已送达”
-        const maxSeq = active.reduce((m, d) => Math.max(m, d.desired ? d.desired.seq : 0), 0);
-        data = { seq: Math.max(seq, maxSeq), devices: active, scenes, blocked };
-        log(`[ctl] 已加载 ${file}（设备=${active.length}，已移除=${blocked.length}，场景=${scenes.length}，seq=${data.seq}）`);
+        const maxSeq = devices.reduce((m, d) => Math.max(m, d.desired ? d.desired.seq : 0), 0);
+        data = { seq: Math.max(seq, maxSeq), devices, scenes };
+        log(`[ctl] 已加载 ${file}（设备=${devices.length}，场景=${scenes.length}，seq=${data.seq}）`);
         return;
       } catch (e) {
         log(`[ctl] ${file} 解析失败：${e.message}`);
@@ -178,14 +151,12 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
   function persist() {
     const snapshot = {
       seq: data.seq,
-      blocked: data.blocked,
       devices: data.devices.map((d) => ({
         id: d.id,
         name: d.name,
         kind: d.kind,
         appVersion: d.appVersion,
         registeredAt: d.registeredAt,
-        lastAddr: d.lastAddr || '',
         managed: d.managed,
         desired: d.desired,
         ackedSeq: d.ackedSeq
@@ -291,39 +262,12 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
     return raw.startsWith('::ffff:') ? raw.slice(7) : raw;
   }
 
-  /**
-   * 是否属于「已移除设备」。
-   * 1) 同 deviceId：直接拦截（常规路径，重启/重装都稳定）；
-   * 2) 新 deviceId：同 IP + 同类型也拦截——浏览器清缓存、无痕模式会换 id，
-   *    否则删除后下一拍心跳就会以「新设备-xxxx」重新注册。
-   *    已存在的其他设备不受影响；回环地址（自动化测试）不做 IP 兜底。
-   */
-  function isRemovedDevice(deviceId, kind, remoteAddr) {
-    if (data.blocked.some((b) => b.id === deviceId)) return true;
-    const ip = normalizeIp(remoteAddr);
-    if (!ip || ip === '::1' || ip.startsWith('127.')) return false;
-    if (data.devices.some((d) => d.id === deviceId)) return false; // 不误伤同 IP 的既有设备
-    return data.blocked.some((b) => b.addr === ip && b.kind === kind);
-  }
-
   async function handleBeat(body, remoteAddr) {
     const deviceId = String(body.deviceId || '').trim();
     if (!DEVICE_ID_PATTERN.test(deviceId)) {
       throw bad('deviceId 格式应为小写字母/数字/短横线（≤64 字符）');
     }
     const kind = ALLOWED_KINDS.includes(body.kind) ? body.kind : 'pc';
-    // 已从控制台移除：心跳照常响应（避免设备端报错），但不再注册、不再出现在列表
-    if (isRemovedDevice(deviceId, kind, remoteAddr)) {
-      log(`[ctl] 拦截已移除设备心跳：${deviceId}（${kind} @ ${normalizeIp(remoteAddr)}）`);
-      return {
-        ok: true,
-        blocked: true,
-        managed: false,
-        desired: null,
-        serverTime: Date.now(),
-        content: getContentVersion ? getContentVersion() : null
-      };
-    }
     const state = body.state && typeof body.state === 'object' ? body.state : { mode: 'home' };
     const ackedSeq = Number.isFinite(Number(body.ackedSeq)) ? Number(body.ackedSeq) : 0;
     const boot = body.boot === true;
@@ -349,13 +293,8 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
       // 身份字段每次心跳刷新（appVersion 可随升级变化；name 不覆盖，以档案为准）
       dev.kind = kind;
       dev.appVersion = String(body.appVersion || '').slice(0, 20);
-      // 连接来源 IP（内存 + 变化时落盘；控制台展示与「删除后 IP 兜底」都用它）
-      const ip = normalizeIp(remoteAddr);
-      dev.remoteIp = ip;
-      if (ip && ip !== dev.lastAddr) {
-        dev.lastAddr = ip;
-        dirty = true;
-      }
+      // 连接来源 IP（仅内存，随 DHCP 变化属正常；控制台展示用）
+      dev.remoteIp = normalizeIp(remoteAddr);
       dev.reported = state;
       const prevLastSeen = dev.lastSeenAt; // 回归判定要用「上一次」心跳时间
       dev.lastSeenAt = Date.now();
@@ -495,9 +434,7 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
           reported: d.reported
         })),
       // 场景随列表一并下发（控制屏一次轮询拿全，避免第二个接口）
-      scenes: data.scenes,
-      // 已移除设备：控制台提供「恢复」入口，恢复后下次心跳重新注册
-      blocked: data.blocked
+      scenes: data.scenes
     };
   }
 
@@ -514,34 +451,13 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
     });
   }
 
+  /** 从控制列表移除：仅删除档案；设备下次心跳（≤3 秒）会自动重新注册 */
   async function handleDeviceDelete(id) {
     return mutate((d) => {
       const idx = d.devices.findIndex((x) => x.id === id);
       if (idx < 0) throw new HttpError(404, `设备「${id}」不存在`);
-      const dev = d.devices[idx];
       d.devices.splice(idx, 1);
-      // 写入墓碑：否则在线设备下一拍心跳（≤3 秒）就会重新注册
-      const entry = {
-        id: dev.id,
-        name: dev.name,
-        kind: dev.kind,
-        addr: normalizeIp(dev.remoteIp || dev.lastAddr), // 供新 id 的 IP 兜底拦截使用
-        removedAt: new Date().toISOString()
-      };
-      d.blocked = d.blocked.filter((b) => b.id !== dev.id).concat(entry);
-      log(`[ctl] 移除设备：${dev.id}「${dev.name}」（${dev.kind} @ ${entry.addr || '-'}）`);
-      return { ok: true, deleted: dev.id, blocked: entry };
-    });
-  }
-
-  /** 恢复已移除设备：从墓碑移除，下一次心跳（≤3 秒）重新注册 */
-  async function handleDeviceRestore(id) {
-    return mutate((d) => {
-      const before = d.blocked.length;
-      d.blocked = d.blocked.filter((b) => b.id !== id);
-      if (d.blocked.length === before) throw new HttpError(404, `已移除列表中没有设备「${id}」`);
-      log(`[ctl] 恢复设备：${id}（下次心跳重新注册）`);
-      return { ok: true, restored: id };
+      return { ok: true, deleted: id };
     });
   }
 
@@ -816,12 +732,6 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
       }
     }
 
-    const restoreMatch = p.match(/^\/api\/ctl\/device\/([^/]+)\/restore$/);
-    if (restoreMatch && method === 'POST') {
-      sendJson(res, 200, await handleDeviceRestore(decodeURIComponent(restoreMatch[1])), CORS);
-      return;
-    }
-
     const deviceMatch = p.match(/^\/api\/ctl\/device\/([^/]+)$/);
     if (deviceMatch) {
       const id = decodeURIComponent(deviceMatch[1]);
@@ -844,7 +754,6 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
       online: data.devices.filter((d) => onlineOf(d.lastSeenAt) === 'online').length,
       managed: data.devices.filter((d) => d.managed).length,
       scenes: data.scenes.length,
-      blocked: data.blocked.length,
       seq: data.seq
     };
   }
