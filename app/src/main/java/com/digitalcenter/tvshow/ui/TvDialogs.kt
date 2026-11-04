@@ -43,6 +43,8 @@ object TvDialogs {
     ): Dialog {
         val binding = DialogConfirmBinding.inflate(LayoutInflater.from(context))
         val dialog = prepare(context, binding.root, CONFIRM_WIDTH_DP)
+        // 确认框只能由「确定 / 取消」关闭：BACK 键不直接退出，避免误触取消正在进行的操作
+        dialog.setCancelable(false)
 
         binding.dialogTitle.text = title
         binding.dialogMessage.text = message

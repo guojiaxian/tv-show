@@ -566,6 +566,10 @@ function attachPageLog(page, errors, tag) {
     Array.from(target.querySelectorAll('.ops .btn')).find((b) => b.textContent === '重命名').click();
   });
   await page2.waitForTimeout(200);
+  // 控制台所有弹窗共用同一遮罩：点击遮罩空白处不应关闭，只能按「保存 / 取消 / 关闭」
+  await page2.mouse.click(5, 5);
+  const modalAfterOutside = await page2.evaluate(() => !document.getElementById('mask').hidden);
+  check('控制台弹窗点击遮罩不关闭', modalAfterOutside);
   await page2.fill('.modal input[type="text"]', '二号电视');
   await page2.click('.modal footer .btn.primary');
   const renamedDev = await waitUntil(async () => (await deviceOf(DEV2)).name === '二号电视', { label: '设备重命名' });
