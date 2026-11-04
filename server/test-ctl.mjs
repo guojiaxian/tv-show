@@ -62,6 +62,15 @@ const beat = (deviceId, extra = {}) => api('POST', '/api/ctl/beat', { deviceId, 
   r = await api('GET', '/api/ctl/devices');
   check('在线判定 online（刚心跳过）', r.json.devices.every((d) => d.online === 'online'), r.json.devices.map((d) => d.online));
 
+  // 回归：曾按来源 IP 自动归并，路由器 NAT 后会把多台设备误并成一台。
+  // 设备身份只认 deviceId，同一来源 IP 的不同 id 必须各自成行。
+  r = await api('GET', '/api/ctl/devices');
+  check('同一来源 IP 的不同 deviceId 各自成行（不按 IP 归并）',
+    r.json.devices.length === 3 &&
+    new Set(r.json.devices.map((d) => d.id)).size === 3 &&
+    new Set(r.json.devices.map((d) => d.ip)).size === 1,
+    r.json.devices.map((d) => ({ id: d.id, ip: d.ip })));
+
   /* ---------- 2. 下发 → 领取 → ack 闭环 ---------- */
   r = await api('POST', '/api/ctl/send', { targets: ['dev-aaaa1111'], cmd: 'show', args: { entryId: 'storage-monitor' } });
   check('send show 受理（返回 seq）', r.status === 200 && r.json.ok && r.json.seq > 0, r);
@@ -373,6 +382,8 @@ const beat = (deviceId, extra = {}) => api('POST', '/api/ctl/beat', { deviceId, 
       disk.devices.every((d) => d.reported === undefined && d.lastSeenAt === undefined));
     check('落盘保留 managed/desired',
       disk.devices.every((d) => 'managed' in d));
+    check('落盘不含按 IP 归并遗留字段（aliases / lastIp）',
+      disk.devices.every((d) => d.aliases === undefined && d.lastIp === undefined));
   }
 
   /* ---------- 汇总 ---------- */
