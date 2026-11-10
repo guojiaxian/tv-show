@@ -62,6 +62,11 @@ const beat = (deviceId, extra = {}) => api('POST', '/api/ctl/beat', { deviceId, 
   r = await api('GET', '/api/ctl/devices');
   check('在线判定 online（刚心跳过）', r.json.devices.every((d) => d.online === 'online'), r.json.devices.map((d) => d.online));
 
+  // 心跳 content 携带页面指纹表：客户端据此在目标页重新发布（URL 不变）时自动重载
+  const beatResp = await beat('dev-aaaa1111');
+  check('心跳 content 携带页面指纹表 pages（用于页面改版自动重载）',
+    beatResp.json.content && typeof beatResp.json.content.pages === 'object', beatResp.json.content);
+
   // 回归：曾按来源 IP 自动归并，路由器 NAT 后会把多台设备误并成一台。
   // 设备身份只认 deviceId，同一来源 IP 的不同 id 必须各自成行。
   r = await api('GET', '/api/ctl/devices');

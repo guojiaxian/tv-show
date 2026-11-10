@@ -107,6 +107,13 @@ object ControlChannel {
     @Volatile
     private var lastSyncKickAt = 0L
 
+    /**
+     * 服务端探测到的各页面指纹（content.pages）：页面重新发布后 ETag 变化，
+     * 正在显示该页的 Activity 据此自动重载。空对象 = 尚未探测/目标页无校验头。
+     */
+    @Volatile
+    private var pageStamps: JSONObject? = null
+
     /** 最近应用的展示指令 {cmd,args}：现场本地操作偏离它即自动交还（v6） */
     @Volatile
     private var lastApplied: JSONObject? = null
@@ -157,6 +164,15 @@ object ControlChannel {
     }
 
     fun deviceId(): String? = deviceId
+
+    /**
+     * 服务端上报的页面指纹（页面重新发布后变化）。
+     * 返回 null 表示服务端尚未探测到 / 该页未提供 ETag（无法判断改版）。
+     */
+    fun pageStamp(entryId: String): String? {
+        val s = pageStamps?.optString(entryId).orEmpty()
+        return s.ifEmpty { null }
+    }
 
     /* ---------------- 状态上报（各 Activity 调用） ---------------- */
 
@@ -362,6 +378,8 @@ object ControlChannel {
         //    失败期间每拍重试。
         val content = json.optJSONObject("content")
         if (content != null) {
+            // 页面指纹：URL 不变、页面重新制作发布时也能被识别（展示页据此自动重载）
+            pageStamps = content.optJSONObject("pages") ?: pageStamps
             val snap = ConfigRepository.snapshot()
             val stale = content.optLong("version", snap.version) != snap.version ||
                 content.optLong("epoch", snap.epoch) != snap.epoch

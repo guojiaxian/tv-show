@@ -73,6 +73,9 @@ class WebDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
         private const val BLANK_CHECK_DELAY_MS = 4000L
         private const val BLANK_CHECK_ROUNDS = 2
 
+        /** 运行期巡检间隔：管理后台改配置 / 目标页重新发布后自动生效 */
+        private const val LIVE_REFRESH_MS = 2000L
+
         /** 探测页面是否「有内容」：至少 2 个已渲染且尺寸正常的元素 */
         private const val BLANK_PROBE_SCRIPT =
             "(function(){try{var b=document.body;if(!b)return 0;" +
@@ -132,6 +135,22 @@ class WebDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
 
     /** 注入脚本只读一次：轮询/刷新反复读 assets 没有意义 */
     private val scripts = AssetScriptCache(this, TAG)
+
+    /** 当前页加载时的服务端页面指纹：目标页重新发布（ETag 变化）后据此自动重载 */
+    private var loadedPageStamp: String? = null
+
+    /**
+     * 运行期巡检（每 2 秒，仅在前台）：
+     *  1) 配置有更新（管理后台改了地址/缩放/兼容等）→ 按新配置重载当前页；
+     *  2) 服务端探测到目标页重新发布 → 自动重载，无需人工按【刷新】。
+     */
+    private val liveRefreshTick = object : Runnable {
+        override fun run() {
+            applyLatestConfig()
+            checkPageStamp()
+            handler.postDelayed(this, LIVE_REFRESH_MS)
+        }
+    }
 
     /** 每秒刷新轮询倒计时指示 */
     private val rotationTick = object : Runnable {
@@ -504,6 +523,8 @@ class WebDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
         // 换页/重新加载：重置视口校准计数（校准自身触发的 reload 不走这里）
         calibrationReloads = 0
         viewportText = ""
+        // 记录本次加载对应的页面指纹：之后指纹变化即「页面重新发布」，触发自动重载
+        loadedPageStamp = ControlChannel.pageStamp(e.id)
         if (viaTurbo) Log.i(TAG, "极速模式：加载服务端截图包装页 $target")
         else if (viaCompatProxy) Log.i(TAG, "兼容转译：改经服务端代理加载 $target")
         showLoading()
@@ -845,6 +866,9 @@ class WebDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
     override fun onResume() {
         super.onResume()
         webView.onResume()
+        // 运行期巡检：配置变更 / 页面改版自动生效（前台才跑，后台不耗电）
+        handler.removeCallbacks(liveRefreshTick)
+        handler.post(liveRefreshTick)
         if (rotationActive) {
             syncRotationSettings()
             scheduleRotation()
@@ -887,6 +911,69 @@ class WebDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
     }
 
     /**
+     * 配置有更新时把新配置应用到正在显示的画面（管理后台保存后 ≤3 秒生效）：
+     * 当前入口的地址/缩放/自动适配/兼容转译/极速等字段变化 → 按新配置重载；
+     * 只有无关页面变化 → 不重载，避免无谓闪烁。
+     */
+    private fun applyLatestConfig() {
+        val latest = ConfigRepository.snapshot()
+        if (latest.version == config.version && latest.entries == config.entries) return
+        config = latest
+
+        if (rotationActive) {
+            val latestEntries = LocalSettings.rotationEntries(config, rotationSetting)
+            if (latestEntries.isEmpty()) {
+                Toast.makeText(this, R.string.rotation_unavailable, Toast.LENGTH_LONG).show()
+                finish()
+                return
+            }
+            rotationEntries = latestEntries
+            rotationIndex = rotationIndex.coerceIn(0, latestEntries.lastIndex)
+            val target = rotationEntries[rotationIndex]
+            if (target != entry) {
+                entry = target
+                Log.i(TAG, "轮询页配置已更新，自动重载：${target.id}")
+                startLoad()
+                showInfoOverlay()
+            }
+            return
+        }
+
+        val id = entry?.id ?: return
+        val latestEntry = config.entryOf(id)
+        if (latestEntry == null) {
+            Toast.makeText(this, R.string.entry_unavailable, Toast.LENGTH_LONG).show()
+            finish()
+            return
+        }
+        if (latestEntry != entry) {
+            entry = latestEntry
+            Log.i(TAG, "页面配置已更新，自动按新配置重载：${latestEntry.id}")
+            startLoad()
+            showInfoOverlay()
+        }
+    }
+
+    /**
+     * 服务端探测到目标页指纹变化（页面重新发布，URL 不变）→ 自动重载。
+     * 极速模式由服务端重载采集页（新帧自动推给包装页），客户端不必重载。
+     */
+    private fun checkPageStamp() {
+        val e = entry ?: return
+        if (e.isCamera) return
+        val stamp = ControlChannel.pageStamp(e.id) ?: return
+        if (loadedPageStamp == null) {
+            loadedPageStamp = stamp // 首次拿到指纹只记基线，不重载
+            return
+        }
+        if (stamp == loadedPageStamp) return
+        loadedPageStamp = stamp
+        Log.i(TAG, "服务端检测到页面已更新（指纹 $stamp），自动重载：${e.id}")
+        if (viaTurbo) return // 截图页由服务端刷新
+        reloadPage()
+    }
+
+    /**
      * 内容同步可能在本页运行期间完成（心跳触发 ConfigRepository 强制同步）。
      * 轮询切页前对齐一次快照，保证删除的页面被跳过、新增/改名页面按最新配置使用。
      */
@@ -904,6 +991,7 @@ class WebDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
         // 按 HOME / 切后台后不再自动切页，避免后台持续加载 WebView
         handler.removeCallbacks(rotationAdvance)
         handler.removeCallbacks(rotationTick)
+        handler.removeCallbacks(liveRefreshTick)
         webView.onPause()
         super.onPause()
     }

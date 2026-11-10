@@ -447,6 +447,36 @@ function createShot({ getEntries, dataDir, log }) {
     }
   }
 
+  /**
+   * 页面改版（服务端探测到 ETag 变化）：重载正在采集的页面。
+   * 极速模式是常驻无头浏览器在截图，页面重新发布后它也会一直停在旧版。
+   */
+  async function reloadIfActive(id) {
+    if (!pw || stopping) return;
+    const st = states.get(id);
+    if (!st || !st.page || st.status === 'stopped' || st.status === 'paused') return;
+    const entry = entryById(id);
+    if (!entry) return;
+    const prev = st.status;
+    st.status = 'starting'; // 让 cycle 在重载期间跳过，避免截图撞上半加载页面
+    if (st.timer) {
+      clearTimeout(st.timer);
+      st.timer = null;
+    }
+    try {
+      await st.page.goto(entry.url, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS });
+      await st.page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
+      st.status = 'active';
+      st.retryAfter = 0;
+      st.loginFails = 0;
+      logOf(`[shot] ${id} 页面已更新，采集页已重载`);
+    } catch (e) {
+      st.status = prev === 'starting' ? 'active' : prev;
+      logOf(`[shot] ${id} 页面更新重载失败：${e.message}`);
+    }
+    scheduleNext(st, entry, Date.now());
+  }
+
   /** 有观看者出现：按当前状态决定冷启动 / 热恢复 */
   function touchEntry(id) {
     if (!pw || stopping) return;
@@ -629,7 +659,7 @@ function createShot({ getEntries, dataDir, log }) {
     await Promise.allSettled(closers);
   }
 
-  return { isShotPath, handle, status, start, stop };
+  return { isShotPath, handle, status, start, stop, reloadIfActive };
 }
 
 module.exports = { createShot };

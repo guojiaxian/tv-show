@@ -69,6 +69,8 @@ class ZoneDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
         private const val FLASH_FADE_MS = 320L
         /** 视口不达标时最多重载几次（校准密度因子用） */
         private const val MAX_CALIBRATION_RELOADS = 2
+        /** 运行期巡检间隔：配置改了 / 页面重新发布后四格自动生效 */
+        private const val LIVE_REFRESH_MS = 2000L
     }
 
     private var config: RemoteConfig = ConfigLoader.defaultConfig()
@@ -104,6 +106,18 @@ class ZoneDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
     private var flashToken = 0
     /** 注入脚本只读一次：四格重载时反复读 assets 没有意义 */
     private val scripts = AssetScriptCache(this, TAG)
+
+    /** 每格页面加载时的服务端指纹：页面重新发布后据此自动重载该格 */
+    private val loadedStamps = HashMap<Int, String?>()
+
+    /** 运行期巡检（每 2 秒，仅在前台）：配置变更与页面改版自动生效 */
+    private val liveRefreshTick = object : Runnable {
+        override fun run() {
+            refreshConfigIfChanged()
+            checkPageStamps()
+            handler.postDelayed(this, LIVE_REFRESH_MS)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -303,8 +317,30 @@ class ZoneDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
         if (slot.status.parent == null) slot.container.addView(slot.status)
     }
 
+    /** 服务端探测到某格页面已重新发布 → 只重载该格（极速模式由服务端刷新截图页） */
+    private fun checkPageStamps() {
+        val turbo = LocalSettings.turbo(this).enabled
+        slots.values.forEach { slot ->
+            val entry = cellEntries.getOrNull(slot.position) ?: return@forEach
+            if (entry.isCamera) return@forEach
+            val stamp = ControlChannel.pageStamp(entry.id) ?: return@forEach
+            val prev = loadedStamps[slot.position]
+            if (prev == null) {
+                loadedStamps[slot.position] = stamp // 首次拿到指纹只记基线
+                return@forEach
+            }
+            if (stamp == prev) return@forEach
+            loadedStamps[slot.position] = stamp
+            if (turbo && entry.turboEnabled) return@forEach // 截图页由服务端重载
+            Log.i(TAG, "服务端检测到页面已更新（$stamp），自动重载分区 ${entry.id}")
+            loadZone(slot, entry)
+        }
+    }
+
     private fun loadZone(slot: ZoneSlot, entry: DisplayEntry) {
         val webView = slot.webView ?: return
+        // 记录本次加载对应的页面指纹，之后变化即触发自动重载
+        loadedStamps[slot.position] = ControlChannel.pageStamp(entry.id)
         // 新一轮加载：先清掉上一轮的错误态，成功/失败由回调重新判定
         slot.hasError = false
         if (slot.status.parent === slot.container) slot.container.removeView(slot.status)
@@ -606,6 +642,9 @@ class ZoneDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
         super.onResume()
         slots.values.forEach { it.webView?.onResume() }
         refreshConfigIfChanged()
+        // 运行期巡检：配置变更 / 页面改版自动生效（前台才跑）
+        handler.removeCallbacks(liveRefreshTick)
+        handler.post(liveRefreshTick)
         // 多设备互控：上报 2×2 四格内容摘要
         ControlChannel.reportZone(cellEntries.map { it?.id.orEmpty() })
     }
@@ -617,20 +656,22 @@ class ZoneDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
     private fun refreshConfigIfChanged() {
         val latest = ConfigRepository.snapshot()
         if (latest.version == config.version && latest.entries == config.entries) return
-        val oldIds = cellEntries.map { it?.id }
+        val oldEntries = cellEntries
         config = latest
         zoneSettings = LocalSettings.zones(this)
         val latestEntries = LocalSettings.zoneEntries(config, zoneSettings)
-        if (latestEntries.map { it?.id } == oldIds) return
+        // 整对象比较：地址/缩放/自动适配/兼容转译等字段改了也要按新配置重载该格
+        if (latestEntries == oldEntries) return
         cellEntries = latestEntries
         for (pos in 0 until ZONE_COUNT) {
-            if (oldIds.getOrNull(pos) != latestEntries.getOrNull(pos)?.id) renderCell(pos)
+            if (oldEntries.getOrNull(pos) != latestEntries.getOrNull(pos)) renderCell(pos)
         }
         updateHint()
         flashZone(activePosition)
     }
 
     override fun onPause() {
+        handler.removeCallbacks(liveRefreshTick)
         slots.values.forEach { it.webView?.onPause() }
         super.onPause()
     }

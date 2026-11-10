@@ -36,6 +36,7 @@ const { createProxy } = require('./proxy');
 const camera = require('./camera');
 const { createShot } = require('./shot');
 const { createCtl } = require('./ctl');
+const { createPageWatch } = require('./page-watch');
 const { HttpError, sendJson, CORS } = require('./http-util');
 const { createStore } = require('./store');
 const { createRouter } = require('./routes');
@@ -84,6 +85,8 @@ let proxy = null;
 let shot = null;
 /** 多设备互控 · 控制通道（设备档案 / 心跳 / 指令 / 场景） */
 let ctl = null;
+/** 页面改版探测：页面重新发布（ETag/Last-Modified 变化）后通知客户端自动重载 */
+let pageWatch = null;
 
 /** 路由层：页面托管 + 客户端/管理接口（运行期模块在 start() 内创建，按需取值） */
 const router = createRouter({
@@ -126,12 +129,25 @@ function start() {
   });
   shot.start();
 
+  // 页面改版探测：目标页重新发布（URL 不变）后，正在显示它的电视自动重载；
+  // 极速模式的常驻截图页同步重载（shot 可用时）
+  pageWatch = createPageWatch({
+    getEntries: () => data.entries,
+    onChange: (id) => (shot ? shot.reloadIfActive(id) : Promise.resolve()),
+    log: (msg) => console.log(msg)
+  });
+  pageWatch.start();
+
   // 多设备互控 · 控制通道（零依赖，devices.json 独立于 config.json）
   ctl = createCtl({
     dataDir: DATA_DIR,
     getEntries: () => data.entries,
-    // 心跳响应携带内容版本：客户端发现落后即立即强制同步（Web 保存后 ≤3 秒全场生效）
-    getContentVersion: () => ({ version: data.version, epoch: data.epoch }),
+    // 心跳响应携带内容版本与页面指纹：客户端发现落后即立即强制同步 / 重载当前页
+    getContentVersion: () => ({
+      version: data.version,
+      epoch: data.epoch,
+      pages: pageWatch ? pageWatch.snapshot() : {}
+    }),
     log: (msg) => console.log(msg)
   });
 
@@ -205,6 +221,7 @@ function start() {
     }, 800);
     forceClose.unref();
 
+    try { if (pageWatch) pageWatch.stop(); } catch (e) { /* 忽略 */ }
     // 先杀 ffmpeg 转码进程（同步），再关 Chromium 上下文/浏览器（异步，限时 2.5s）
     try { camera.stopAll(); } catch (e) { console.warn(`[sys] 停止摄像头转码失败：${e.message}`); }
     try {

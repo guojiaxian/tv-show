@@ -18,7 +18,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
-const SUITES = ['test-api.mjs', 'test-admin.mjs', 'test-sync.mjs', 'test-proxy.mjs', 'test-camera.mjs', 'test-shot.mjs', 'test-ctl.mjs', 'test-ctl-ui.mjs'];
+const SUITES = ['test-api.mjs', 'test-admin.mjs', 'test-sync.mjs', 'test-proxy.mjs', 'test-camera.mjs', 'test-shot.mjs', 'test-ctl.mjs', 'test-ctl-ui.mjs', 'test-page-watch.mjs'];
 
 const freePort = () => new Promise((resolve, reject) => {
   const probe = net.createServer();
