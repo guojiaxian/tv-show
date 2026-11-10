@@ -21,8 +21,8 @@ android {
         minSdk = 23
         targetSdk = 34
         // 小米电视覆盖安装要求 versionCode 严格递增，禁止回退
-        versionCode = 23
-        versionName = "2.0"
+        versionCode = 24
+        versionName = "2.1"
     }
 
     signingConfigs {
