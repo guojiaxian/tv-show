@@ -196,18 +196,20 @@ systemctl restart tvshow && curl -s localhost:18000/api/admin/health     # 看 m
 #### 5.5.4 播放页（自动 + 手动，2.3）
 
 - **CSS 兼容底线同样是 Chrome 66**：绝对定位必须写显式 `top/right/bottom/left:0`，**不能用 `inset`**（Chrome 87+ 才支持）——否则 `#stage` 会塌缩成 0×0，电视端整屏纯黑，而控制台预览（新浏览器）正常（2026-11-12 现场踩过，`test-media` 已加断言）。
-- 分页播放器：双缓冲两张 `<img>`（换页时新图 `onload` 后才切 z-index，避免白闪）、预加载下一页、到末页环绕、左下角页码指示。
-- **自动播放**：按 `interval`（3–3600s，默认 10，来自指令 `intervalSec` 或弹层「每页停留」）定时翻页。
+- 分页播放器：双缓冲两张 `<img>`（换页时新图 `onload` 后才切 z-index，避免白闪）、预加载下一页、左下角页码指示。
+- **默认手动翻页**：`auto=0`，不建定时器，页码指示显示「手动翻页」；遥控器 `←/→` 或页内按钮手动翻。
+- **自动播放**：控制台「自动翻页」显式下发 `auto=true` + `intervalSec`（3–3600s，默认 10）+ `loop`；`loop=false` 到末页停止并显示「已到末页」，`loop=true` 环绕。自动模式才显示暂停按钮，`空格`/确定可暂停继续；手动模式忽略这些切换。
+- **兼容旧客户端（关键）**：电视 2.3 / 旧网页只加载 `/view?interval=N`，不带 auto/loop。服务端在 ctl 下发 media 时调用 `media.setPlayback(mediaId, {auto, intervalSec, loop})`，`/view` 未显式带参时沿用该记录（预览显式 `?auto=0` 强制手动）。新增播放参数时必须维护这条链路，否则老客户端永远只能手动。
 - **手动播放**（2.3）：右下角控制条 `◀ 上一页 / 暂停-播放 / 下一页 ▶`；键盘 `←/→` 翻页、`空格` 暂停/继续；电视端遥控器由 `MediaDisplayActivity` 把 `←/→/确定` 转发进 `__tvMediaNav('prev'|'next'|'toggle')`。
   - 暂停后页码静止（页码指示显示「已暂停」）；**手动翻页保持暂停态**；恢复自动时以当前时刻重新计时（不会立刻跳页）。
   - 受控锁定优先：远程被控时手动翻页键照常被 `interceptKeyLocked` 拦下（属展示操作），**【返回】放行**。
-- 调试/测试钩子（生产也保留，体积可忽略）：`window.__tvMediaState()` 返回闭包真值 `{page, auto, cur, PAGES}`；`window.__tvMediaLog` 记录每次 `go()`（`via: tick|btn|key|nav`）。
+- 调试/测试钩子（生产也保留，体积可忽略）：`window.__tvMediaState()` 返回 `{page, auto, cur, PAGES, mode:'manual'|'auto', loop, ended}`；`window.__tvMediaLog` 记录每次 `go()`（`via: tick|btn|key|nav`）。
 - 图片页：全屏 `<img>` + `object-fit:contain`（黑底不变形，GIF 动图原生播放），加载失败 3s 自动重试。视频页：`<video>` + 失败重试 + `play()` 兜底。不可用素材：直接显示 `reason` 文案（含装哪个工具）。
 
 #### 5.5.5 互控集成
 
 - `media` 是**展示类指令**（`ctl.js` 的 `DISPLAY_CMDS`）：自动置 `managed=true`、`desired` 覆盖不排队、回归即本地控制、可入场景（本地设备把 `reported.mode==='media'` 转 media step）。
-- 参数：`{mediaId 必填, intervalSec? 3–3600}`；服务端下发时校验素材存在性（删除后 400）。
+- 参数：`{mediaId 必填, intervalSec? 3–3600, auto? 默认 false, loop? 默认 true}`；服务端下发时校验素材存在性（删除后 400）。
 - **脱离语义依赖 `lastApplied`**：电脑端 `applyCommand` 与电视端 `ControlChannel.followsCommand` 的展示类判定**都必须含 media**——漏掉会导致「本地操作偏离素材画面」不自动交还（曾漏过，test-media-ui 已覆盖）。
 - 状态上报 `mode:'media' + mediaId`：电视端 `ControlChannel.reportMedia()`；电脑端 `currentState()` 里 `state.entry.isMedia` 分支。控制台设备卡摘要显示「素材：xxx」（在固定四项 在线/模式/版本/IP 之后，无上报不显示）。
 - 旧客户端（<2.2 APK / 旧网页）收到 `media` 会**如实上报「客户端不支持指令（版本过旧）」**（`CommandApplier` 的 unknown 分支 / Web 的 else 分支）——排查「下发没生效」先看设备卡摘要与版本 chip。
@@ -216,10 +218,11 @@ systemctl restart tvshow && curl -s localhost:18000/api/admin/health     # 看 m
 #### 5.5.6 控制台上传 / 预览
 
 - 入口：设备卡右侧「素材上墙」（单台）与底部操作条「素材上墙」（勾选集）。
-- 弹层：选择文件（隐藏 input + 自定义按钮）→ XHR 上传带字节进度 → **就绪后自动下发**（图片/视频立即；分页素材轮询 `ready` 后自动，无需再点）；列表每行：缩略图 + 素材名（页数/大小）+ 类型 chip + 转换状态（含百分比）+「预览」+「上墙」+「删除」；「每页停留」下拉（5/10/15/20/30/60，默认 10）。
+- 弹层：选择文件（隐藏 input + 自定义按钮）→ XHR 上传带字节进度 → 分页素材轮询转换进度，**就绪后不再自动下发**；列表每行：缩略图 + 素材名（页数/大小）+ 类型 chip + 转换状态（含百分比）+「预览」+「上墙」（手动翻页，默认）+「自动翻页」（仅多页分页素材，弹框设置间隔/循环）+「删除」。
+- **自动翻页弹框**：素材弹层之上的嵌套层（`#mediaAutoMask`，z-index 80），设置每页停留（3/5/10/15/20/30/60）与是否循环；确定后下发 `media {auto:true, intervalSec, loop}`，关闭设置层但保留素材弹层。
 - **退出上墙**：设备卡（仅 `reported.mode==='media'` 时显示）与素材弹层底部都有「退出上墙」；走 `POST /api/ctl/release {home:true}`——服务端先下发 `home`，设备 ack 后自动置 `managed=false`（**不能直接 release**，否则 desired 被清空，home 永远送不到设备）。设备端无需改动。
 - **列表有独立轮询**：`syncList()` 2.5s 刷新（弹层关闭自停）；上传成功后必须主动调用它，否则首传素材在列表里看不到、删除按钮无从点起（曾踩）。
-- 预览：缩略图走 `/media/<id>/preview`（图片=原图；分页=第 1 页；视频无预览，`onerror` 隐藏）；「预览」按钮与上墙后设备卡「素材：xxx」摘要都打开**同一预览浮层**（自建遮罩 z-index 70，高于素材弹层；16:9 iframe 内嵌同一播放页）。**Esc 必须只关预览浮层**（捕获阶段监听 + `stopPropagation`，见 §8）。预览与设备端不是逐帧镜像：分页素材各自按间隔翻页。
+- 预览：缩略图走 `/media/<id>/preview`（图片=原图；分页=第 1 页；视频无预览，`onerror` 隐藏）；「预览」按钮与上墙后设备卡「素材：xxx」摘要都打开**同一预览浮层**（自建遮罩 z-index 70，高于素材弹层；16:9 iframe 内嵌同一播放页，URL 固定 `?auto=0` 手动翻页）。**Esc 必须只关预览浮层**（捕获阶段监听 + `stopPropagation`，见 §8）。预览与设备端不是逐帧镜像：预览始终手动，设备端按控制台选择的方式播放。
 - 素材弹层复用了控制台通用 `formModal`：`#modalBox`，footer 按钮用 `.modal footer .btn` 定位；确认弹层用 `.confirm-btn`。
 - **删除素材不退出上墙弹层**：删除确认是素材弹层之上的嵌套确认层（`#mediaDelMask`，z-index 80），确认/取消只关确认层；**不要用通用 `confirmModal`**（它清空 `#modalBox`，会把整个上墙管理页面关掉）。
 
@@ -283,17 +286,17 @@ systemctl restart tvshow && curl -s localhost:18000/api/admin/health     # 看 m
 ## 7. 测试与验收
 
 ```bash
-node server/test-run.mjs          # 396 项：API 44 + 管理 20 + 同步 13 + 代理 42
-                                  # + 摄像头 17 + 极速 36 + 素材功能与性能 36 + 互控接口 84
-                                  # + 互控 UI 66 + 素材端到端 27 + 页面改版探测 11
+node server/test-run.mjs          # 410 项：API 44 + 管理 20 + 同步 13 + 代理 42
+                                  # + 摄像头 17 + 极速 36 + 素材功能与性能 42 + 互控接口 84
+                                  # + 互控 UI 66 + 素材端到端 35 + 页面改版探测 11
 ```
 
 - **必须跑隔离实例**：`test-run.mjs` 会自起临时端口 + 临时数据目录；直接打生产 `18000` 会改写现场数据。
 - UI 套件（`test-ctl-ui.mjs` / `test-media-ui.mjs`）依赖 `playwright-core` + Chromium；缺失时脚本打印 `SKIP` 并退出 0——**看到 SKIP 不等于通过**。
 - Kotlin 单测 19 项（LocalSettings / ConfigJson 往返 / ConfigClient.merge / CommandApplier 决策，含 media 指令映射与未知指令上报），CI 另跑 `lintDebug`。
 - **素材上墙两个套件**：
-  - `test-media.mjs`（36 项，服务端+性能）：上传/白名单 400/空体 400/超大 Content-Length 413/列表脱敏/删除/预览/分页图/Range 206+末尾 Range/播放页 ES5 与控制条/`progress` 相位断言（convert|raster，done≤total，完成 percent=100）/media 指令校验与闭环/场景 step/落盘权限 0600+0700/**性能基准**（20MB、60MB 上传，RSS 增长 <80MB，24 路并发分页图 <3s，播放页首字节 <500ms）。
-  - `test-media-ui.mjs`（27 项，双页面端到端）：控制台弹层上传 → **实时进度文本** → 就绪自动下发（含 intervalSec）→ 显示端内嵌播放页真实出图 → `reported.mode=media` → 卡片摘要「素材：xxx」→ 缩略图/预览浮层/Esc 分层关闭 → 本地操作自动交还 → 列表「上墙」→ 摘要点击预览 → 删除 → 分页首帧/自动翻页/暂停静止/手动翻页。
+  - `test-media.mjs`（42 项，服务端+性能）：上传/白名单 400/空体 400/超大 Content-Length 413/列表脱敏/删除/预览/分页图/Range 206+末尾 Range/播放页 ES5 与控制条/**默认手动 + 显式 auto/loop + 旧客户端沿用上墙方式**/`progress` 相位断言（convert|raster，done≤total，完成 percent=100）/media 指令校验与闭环/场景 step/落盘权限 0600+0700/**性能基准**（20MB、60MB 上传，RSS 增长 <80MB，24 路并发分页图 <3s，播放页首字节 <500ms）。
+  - `test-media-ui.mjs`（35 项，双页面端到端）：控制台弹层上传 → **实时进度文本** → 列表「上墙」手动模式（auto=false，4s 不自动翻页）→ 显示端内嵌播放页真实出图 → `reported.mode=media` → 卡片摘要「素材：xxx」→ 缩略图/预览浮层/Esc 分层关闭 → 本地操作自动交还 → 「自动翻页」弹框设置 5s+循环 → 自动翻页/暂停静止/手动翻页 → 不循环到末页停止 → 删除后不退出弹层。
 - **测试注意事项（都踩过）**：
   - 翻页断言用 `__tvMediaState()` 闭包真值，**不能只看 `ov` 文本**（`el.onload` 滞后一拍）；曾因测试里有**两次 `bNext` 点击**（2/3→3/3→环绕回 1/3）误判「手动翻页失效」，排查半天。加断言前先 `grep -c "bNext"`。
   - 播放页等待条件不要写成 `for (… && !ready)`：首拍拿到 `processing` 就退出会误判跳过。

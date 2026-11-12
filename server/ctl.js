@@ -64,7 +64,7 @@ const bad = (msg) => new HttpError(400, msg);
 
 /* ============================ 模块工厂 ============================ */
 
-function createCtl({ dataDir, getEntries, getMedia, getContentVersion, log = () => {} }) {
+function createCtl({ dataDir, getEntries, getMedia, setMediaPlayback, getContentVersion, log = () => {} }) {
   const DATA_FILE = path.join(dataDir, 'devices.json');
   const BACKUP_FILE = `${DATA_FILE}.bak`;
 
@@ -266,7 +266,8 @@ function createCtl({ dataDir, getEntries, getMedia, getContentVersion, log = () 
       if (!Number.isFinite(intervalSec) || intervalSec < 3 || intervalSec > 3600) {
         throw bad('素材翻页间隔需在 3–3600 秒之间');
       }
-      return { cmd, args: { mediaId, intervalSec } };
+      // 默认手动翻页（auto=false）；自动翻页需显式下发 auto=true，loop 默认循环
+      return { cmd, args: { mediaId, intervalSec, auto: args.auto === true, loop: args.loop !== false } };
     }
 
     // home / refresh / sync：无参数
@@ -397,6 +398,18 @@ function createCtl({ dataDir, getEntries, getMedia, getContentVersion, log = () 
 
   /* ---------- 下发 / 取消控制 ---------- */
 
+  /** 记录素材上墙方式：旧客户端只加载 /view?interval=N，由服务端补 auto/loop */
+  function rememberMediaPlayback(args) {
+    if (typeof setMediaPlayback !== 'function' || !args || !args.mediaId) return;
+    try {
+      setMediaPlayback(String(args.mediaId), {
+        auto: args.auto === true,
+        intervalSec: args.intervalSec,
+        loop: args.loop !== false
+      });
+    } catch (e) { /* 记录失败不影响指令下发 */ }
+  }
+
   function resolveTargets(targetIds) {
     if (!Array.isArray(targetIds) || !targetIds.length) throw bad('targets 不能为空');
     if (targetIds.includes('*')) return data.devices.slice();
@@ -413,6 +426,7 @@ function createCtl({ dataDir, getEntries, getMedia, getContentVersion, log = () 
     const { cmd, args } = validateCommand(String(body.cmd || ''), body.args);
     const targets = resolveTargets(body.targets);
     const isDisplay = DISPLAY_CMDS.includes(cmd);
+    if (cmd === 'media') rememberMediaPlayback(args);
     return mutate((d) => {
       d.seq += 1; // 同一批指令共享同一 seq
       const issuedAt = new Date().toISOString();
@@ -638,6 +652,7 @@ function createCtl({ dataDir, getEntries, getMedia, getContentVersion, log = () 
           results.push({ id: step.deviceId, ok: false, reason: 'offline-skipped' });
           continue;
         }
+        if (step.cmd === 'media') rememberMediaPlayback(step.args);
         d.seq += 1; // 场景应用逐台自增 seq（设计 §9.2）
         dev.managed = true;
         dev.desired = { seq: d.seq, cmd: step.cmd, args: step.args, issuedAt: new Date().toISOString() };

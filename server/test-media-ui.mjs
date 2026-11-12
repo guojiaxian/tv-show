@@ -154,14 +154,7 @@ function makePdf3() {
     !!document.querySelector('#modalBox input[type="file"]')), { label: '弹层' });
   check('点击设备卡「素材上墙」弹出上传弹层（含文件选择与素材列表）', modalOpen);
 
-  // 上传前记录每页停留间隔控件默认值
-  const intervalDefault = await page2.evaluate(() => {
-    const sel = document.querySelector('#modalBox select');
-    return sel ? Number(sel.value) : null;
-  });
-  check('每页停留间隔默认 10 秒', intervalDefault === 10, intervalDefault);
-
-  // Playwright 直接向 file input 填本地文件（等价于用户从本地选择素材）
+  // 上传不自动下发：图片行只提供「上墙」手动入口（自动翻页仅分页素材）
   await page2.setInputFiles('#modalBox input[type="file"]', {
     name: '现场海报.png',
     mimeType: 'image/png',
@@ -174,12 +167,27 @@ function makePdf3() {
   check('从弹层选择本地文件后素材自动上传入库', !!uploaded, uploaded && uploaded.name);
   const mediaId = uploaded && uploaded.id;
 
-  // 图片素材即时就绪 → 自动向目标设备下发 media 指令
+  const imageRow = await waitUntil(() => page2.evaluate(() => {
+    const btns = Array.from(document.querySelectorAll('#modalBox .row .btn'));
+    return {
+      manual: !!btns.find((b) => b.textContent === '上墙' && !b.disabled),
+      auto: !!btns.find((b) => b.textContent === '自动翻页' && !b.disabled)
+    };
+  }), { timeout: 8000, label: '素材行按钮' });
+  check('图片素材行提供「上墙」手动入口，不显示自动翻页', imageRow.manual && !imageRow.auto, imageRow);
+
+  // 手动上墙：显示后不自动翻页
+  await page2.evaluate(() => {
+    const btns = Array.from(document.querySelectorAll('#modalBox .row .btn'));
+    const send = btns.find((b) => b.textContent === '上墙' && !b.disabled);
+    if (send) send.click();
+  });
   const sent = await waitUntil(async () => {
     const d = await deviceOf(deviceId);
-    return !!(d && d.desired && d.desired.cmd === 'media' && d.desired.args.mediaId === mediaId);
-  }, { timeout: 8000, label: '自动下发' });
-  check('素材就绪后自动向目标设备下发 media 指令（无需再手点）', sent, await deviceOf(deviceId));
+    return !!(d && d.desired && d.desired.cmd === 'media' && d.desired.args.mediaId === mediaId &&
+      d.desired.args.auto === false);
+  }, { timeout: 8000, label: '手动上墙下发' });
+  check('点「上墙」下发手动模式（auto=false，不自动翻页）', sent, await deviceOf(deviceId));
   const managedNow = await waitUntil(async () => (await deviceOf(deviceId)).managed === true, { label: '接管' });
   check('media 为展示类指令：设备自动进入远程被控', managedNow);
 
@@ -248,9 +256,9 @@ function makePdf3() {
   });
   const resent = await waitUntil(async () => {
     const d = await deviceOf(deviceId);
-    return !!(d && d.desired && d.desired.cmd === 'media');
+    return !!(d && d.desired && d.desired.cmd === 'media' && d.desired.args.auto === false);
   }, { timeout: 8000, label: '手动上墙下发' });
-  check('素材列表「上墙」按钮可再次手动下发', resent);
+  check('素材列表「上墙」按钮可再次手动下发（auto=false）', resent);
 
   /* ---------- 上墙后控制台随时预览：关闭弹层 → 点设备卡「素材：xxx」摘要 ---------- */
   await page2.evaluate(() => {
@@ -319,9 +327,9 @@ function makePdf3() {
     if (close) close.click();
   });
 
-  /* ---------- 分页素材（PDF）：控制台上传 → 实时转换进度条 → 就绪自动下发 → 播放/暂停/手动 ---------- */
+  /* ---------- 分页素材（PDF）：上传 → 手动上墙（默认不翻页）→ 自动翻页设置 → 播放/暂停/循环 ---------- */
   {
-    // 打开设备卡「素材上墙」弹层（目标 = 该设备），每页停留设为 5s
+    // 打开设备卡「素材上墙」弹层（目标 = 该设备）
     await page2.evaluate((id) => {
       const card = document.querySelector(`[data-device-id="${id}"]`);
       Array.from(card.querySelectorAll('.ops .btn')).find((b) => b.textContent === '素材上墙').click();
@@ -329,9 +337,8 @@ function makePdf3() {
     await waitUntil(() => page2.evaluate(() =>
       !document.getElementById('mask').hidden && !!document.querySelector('#modalBox input[type="file"]')),
       { label: '素材弹层' });
-    await page2.selectOption('#modalBox select', '5');
 
-    // 从弹层上传 PDF（真实 UI 链路：上传 → 转换进度 → 就绪自动下发）
+    // 从弹层上传 PDF（真实 UI 链路：上传 → 转换进度 → 就绪后由用户选择上墙方式）
     await page2.setInputFiles('#modalBox input[type="file"]', {
       name: '翻页演示.pdf', mimeType: 'application/pdf', buffer: makePdf3()
     });
@@ -342,7 +349,6 @@ function makePdf3() {
     }), { timeout: 10000, interval: 100, label: '进度文本' });
     check('转换期间显示实时进度文本（相位/页数）', !!sawProgress, sawProgress);
 
-    // 就绪后自动下发（弹层在上传时已绑定目标，无需再手点）
     const mediaId2 = await waitUntil(async () => {
       const list = (await api('GET', '/api/media')).json.medias || [];
       const m = list.find((x) => x.name === '翻页演示.pdf');
@@ -351,94 +357,202 @@ function makePdf3() {
     check('PDF 转换完成（ready）', !!mediaId2, mediaId2);
 
     if (mediaId2) {
+      // 分页素材行应同时提供「上墙」与「自动翻页」
+      const pagedRow = await waitUntil(() => page2.evaluate(() => {
+        const btns = Array.from(document.querySelectorAll('#modalBox .row .btn'));
+        const st = {
+          manual: !!btns.find((b) => b.textContent === '上墙' && !b.disabled),
+          auto: !!btns.find((b) => b.textContent === '自动翻页' && !b.disabled)
+        };
+        return st.manual && st.auto ? st : false; // 等待两个按钮都渲染出来
+      }), { timeout: 8000, label: '分页素材按钮' });
+      check('分页素材行提供「上墙」与「自动翻页」两个入口', pagedRow.manual && pagedRow.auto, pagedRow);
+
+      /* ---------- 默认手动：点「上墙」后停在当前页，不自动翻页 ---------- */
+      await page2.evaluate(() => {
+        const btns = Array.from(document.querySelectorAll('#modalBox .row .btn'));
+        const send = btns.find((b) => b.textContent === '上墙' && !b.disabled);
+        if (send) send.click();
+      });
+      const manualSent = await waitUntil(async () => {
+        const d = await deviceOf(deviceId);
+        return !!(d && d.desired && d.desired.cmd === 'media' && d.desired.args.mediaId === mediaId2 &&
+          d.desired.args.auto === false);
+      }, { timeout: 8000, label: '手动上墙' });
+      check('分页素材点「上墙」下发手动模式（auto=false）', manualSent);
+
+      const t0 = Date.now();
+      const switched = await waitUntil(() => page1.evaluate((mid) => {
+        const f = document.querySelector('#frameViewport iframe');
+        return f && f.src.includes('/media/' + mid + '/view') && f.src.includes('interval=10');
+      }, mediaId2), { label: '切到分页素材' });
+      const firstPage = await waitUntil(() => page1.evaluate(() => {
+        const f = document.querySelector('#frameViewport iframe');
+        try {
+          // 双缓冲：首帧可能加载在 ca 或 cb 任一图层，不能只查第一个 img
+          const imgs = Array.from(f.contentDocument.querySelectorAll('#stage img'));
+          return imgs.some((img) => img.naturalWidth > 0);
+        } catch (e) { return false; }
+      }), { timeout: 8000, label: '首页渲染' });
+      const firstPageMs = Date.now() - t0;
+      let pageDbg = null;
+      if (!firstPage) {
+        pageDbg = await page1.evaluate(() => {
+          const f = document.querySelector('#frameViewport iframe');
+          try {
+            const d = f.contentDocument;
+            return {
+              ready: d.readyState,
+              body: (d.body && d.body.innerHTML || '').slice(0, 240),
+              imgs: Array.from(d.querySelectorAll('#stage img')).map((i) => ({
+                src: i.getAttribute('src'), nw: i.naturalWidth, complete: i.complete
+              })),
+              ov: d.getElementById('ov') ? d.getElementById('ov').textContent : ''
+            };
+          } catch (e) { return { err: String(e) }; }
+        });
+      }
+      check(`分页素材首帧 ${firstPageMs}ms（阈值 10s，含心跳领取 + 页面加载）`,
+        switched && firstPage && firstPageMs < 10000, { switched, firstPage, ms: firstPageMs, pageDbg });
+
+      const manualState = await page1.evaluate(() => {
+        const f = document.querySelector('#frameViewport iframe');
+        try { return f.contentDocument.defaultView.__tvMediaState(); } catch (e) { return null; }
+      });
+      check('手动模式：播放页 mode=manual / auto=false',
+        manualState && manualState.mode === 'manual' && manualState.auto === false, manualState);
+      await sleep(4000); // 超过最小自动间隔（3s），手动模式页码必须不动
+      const manualStill = await page1.evaluate(() => {
+        const f = document.querySelector('#frameViewport iframe');
+        try { return f.contentDocument.defaultView.__tvMediaState(); } catch (e) { return null; }
+      });
+      check('手动模式 4s 后仍停在第 1 页（默认不自动翻页）',
+        manualStill && manualStill.page === 1, manualStill);
+
+      /* ---------- 自动翻页：弹框设置间隔 5s + 循环，确定后开始自动播放 ---------- */
+      await page2.evaluate(() => {
+        const btns = Array.from(document.querySelectorAll('#modalBox .row .btn'));
+        const auto = btns.find((b) => b.textContent === '自动翻页' && !b.disabled);
+        if (auto) auto.click();
+      });
+      await page2.waitForSelector('#mediaAutoMask select', { timeout: 5000 });
+      await page2.selectOption('#mediaAutoMask select', '5');
+      const loopChecked = await page2.evaluate(() =>
+        document.querySelector('#mediaAutoMask input[type="checkbox"]').checked);
+      check('自动翻页弹框默认循环播放', loopChecked === true, loopChecked);
+      await page2.click('#mediaAutoMask .btn.primary');
+
       const autoSent = await waitUntil(async () => {
         const d = await deviceOf(deviceId);
         return !!(d && d.desired && d.desired.cmd === 'media' && d.desired.args.mediaId === mediaId2 &&
-          Number(d.desired.args.intervalSec) === 5);
-      }, { timeout: 8000, label: '自动下发' });
-      check('分页素材就绪后自动下发（含 intervalSec=5）', autoSent);
+          d.desired.args.auto === true && Number(d.desired.args.intervalSec) === 5 &&
+          d.desired.args.loop === true);
+      }, { timeout: 8000, label: '自动翻页下发' });
+      check('自动翻页确定后下发 auto=true / intervalSec=5 / loop=true', autoSent,
+        await deviceOf(deviceId));
 
-      const t0 = Date.now();
-      const switched = await waitUntil(() => page1.evaluate(() => {
+      const switchedAuto = await waitUntil(() => page1.evaluate((mid) => {
         const f = document.querySelector('#frameViewport iframe');
-        return f && f.src.includes('/media/') && f.src.includes('interval=5');
-      }), { label: '切到分页素材' });
-        const firstPage = await waitUntil(() => page1.evaluate(() => {
-          const f = document.querySelector('#frameViewport iframe');
-          try {
-            const img = f.contentDocument && f.contentDocument.querySelector('#stage img');
-            return !!img && img.naturalWidth > 0;
-          } catch (e) { return false; }
-        }), { timeout: 8000, label: '首页渲染' });
-        const firstPageMs = Date.now() - t0;
-        check(`分页素材首帧 ${firstPageMs}ms（阈值 10s，含心跳领取 ≤3s + 页面加载）`,
-          switched && firstPage && firstPageMs < 10000, { switched, firstPage, ms: firstPageMs });
+        return f && f.src.includes('/media/' + mid + '/view') && f.src.includes('interval=5');
+      }, mediaId2), { timeout: 10000, label: '切到自动播放' });
+      const autoState = await waitUntil(() => page1.evaluate(() => {
+        const f = document.querySelector('#frameViewport iframe');
+        try {
+          const st = f.contentDocument.defaultView.__tvMediaState();
+          return st && st.mode === 'auto' && st.auto === true ? st : false;
+        } catch (e) { return false; }
+      }), { timeout: 8000, label: '自动状态' });
+      check('显示端自动模式生效（mode=auto / auto=true）', switchedAuto && !!autoState, autoState);
 
-        const ov1 = await page1.evaluate(() => {
-          const f = document.querySelector('#frameViewport iframe');
-          try { return f.contentDocument.getElementById('ov').textContent; } catch (e) { return ''; }
-        });
-        // 5s 间隔自动翻页：10s 内页码指示必须从 1/3 推进到 2/3
-        const advanced = await waitUntil(() => page1.evaluate(() => {
-          const f = document.querySelector('#frameViewport iframe');
-          try { return f.contentDocument.getElementById('ov').textContent.includes('2/3'); } catch (e) { return false; }
-        }), { timeout: 10000, label: '自动翻页' });
-        check(`分页播放器自动翻页（${JSON.stringify(ov1)} → 2/3，5s 间隔 + 环路）`,
-          advanced, { ov1 });
-
-        /* ---------- 手动播放：暂停后页码静止，「下一页」立即手动翻页 ---------- */
-        await page1.evaluate(() => {
-          const f = document.querySelector('#frameViewport iframe');
-          f.contentDocument.getElementById('bPlay').click();
-        });
-        const paused = await waitUntil(() => page1.evaluate(() => {
-          const f = document.querySelector('#frameViewport iframe');
-          try { return f.contentDocument.getElementById('ov').textContent.includes('已暂停') ? true : false; }
-          catch (e) { return false; }
-        }), { label: '暂停' });
-        const pageAtPause = await page1.evaluate(() => {
-          const f = document.querySelector('#frameViewport iframe');
-          return f.contentDocument.getElementById('ov').textContent.match(/(\d)\/3/)[1];
-        });
-        await sleep(6500); // 超过一个自动翻页间隔
-        const stillAfterPause = await page1.evaluate(() => {
-          const f = document.querySelector('#frameViewport iframe');
-          return f.contentDocument.getElementById('ov').textContent;
-        });
-        check(`暂停自动翻页后页码静止（${pageAtPause}/3，6.5s 后仍为 ${stillAfterPause.trim()}）`,
-          paused && stillAfterPause.includes('已暂停') && stillAfterPause.includes(pageAtPause + '/3'),
-          { paused, pageAtPause, after: stillAfterPause });
-
-        // 手动翻页：只点一次「下一页」，用播放页状态钩子核对闭包真值（page/auto）
-        const expectNext = String((Number(pageAtPause) % 3) + 1);
-        await page1.evaluate(() => {
-          const f = document.querySelector('#frameViewport iframe');
-          f.contentDocument.getElementById('bNext').click();
-        });
-        const stAfter = await page1.evaluate(() => {
-          const f = document.querySelector('#frameViewport iframe');
-          return f.contentDocument.defaultView.__tvMediaState ? f.contentDocument.defaultView.__tvMediaState() : null;
-        });
-        const ovAfter = await page1.evaluate(() => {
-          const f = document.querySelector('#frameViewport iframe');
-          try { return f.contentDocument.getElementById('ov').textContent; } catch (e) { return 'ERR'; }
-        });
-        const manualNext = stAfter && stAfter.page === Number(expectNext) && stAfter.auto === false;
-        check(`暂停态下「下一页」手动翻页立即生效（${pageAtPause}/3 → ${expectNext}/3，保持暂停）`,
-          manualNext, { stAfter, ovAfter });
-        // 翻页后图片内容确实换新（当前页 img 已重新加载）
-        await api('POST', '/api/ctl/release', { targets: [deviceId] });
-        await waitUntil(async () => (await deviceOf(deviceId)).managed === false, { label: '交还' });
-      } else {
-        check('分页素材链路（环境无 pdftoppm，自适应跳过）', true, 'conversion unavailable');
-      }
-      // 清理：关闭弹层 + 删除测试素材（不影响后续断言）
-      await page2.evaluate(() => {
-        const btns = Array.from(document.querySelectorAll('#modalBox footer .btn'));
-        const close = btns.find((b) => b.textContent === '关闭');
-        if (close) close.click();
+      // 5s 间隔自动翻页：10s 内页码必须从 1/3 推进到 2/3
+      const advanced = await waitUntil(() => page1.evaluate(() => {
+        const f = document.querySelector('#frameViewport iframe');
+        try { return f.contentDocument.defaultView.__tvMediaState().page >= 2; } catch (e) { return false; }
+      }), { timeout: 12000, label: '自动翻页' });
+      const ovNow = await page1.evaluate(() => {
+        const f = document.querySelector('#frameViewport iframe');
+        try { return f.contentDocument.getElementById('ov').textContent; } catch (e) { return ''; }
       });
-      if (mediaId2) await api('DELETE', '/api/media/' + encodeURIComponent(mediaId2));
+      check(`自动翻页生效（5s 间隔推进到 2/3，当前 ${ovNow.trim()}）`, advanced, ovNow);
+
+      /* ---------- 手动播放：暂停后页码静止，「下一页」立即手动翻页 ---------- */
+      await page1.evaluate(() => {
+        const f = document.querySelector('#frameViewport iframe');
+        f.contentDocument.getElementById('bPlay').click();
+      });
+      const paused = await waitUntil(() => page1.evaluate(() => {
+        const f = document.querySelector('#frameViewport iframe');
+        try { return f.contentDocument.getElementById('ov').textContent.includes('已暂停') ? true : false; }
+        catch (e) { return false; }
+      }), { label: '暂停' });
+      const pageAtPause = await page1.evaluate(() => {
+        const f = document.querySelector('#frameViewport iframe');
+        return f.contentDocument.getElementById('ov').textContent.match(/(\d)\/3/)[1];
+      });
+      await sleep(6500); // 超过一个自动翻页间隔
+      const stillAfterPause = await page1.evaluate(() => {
+        const f = document.querySelector('#frameViewport iframe');
+        return f.contentDocument.getElementById('ov').textContent;
+      });
+      check(`暂停自动翻页后页码静止（${pageAtPause}/3，6.5s 后仍为 ${stillAfterPause.trim()}）`,
+        paused && stillAfterPause.includes('已暂停') && stillAfterPause.includes(pageAtPause + '/3'),
+        { paused, pageAtPause, after: stillAfterPause });
+
+      // 手动翻页：只点一次「下一页」，用播放页状态钩子核对闭包真值（page/auto）
+      const expectNext = String((Number(pageAtPause) % 3) + 1);
+      await page1.evaluate(() => {
+        const f = document.querySelector('#frameViewport iframe');
+        f.contentDocument.getElementById('bNext').click();
+      });
+      const stAfter = await page1.evaluate(() => {
+        const f = document.querySelector('#frameViewport iframe');
+        return f.contentDocument.defaultView.__tvMediaState ? f.contentDocument.defaultView.__tvMediaState() : null;
+      });
+      const ovAfter = await page1.evaluate(() => {
+        const f = document.querySelector('#frameViewport iframe');
+        try { return f.contentDocument.getElementById('ov').textContent; } catch (e) { return 'ERR'; }
+      });
+      const manualNext = stAfter && stAfter.page === Number(expectNext) && stAfter.auto === false;
+      check(`暂停态下「下一页」手动翻页立即生效（${pageAtPause}/3 → ${expectNext}/3，保持暂停）`,
+        manualNext, { stAfter, ovAfter });
+
+      /* ---------- 不循环：到末页自动停止 ---------- */
+      await page2.evaluate(() => {
+        const btns = Array.from(document.querySelectorAll('#modalBox .row .btn'));
+        const auto = btns.find((b) => b.textContent === '自动翻页' && !b.disabled);
+        if (auto) auto.click();
+      });
+      await page2.waitForSelector('#mediaAutoMask select', { timeout: 5000 });
+      await page2.selectOption('#mediaAutoMask select', '3');
+      await page2.uncheck('#mediaAutoMask input[type="checkbox"]');
+      await page2.click('#mediaAutoMask .btn.primary');
+      const noLoopEnd = await waitUntil(() => page1.evaluate(() => {
+        const f = document.querySelector('#frameViewport iframe');
+        try {
+          const st = f.contentDocument.defaultView.__tvMediaState();
+          return st && st.page === 3 && st.ended === true ? st : false;
+        } catch (e) { return false; }
+      }), { timeout: 15000, label: '末页停止' });
+      const endOv = await page1.evaluate(() => {
+        const f = document.querySelector('#frameViewport iframe');
+        try { return f.contentDocument.getElementById('ov').textContent; } catch (e) { return ''; }
+      });
+      check('不循环：自动翻到末页后停止并显示「已到末页」',
+        !!noLoopEnd && noLoopEnd.auto === false && noLoopEnd.loop === false && endOv.includes('已到末页'),
+        { noLoopEnd, ov: endOv });
+
+      await api('POST', '/api/ctl/release', { targets: [deviceId] });
+      await waitUntil(async () => (await deviceOf(deviceId)).managed === false, { label: '交还' });
+    } else {
+      check('分页素材链路（环境无 pdftoppm，自适应跳过）', true, 'conversion unavailable');
+    }
+    // 清理：关闭弹层 + 删除测试素材（不影响后续断言）
+    await page2.evaluate(() => {
+      const btns = Array.from(document.querySelectorAll('#modalBox footer .btn'));
+      const close = btns.find((b) => b.textContent === '关闭');
+      if (close) close.click();
+    });
+    if (mediaId2) await api('DELETE', '/api/media/' + encodeURIComponent(mediaId2));
   }
 
   /* ---------- 收尾 ---------- */

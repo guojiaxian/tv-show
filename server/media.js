@@ -156,6 +156,12 @@ function createMedia({ dataDir, log = () => {} }) {
 
   let registry = { medias: [] };
   let writeChain = Promise.resolve();
+  /**
+   * 每个素材最近一次「上墙方式」（手动/自动 + 间隔 + 循环）。
+   * 电视端 2.3 / 旧网页只会加载 /media/<id>/view?interval=N，不带 auto/loop，
+   * 服务端用这份记录补默认值，保证不升级 APK 也能按控制台选择的方式播放。
+   */
+  const playback = new Map();
 
   fs.mkdirSync(ASSET_DIR, { recursive: true, mode: 0o700 });
   try { fs.chmodSync(ASSET_DIR, 0o700); } catch (e) { /* 个别文件系统忽略 */ }
@@ -227,6 +233,16 @@ function createMedia({ dataDir, log = () => {} }) {
 
   const mediaOf = (id) => registry.medias.find((m) => m.id === id) || null;
   const exists = (id) => !!mediaOf(id);
+
+  /** 记录上墙方式（ctl 下发 media 指令时调用；只影响后续 /view 的默认值） */
+  function setPlayback(id, opts = {}) {
+    if (!mediaOf(id)) return;
+    playback.set(id, {
+      auto: opts.auto === true,
+      intervalSec: clampInterval(opts.intervalSec, DEFAULT_INTERVAL_SEC),
+      loop: opts.loop !== false
+    });
+  }
 
   /** 读取 PDF 总页数（poppler 的 pdfinfo；缺失/失败返回 0，进度退化为不确定） */
   async function pdfPageCount(file) {
@@ -438,6 +454,7 @@ function createMedia({ dataDir, log = () => {} }) {
     await mutate((d) => {
       d.medias = d.medias.filter((m) => m.id !== id);
     });
+    playback.delete(id);
     log(`[media] 已删除 ${media.name}`);
     return { ok: true, deleted: id };
   }
@@ -559,8 +576,13 @@ function createMedia({ dataDir, log = () => {} }) {
       }
 
       if (action === '/view') {
-        const interval = clampInterval(url.searchParams.get('interval'), media.intervalSec);
-        return sendView(res, media, interval);
+        const pb = playback.get(media.id) || null;
+        const interval = clampInterval(url.searchParams.get('interval'), pb ? pb.intervalSec : media.intervalSec);
+        // 默认手动翻页（auto=0）；未显式带参时沿用该素材最近一次上墙方式
+        //（兼容只传 interval 的旧客户端），显式 auto/loop 优先（预览强制手动）
+        const auto = parseBool(url.searchParams.get('auto'), pb ? pb.auto : false);
+        const loop = parseBool(url.searchParams.get('loop'), pb ? pb.loop : true);
+        return sendView(res, media, interval, auto, loop);
       }
       if (action === '/progress') {
         return sendJson(res, 200, progressOf(media), CORS);
@@ -591,6 +613,14 @@ function createMedia({ dataDir, log = () => {} }) {
     const n = Math.round(Number(v));
     if (!Number.isFinite(n)) return fallback || DEFAULT_INTERVAL_SEC;
     return Math.min(3600, Math.max(3, n));
+  }
+
+  function parseBool(v, fallback) {
+    if (v === null || v === undefined || v === '') return fallback;
+    const s = String(v).toLowerCase();
+    if (s === '1' || s === 'true' || s === 'yes') return true;
+    if (s === '0' || s === 'false' || s === 'no') return false;
+    return fallback;
   }
 
   function sendPage(res, id, n) {
@@ -669,15 +699,15 @@ function createMedia({ dataDir, log = () => {} }) {
   const esc = (s) => String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-  function sendView(res, media, interval) {
+  function sendView(res, media, interval, auto, loop) {
     res.writeHead(200, {
       'Content-Type': 'text/html; charset=utf-8',
       'Cache-Control': 'no-store'
     });
-    res.end(viewHtml(media, interval));
+    res.end(viewHtml(media, interval, auto, loop));
   }
 
-  function viewHtml(media, interval) {
+  function viewHtml(media, interval, auto, loop) {
     const base = '/media/' + encodeURIComponent(media.id);
     const head =
       '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">' +
@@ -729,22 +759,22 @@ function createMedia({ dataDir, log = () => {} }) {
         '</body></html>';
     }
 
-    /* ---------- 分页播放器（PDF / PPT / DOC）：双缓冲 + 自动翻页 + 手动控制 + 循环 ---------- */
+    /* ---------- 分页播放器（PDF / PPT / DOC）：双缓冲 + 手动/自动翻页 + 可配循环 ---------- */
     const pages = Math.max(1, media.pages || 1);
     return head +
       '<div id="stage"><img id="ca" alt=""><img id="cb" alt=""></div>' +
-      '<div id="ov">1/' + pages + ' · ' + interval + 's/页</div>' +
+      '<div id="ov">1/' + pages + ' · ' + (auto ? interval + 's/页' : '手动翻页') + '</div>' +
       '<div id="ctl">' +
       '<button id="bPrev" type="button">◀ 上一页</button>' +
-      '<button id="bPlay" type="button">暂停</button>' +
+      '<button id="bPlay" type="button"' + (auto ? '' : ' style="display:none"') + '>暂停</button>' +
       '<button id="bNext" type="button">下一页 ▶</button>' +
       '</div>' +
       '<script>' +
       '(function(){' +
-      'var PAGES=' + pages + ',IV=' + interval + ';' +
+      'var PAGES=' + pages + ',IV=' + interval + ',MODE_AUTO=' + (auto ? 1 : 0) + ',LOOP=' + (loop ? 1 : 0) + ';' +
       'var BASE="' + base + '";' +
       'var imgs=[document.getElementById("ca"),document.getElementById("cb")];' +
-      'var cur=0,page=1,timer=0,fails=0,auto=true;' +
+      'var cur=0,page=1,timer=0,fails=0,auto=!!MODE_AUTO,ended=false;' +
       'var ov=document.getElementById("ov");' +
       'var bPlay=document.getElementById("bPlay");' +
       'function urlOf(n){return BASE+"/page-"+n+".png?t="+(new Date()).getTime();}' +
@@ -752,26 +782,43 @@ function createMedia({ dataDir, log = () => {} }) {
       'im.onerror=function(){if(++fails>=6){clearInterval(timer);ov.innerHTML="页面加载失败";}' +
       'else setTimeout(function(){preload(n);},2000);};' +
       'im.src=urlOf(n);return im;}' +
-      'function paint(){ov.innerHTML=page+"/"+PAGES+" · "+(auto?IV+"s/页":"已暂停");}' +
+      'function paint(){var s=page+"/"+PAGES+" · ";' +
+      'if(ended)s+="已到末页";' +
+      'else if(!MODE_AUTO)s+="手动翻页";' +
+      'else if(!auto)s+="已暂停";' +
+      'else s+=IV+"s/页"+(LOOP?"":" · 不循环");' +
+      'ov.innerHTML=s;}' +
       'function show(n){' +
       'var el=imgs[1-cur];el.style.zIndex="3";imgs[cur].style.zIndex="2";' +
       'el.onload=function(){el.style.zIndex="3";cur=1-cur;paint();};' +
       'el.src=urlOf(n);}' +
       'function wrap(n){return (n-1+PAGES)%PAGES+1;}' +
-      'function restartTimer(){clearInterval(timer);if(auto){timer=setInterval(next,IV*1000);' +
+      'function restartTimer(){clearInterval(timer);if(auto&&!ended){timer=setInterval(next,IV*1000);' +
       'try{window.__tvMediaLog.push({at:Date.now(),ev:"intervalOn"});}catch(e){}}}' +
       'function next(){go(1,"tick");}' +
-      'function go(d,via){page=wrap(page+d);show(page);preload(wrap(page+d));restartTimer();blink();' +
+      'function go(d,via){' +
+      'var raw=page+d,target;' +
+      'if(raw>PAGES){' +
+      'if(!LOOP){if(via==="tick"){ended=true;auto=false;restartTimer();paint();blink();' +
+      'try{window.__tvMediaLog.push({at:Date.now(),ev:"end"});}catch(e){}return;}target=PAGES;}' +
+      'else target=1;' +
+      '}else if(raw<1){target=LOOP?PAGES:1;}else target=raw;' +
+      'if(via!=="tick")ended=false;' +
+      'if(target===page){restartTimer();paint();blink();return;}' +
+      'page=target;show(page);preload(wrap(page+d));restartTimer();blink();' +
       'try{window.__tvMediaLog.push({at:Date.now(),d:d,page:page,via:via||"?"});}catch(e){}}' +
       'window.__tvMediaLog=[];' +
-      'function setAuto(on){auto=on;bPlay.innerHTML=on?"暂停":"播放";' +
+      'function setAuto(on){if(!MODE_AUTO)return;' +
+      'if(on&&ended){page=1;show(page);preload(2>PAGES?1:2);}' +
+      'auto=on;ended=false;bPlay.innerHTML=on?"暂停":"播放";' +
       'try{window.__tvMediaLog.push({at:Date.now(),ev:"setAuto",auto:on});}catch(e){}' +
       'restartTimer();paint();blink();}' +
-      /* 手动播放入口（供电视端 Activity 转发遥控器按键；Web/预览用页内按钮与方向键） */
+      /* 手动/自动播放入口（电视端 Activity 转发遥控器按键；Web/预览用页内按钮与方向键） */
       'window.__tvMediaNav=function(act){' +
       'if(act==="prev")go(-1,"nav");else if(act==="next")go(1,"nav");else if(act==="toggle")setAuto(!auto,"nav");};' +
-      /* 状态钩子：测试与现场排查用（page 当前页 / auto 是否自动翻页 / cur 双缓冲位） */
-      'window.__tvMediaState=function(){return{page:page,auto:auto,cur:cur,PAGES:PAGES};};' +
+      /* 状态钩子：测试与现场排查用（mode=manual|auto / page / auto / loop / ended） */
+      'window.__tvMediaState=function(){return{page:page,auto:auto,cur:cur,PAGES:PAGES,' +
+      'mode:MODE_AUTO?"auto":"manual",loop:!!LOOP,ended:ended};};' +
       'function fit(){var im=new Image();im.onload=function(){show(1);preload(2>PAGES?1:2);};im.src=urlOf(1);}' +
       'document.getElementById("bPrev").onclick=function(){go(-1,"btn");};' +
       'document.getElementById("bNext").onclick=function(){go(1,"btn");};' +
@@ -780,9 +827,9 @@ function createMedia({ dataDir, log = () => {} }) {
       'var k=ev.key;' +
       'if(k==="ArrowLeft"){ev.preventDefault();go(-1,"key");}' +
       'else if(k==="ArrowRight"){ev.preventDefault();go(1,"key");}' +
-      'else if(k===" "||k==="Spacebar"){ev.preventDefault();setAuto(!auto,"key");}' +
+      'else if((k===" "||k==="Spacebar")&&MODE_AUTO){ev.preventDefault();setAuto(!auto,"key");}' +
       '},false);' +
-      'timer=setInterval(next,IV*1000);fit();' +
+      'if(MODE_AUTO)timer=setInterval(next,IV*1000);fit();' +
       /* 收到任何按键 / 点击时把信息浮层亮出来（现场确认当前页码），3 秒后淡出 */
       'var ovT=0;function blink(){ov.className="";clearTimeout(ovT);' +
       'ovT=setTimeout(function(){ov.className="hide";},3000);}' +
@@ -813,6 +860,8 @@ function createMedia({ dataDir, log = () => {} }) {
     status,
     /** 供 ctl 校验 media 指令目标是否存在 */
     exists,
+    /** 供 ctl 记录该素材最近一次上墙方式（手动/自动 + 间隔 + 循环） */
+    setPlayback,
     /** 供测试/运维核对 */
     _internals: { ASSET_DIR, REGISTRY_FILE, DEFAULT_INTERVAL_SEC, viewHtml }
   };

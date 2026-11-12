@@ -154,6 +154,8 @@ function start() {
     getEntries: () => data.entries,
     // media 指令（素材上墙）下发时校验素材存在性
     getMedia: () => (media ? media.exists : () => false),
+    // 记录素材最近一次上墙方式：旧客户端只加载 /view?interval=N，由服务端补 auto/loop
+    setMediaPlayback: (id, opts) => { if (media) media.setPlayback(id, opts); },
     // 心跳响应携带内容版本与页面指纹：客户端发现落后即立即强制同步 / 重载当前页
     getContentVersion: () => ({
       version: data.version,

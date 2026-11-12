@@ -50,13 +50,13 @@
 | POST | `/api/media/upload?name=<文件名>` | 上传素材，请求体为**原始文件字节**（非 multipart）。支持：图片 jpg/jpeg/png/gif/webp/bmp/svg、PDF、PPT/PPTX、DOC/DOCX、MP4/WebM；上限 200MB（超限 413）。图片/视频即时 `ready`，PDF/PPT 异步转换（`processing → ready/unsupported`） |
 | GET | `/api/media` | 素材列表（仅元数据：id/name/kind/label/size/pages/status/reason/createdAt） |
 | DELETE | `/api/media/:id` | 删除素材（含转换产物）；正在展示它的设备会看到「素材不存在」提示 |
-| GET | `/media/:id/view?interval=10` | **播放页**（ES5，Web 与 TV 两端共用）：图片全屏 / 分页定时翻页（3–3600s，默认 10）+ 手动播放（页内控制条、方向键/空格、电视端遥控器转发）/ 视频循环播放 |
+| GET | `/media/:id/view?interval=10&auto=0&loop=1` | **播放页**（ES5，Web 与 TV 两端共用）：图片全屏 / 分页**默认手动翻页**（`auto=0`）；`auto=1` 时按 `interval`（3–3600s，默认 10）自动翻页，`loop=0` 到末页停止 / `loop=1` 循环 / 视频循环播放。未显式带 auto/loop 时沿用该素材最近一次上墙方式（兼容旧客户端） |
 | GET | `/media/:id/progress` | 转换进度（实时）：`{status, phase: convert\|raster\|done, done, total, percent}`；raster 按「已生成页数/总页数」报确定百分比，convert（soffice）为不定长（percent=0）；列表接口每条素材同样携带 `progress` |
 | GET | `/media/:id/raw` | 原始文件（图片/视频）；支持 Range 请求（视频起播/拖动必需） |
 | GET | `/media/:id/page-N.png` | 分页图片（PDF/PPT/DOC 的转换产物，1 起） |
 | GET | `/media/:id/preview` | 预览图（图片→原图；分页→第 1 页；视频无预览 404） |
 
-互控 `media` 指令（展示类，自动接管）：`args = { mediaId 必填, intervalSec? 3–3600 }`；下发时校验素材存在性；可入场景。
+互控 `media` 指令（展示类，自动接管）：`args = { mediaId 必填, intervalSec? 3–3600, auto? 默认 false（手动翻页）, loop? 默认 true }`；下发时校验素材存在性；可入场景。控制台「上墙」下发 `auto:false`，「自动翻页」弹框下发 `auto:true + intervalSec + loop`。
 
 > 服务端接口只围绕**内容**（元信息 + 页面列表）。轮询与分区是客户端本机设置，服务端不提供对应接口。
 

@@ -529,7 +529,7 @@ __API_JS__
         smChip.className = 'chip sm-link';
         smChip.title = '点击预览该素材（与设备端同一播放页；分页素材按各自间隔翻页）';
         smChip.addEventListener('click', function () {
-          openMediaPreview(mid, mediaNameOf(mid), 10);
+          openMediaPreview(mid, mediaNameOf(mid));
         });
       }
       st.appendChild(smChip);
@@ -978,12 +978,11 @@ __API_JS__
 
   /**
    * 打开素材预览：内嵌与设备端**同一播放页**（/media/<id>/view，同源 iframe）。
-   * 图片 / 视频与设备端画面一致；分页素材（PDF/PPT/文档）各自按间隔独立翻页，
-   * 不是逐帧镜像——作用是确认素材内容与观感，而非像素级同步。
-   * 自建遮罩层（z-index 高于弹窗）：素材弹层内、设备卡摘要上都能随时打开；
-   * Esc 仅关闭本浮层（捕获阶段拦截，不波及下层弹窗）。
+   * 默认手动翻页（不自动播放），可用页内「上一页 / 下一页」按钮或方向键翻页；
+   * 图片 / 视频与设备端画面一致。自建遮罩层（z-index 高于弹窗）：素材弹层内、
+   * 设备卡摘要上都能随时打开；Esc 仅关闭本浮层（捕获阶段拦截，不波及下层弹窗）。
    */
-  function openMediaPreview(mediaId, name, intervalSec) {
+  function openMediaPreview(mediaId, name) {
     var old = document.getElementById('mediaPvMask');
     if (old) old.remove();
     var mask = document.createElement('div');
@@ -1000,15 +999,15 @@ __API_JS__
     h3.style.cssText = 'font-size:15px;margin:0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
     var note = document.createElement('span');
     note.style.cssText = 'color:var(--muted);font-size:11px;white-space:nowrap';
-    note.textContent = '与设备端同一播放页 · 分页按各自间隔翻页';
+    note.textContent = '与设备端同一播放页 · 默认手动翻页';
     var closeBtn = document.createElement('button');
     closeBtn.className = 'btn';
     closeBtn.textContent = '关闭';
     var frameBox = document.createElement('div');
     frameBox.style.cssText = 'position:relative;width:100%;padding-top:56.25%;background:#000';
     var frame = document.createElement('iframe');
-    frame.src = '/media/' + encodeURIComponent(mediaId) + '/view?interval=' +
-      Math.min(3600, Math.max(3, Math.round(Number(intervalSec) || 10)));
+    // 预览固定手动翻页（显式 auto=0 覆盖该素材最近一次的上墙方式）
+    frame.src = '/media/' + encodeURIComponent(mediaId) + '/view?auto=0';
     frame.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0';
     frame.setAttribute('allow', 'autoplay');
     frame.setAttribute('title', '素材预览');
@@ -1039,7 +1038,8 @@ __API_JS__
   /**
    * 素材上墙：explicit = 单台目标（设备卡快捷），否则底部勾选集。
    * 上传采用原始字节流（POST /api/media/upload?name=），XHR 提供上传进度；
-   * PDF/PPT/文档由服务端异步转换（processing→ready/unsupported），就绪后自动下发 media 指令。
+   * PDF/PPT/文档由服务端异步转换（processing→ready/unsupported）。
+   * 上传不自动下发：列表里「上墙」= 手动翻页（默认），「自动翻页」= 设置间隔/循环后自动播放。
    */
   function mediaDialog(explicit) {
     if (!explicit && !targets()) { toast('请先勾选目标设备'); return; }
@@ -1047,7 +1047,7 @@ __API_JS__
     var pollTimer = 0;
     var progTimer = 0;
     formModal('素材上墙', (targetName ? '目标：' + targetName + '。' : '对勾选设备下发。') +
-      '支持图片 / PDF / PPT / 文档 / MP4（PDF 需服务器装有 poppler-utils，PPT/文档需 LibreOffice），上传后自动上屏', function (body, foot) {
+      '支持图片 / PDF / PPT / 文档 / MP4（PDF 需服务器装有 poppler-utils，PPT/文档需 LibreOffice）。上传后点「上墙」手动翻页，或点「自动翻页」设置间隔与循环', function (body, foot) {
       var fileRow = document.createElement('div');
       fileRow.className = 'row';
       var fileInput = document.createElement('input');
@@ -1078,22 +1078,6 @@ __API_JS__
       progNote.style.cssText = 'color:var(--muted);font-size:12px;padding:0 2px;display:none';
       body.appendChild(progNote);
 
-      var rowIv = document.createElement('div');
-      rowIv.className = 'row';
-      var lbIv = document.createElement('label');
-      lbIv.appendChild(document.createTextNode('每页停留（PDF/PPT/文档翻页）'));
-      var selIv = document.createElement('select');
-      [5, 10, 15, 20, 30, 60].forEach(function (s) {
-        var o = document.createElement('option');
-        o.value = String(s);
-        o.textContent = s + ' 秒';
-        if (s === 10) o.selected = true;
-        selIv.appendChild(o);
-      });
-      lbIv.appendChild(selIv);
-      rowIv.appendChild(lbIv);
-      body.appendChild(rowIv);
-
       var listBox = document.createElement('div');
       body.appendChild(listBox);
 
@@ -1109,20 +1093,27 @@ __API_JS__
         syncList();
       }, 2500);
 
-      function sendTo(mediaId) {
+      /** 下发素材：auto=false = 手动翻页（默认）；auto=true = 自动播放 */
+      function sendTo(mediaId, opts) {
         var t = explicit || targets();
-        if (!t || !t.length) { toast('请先勾选目标设备'); return; }
-        sendCmd('media', { mediaId: mediaId, intervalSec: Number(selIv.value) }, t);
+        if (!t || !t.length) { toast('请先勾选目标设备'); return false; }
+        var args = { mediaId: mediaId, auto: !!(opts && opts.auto) };
+        if (args.auto) {
+          args.intervalSec = Number(opts.intervalSec) || 10;
+          args.loop = opts.loop !== false;
+        }
+        return sendCmd('media', args, t);
       }
 
-      /** 上传成功后：图片/视频即时下发；分页素材轮询转换状态 + 实时进度条，就绪即自动上墙 */
-      function autoSendWhenReady(m) {
-        var t = explicit || targets();
+      /** 上传后只跟踪转换进度：就绪后由用户在列表选择「上墙」或「自动翻页」 */
+      function watchConversion(m) {
         renderList();
-        if (!t || !t.length) return;
-        if (m.status === 'ready') { sendTo(m.id); return; }
+        if (m.status === 'ready') {
+          toast('素材已就绪，可在列表点「上墙」或「自动翻页」');
+          return;
+        }
         if (m.status === 'unsupported') { toast('素材无法上墙：' + (m.reason || '')); return; }
-        toast('素材转换中，就绪后自动上墙…');
+        toast('素材转换中，完成后可在列表选择上墙方式…');
         clearTimeout(pollTimer);
         clearInterval(progTimer);
         var t0 = Date.now();
@@ -1164,14 +1155,14 @@ __API_JS__
             if (cur.status === 'ready') {
               clearInterval(pollTimer); clearInterval(progTimer);
               bar.style.display = 'none'; progNote.style.display = 'none';
-              sendTo(m.id);
+              toast('素材已就绪，可在列表点「上墙」或「自动翻页」');
             } else if (cur.status === 'unsupported') {
               clearInterval(pollTimer); clearInterval(progTimer);
               bar.style.display = 'none'; progNote.style.display = 'none';
               toast('素材无法上墙：' + (cur.reason || ''));
             } else if (Date.now() - t0 > 300000) {
               clearInterval(pollTimer); clearInterval(progTimer);
-              toast('素材转换超时，可稍后在列表手动「上墙」');
+              toast('素材转换超时，可稍后在列表选择上墙方式');
             }
           }).catch(function () { /* 下一轮重试 */ });
         }, 1500);
@@ -1195,8 +1186,8 @@ __API_JS__
             toast('上传失败：' + ((json && json.error) || ('HTTP ' + xhr.status)));
             return;
           }
-          toast('已上传「' + json.media.name + '」');
-          autoSendWhenReady(json.media);
+          toast('已上传「' + json.media.name + '」，请选择上墙方式');
+          watchConversion(json.media);
           refreshEntries();
           syncList();
         };
@@ -1225,7 +1216,7 @@ __API_JS__
           thumb.title = '点击预览';
           thumb.addEventListener('error', function () { thumb.style.display = 'none'; });
           thumb.addEventListener('click', function () {
-            if (m.status === 'ready') openMediaPreview(m.id, m.name, Number(selIv.value));
+            if (m.status === 'ready') openMediaPreview(m.id, m.name);
           });
           row.appendChild(thumb);
           var nm = document.createElement('span');
@@ -1260,18 +1251,34 @@ __API_JS__
             ? '打开预览浮层（与设备端同一播放页）'
             : (m.reason || '素材不可用');
           pvBtn.addEventListener('click', function () {
-            openMediaPreview(m.id, m.name, Number(selIv.value));
+            openMediaPreview(m.id, m.name);
           });
           row.appendChild(pvBtn);
 
+          // 手动上墙（默认）：显示后不自动翻页，由遥控器/页内按钮手动翻
           var send = document.createElement('button');
           send.className = 'btn primary';
           send.style.padding = '3px 10px';
           send.textContent = '上墙';
           send.disabled = m.status !== 'ready';
-          send.title = m.status === 'unsupported' ? (m.reason || '素材不可用') : '对目标设备下发该素材';
-          send.addEventListener('click', function () { sendTo(m.id); });
+          send.title = m.status === 'unsupported' ? (m.reason || '素材不可用') : '手动上墙：显示后不自动翻页';
+          send.addEventListener('click', function () { sendTo(m.id, { auto: false }); });
           row.appendChild(send);
+
+          // 自动翻页：仅分页素材（PDF/PPT/文档且多页）显示，弹框设置间隔与循环
+          var paged = m.kind === 'pdf' || m.kind === 'ppt' || m.kind === 'doc';
+          if (paged && m.pages > 1) {
+            var autoBtn = document.createElement('button');
+            autoBtn.className = 'btn';
+            autoBtn.style.padding = '3px 10px';
+            autoBtn.textContent = '自动翻页';
+            autoBtn.disabled = m.status !== 'ready';
+            autoBtn.title = m.status === 'ready'
+              ? '设置每页停留与是否循环后自动播放'
+              : (m.reason || '素材不可用');
+            autoBtn.addEventListener('click', function () { openAutoDialog(m); });
+            row.appendChild(autoBtn);
+          }
           var del = document.createElement('button');
           del.className = 'btn danger';
           del.style.padding = '3px 10px';
@@ -1334,6 +1341,84 @@ __API_JS__
           row.appendChild(del);
           listBox.appendChild(row);
         });
+      }
+
+      /** 自动翻页设置（嵌套层，不关闭素材弹层）：每页停留 + 是否循环 */
+      function openAutoDialog(m) {
+        var old = document.getElementById('mediaAutoMask');
+        if (old) old.remove();
+        var mask = document.createElement('div');
+        mask.id = 'mediaAutoMask';
+        mask.style.cssText = 'position:fixed;inset:0;z-index:80;background:rgba(4,8,16,.6);' +
+          'display:flex;align-items:center;justify-content:center;padding:20px';
+        var box = document.createElement('div');
+        box.className = 'modal';
+        box.style.cssText = 'width:min(420px,92vw)';
+        var head = document.createElement('header');
+        head.innerHTML = '<h3></h3>';
+        head.querySelector('h3').textContent = '自动翻页 · ' + m.name;
+        var desc = document.createElement('p');
+        desc.textContent = '共 ' + m.pages + ' 页；开始后设备按设定间隔自动翻页。';
+        head.appendChild(desc);
+        var bodyBox = document.createElement('div');
+        bodyBox.className = 'body';
+        var rowIv = document.createElement('div');
+        rowIv.className = 'row';
+        var lbIv = document.createElement('label');
+        lbIv.appendChild(document.createTextNode('每页停留'));
+        var selIv = document.createElement('select');
+        [3, 5, 10, 15, 20, 30, 60].forEach(function (s) {
+          var o = document.createElement('option');
+          o.value = String(s);
+          o.textContent = s + ' 秒';
+          if (s === 10) o.selected = true;
+          selIv.appendChild(o);
+        });
+        lbIv.appendChild(selIv);
+        rowIv.appendChild(lbIv);
+        bodyBox.appendChild(rowIv);
+        var rowLoop = document.createElement('div');
+        rowLoop.className = 'row';
+        var lbLoop = document.createElement('label');
+        var ckLoop = document.createElement('input');
+        ckLoop.type = 'checkbox';
+        ckLoop.checked = true;
+        lbLoop.appendChild(ckLoop);
+        lbLoop.appendChild(document.createTextNode('循环播放（到末页后回到第 1 页）'));
+        rowLoop.appendChild(lbLoop);
+        bodyBox.appendChild(rowLoop);
+        var footBox = document.createElement('footer');
+        function closeAuto() {
+          mask.remove();
+          document.removeEventListener('keydown', onKey, true);
+        }
+        function onKey(e) {
+          if (e.key !== 'Escape') return;
+          e.stopPropagation();
+          e.preventDefault();
+          closeAuto();
+        }
+        var cancel = document.createElement('button');
+        cancel.className = 'btn';
+        cancel.textContent = '取消';
+        cancel.addEventListener('click', closeAuto);
+        var ok = document.createElement('button');
+        ok.className = 'btn primary';
+        ok.textContent = '开始自动播放';
+        ok.addEventListener('click', function () {
+          var started = sendTo(m.id, { auto: true, intervalSec: Number(selIv.value), loop: ckLoop.checked });
+          if (!started) return;
+          closeAuto();
+          toast('已开始自动翻页（每 ' + selIv.value + ' 秒' + (ckLoop.checked ? '，循环' : '，不循环') + '）');
+        });
+        footBox.appendChild(cancel);
+        footBox.appendChild(ok);
+        box.appendChild(head);
+        box.appendChild(bodyBox);
+        box.appendChild(footBox);
+        mask.appendChild(box);
+        document.body.appendChild(mask);
+        document.addEventListener('keydown', onKey, true);
       }
       syncList();
 

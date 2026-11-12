@@ -255,12 +255,19 @@ const created = [];
     check('分页素材 preview 为第 1 页（200）', pv.status === 200, pv.status);
 
     const view2 = await api('GET', `/media/${pdfUp.json.media.id}/view?interval=5`);
-    check('分页播放页：注入页数与间隔、含手动控制条与 __tvMediaNav 钩子（ES5）',
+    check('分页播放页：默认手动翻页（MODE_AUTO=0），含控制条与 __tvMediaNav 钩子（ES5）',
       view2.status === 200 && view2.text.includes('PAGES=2') && view2.text.includes('IV=5') &&
+      view2.text.includes('MODE_AUTO=0') && view2.text.includes('手动翻页') &&
       view2.text.includes('/page-') && !/\?\?|\?\./.test(view2.text) &&
       view2.text.includes('__tvMediaNav') && view2.text.includes('bNext') && view2.text.includes('bPlay'),
       { hasPages: view2.text.includes('PAGES=2'), iv: view2.text.includes('IV=5'),
+        manual: view2.text.includes('MODE_AUTO=0'),
         ctl: view2.text.includes('bNext') && view2.text.includes('bPlay') });
+
+    const viewAuto = await api('GET', `/media/${pdfUp.json.media.id}/view?interval=5&auto=1&loop=0`);
+    check('分页播放页：显式 auto=1 / loop=0 覆盖默认值',
+      viewAuto.status === 200 && viewAuto.text.includes('MODE_AUTO=1') && viewAuto.text.includes('LOOP=0'),
+      { auto: viewAuto.text.includes('MODE_AUTO=1'), loop: viewAuto.text.includes('LOOP=0') });
   } else {
     // 工具缺失的降级路径：不可用 + 明确原因（提示装 poppler-utils）
     check('PDF 无法转换时给出明确降级原因（未安装 poppler-utils）',
@@ -306,6 +313,37 @@ const created = [];
   const ack1 = await beat('dev-media01', { ackedSeq: got.json.desired.seq, state: { mode: 'media', mediaId: imgId } });
   check('素材状态上报被接受（desired 不再下发，展示类保留供场景）',
     ack1.json.desired === null && ack1.json.managed === true, ack1.json.desired);
+
+  // 旧客户端只加载 /view?interval=N：服务端必须能沿用最近一次上墙方式（auto/loop）
+  if (pdfReady) {
+    const pdfId = pdfUp.json.media.id;
+    await api('POST', '/api/ctl/send', {
+      targets: ['dev-media01'], cmd: 'media',
+      args: { mediaId: pdfId, intervalSec: 12, auto: true, loop: false }
+    });
+    const gotAuto = await beat('dev-media01');
+    check('media 指令携带 auto/loop（设备心跳领取）',
+      gotAuto.json.desired && gotAuto.json.desired.args.auto === true &&
+        gotAuto.json.desired.args.loop === false && Number(gotAuto.json.desired.args.intervalSec) === 12,
+      gotAuto.json.desired);
+    await beat('dev-media01', {
+      ackedSeq: gotAuto.json.desired.seq, state: { mode: 'media', mediaId: pdfId }
+    });
+    const viewStored = await api('GET', `/media/${pdfId}/view?interval=12`);
+    check('旧客户端只传 interval：播放页沿用最近一次自动翻页设置',
+      viewStored.text.includes('MODE_AUTO=1') && viewStored.text.includes('LOOP=0'),
+      { auto: viewStored.text.includes('MODE_AUTO=1'), loop: viewStored.text.includes('LOOP=0') });
+    // 恢复手动上墙，供后续场景/退出用例
+    await api('POST', '/api/ctl/send', {
+      targets: ['dev-media01'], cmd: 'media', args: { mediaId: imgId, intervalSec: 15 }
+    });
+    const gotBack = await beat('dev-media01');
+    await beat('dev-media01', {
+      ackedSeq: gotBack.json.desired.seq, state: { mode: 'media', mediaId: imgId }
+    });
+  } else {
+    check('旧客户端沿用自动翻页设置（环境无 pdftoppm，自适应跳过）', true);
+  }
 
   const sceneSnap = await api('POST', '/api/ctl/scenes', { name: '素材场景' });
   const mediaStep = (sceneSnap.json.scene?.steps || []).find((s) => s.deviceId === 'dev-media01');
