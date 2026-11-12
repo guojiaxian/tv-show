@@ -13,7 +13,7 @@
  *   GET  /media/<id>/preview               预览缩略（图片→原图；分页→第 1 页）
  *
  * 素材类型（详见 docs/素材上墙-分析与设计.md）：
- *   image  图片 jpg/jpeg/png/gif/webp/bmp/svg —— 原样展示
+ *   image  图片 jpg/jpeg/png/webp/bmp —— 生成 1920×1080 适配副本给电视端；gif/svg 原样
  *   pdf    PDF       —— pdftoppm（poppler-utils）逐页转 PNG
  *   ppt    PPT/PPTX  —— soffice（LibreOffice）转 PDF 后同上
  *   doc    DOC/DOCX  —— 同 ppt 管线
@@ -40,6 +40,13 @@ const PDF_DPI = 120;
 const SOFFICE_TIMEOUT_MS = 180 * 1000;
 const PDF_TIMEOUT_MS = 120 * 1000;
 const TOOL_CACHE_MS = 60 * 1000;
+/* 电视端 WebView 解码超大照片容易黑屏/内存不足：图片上传时生成 1080p 适配副本，
+   原图保留用于预览/下载；GIF/SVG 不转换（动图/矢量） */
+const IMAGE_VIEW_MAX_W = 1920;
+const IMAGE_VIEW_MAX_H = 1080;
+const IMAGE_VIEW_QUALITY = 88;
+const IMAGE_VIEW_TIMEOUT_MS = 30 * 1000;
+const IMAGE_NO_VIEW_EXT = new Set(['.gif', '.svg']);
 
 /** 扩展名 → 类型（白名单，其余一律 400） */
 const EXT_KIND = {
@@ -235,6 +242,24 @@ function createMedia({ dataDir, log = () => {} }) {
   /* ---------- 路径 ---------- */
 
   const origFileOf = (id) => path.join(ASSET_DIR, `${id}.orig`);
+  const viewFileOf = (id) => path.join(ASSET_DIR, `${id}.view.jpg`);
+
+  /** 超大图片生成电视端适配副本；失败时保留原图，不阻断上传 */
+  async function makeImageView(media) {
+    if (media.kind !== 'image' || IMAGE_NO_VIEW_EXT.has(media.ext)) return false;
+    await runTool('convert', [
+      origFileOf(media.id),
+      '-auto-orient',
+      '-background', 'black',
+      '-alpha', 'remove',
+      '-alpha', 'off',
+      '-resize', `${IMAGE_VIEW_MAX_W}x${IMAGE_VIEW_MAX_H}>`,
+      '-strip',
+      '-quality', String(IMAGE_VIEW_QUALITY),
+      viewFileOf(media.id),
+    ], IMAGE_VIEW_TIMEOUT_MS, '图片适配转换失败');
+    return true;
+  }
   const pdfFileOf = (id) => path.join(ASSET_DIR, `${id}.pdf`);
   const pageFileOf = (id, n) => path.join(ASSET_DIR, `${id}.page-${n}.png`);
 
@@ -306,6 +331,13 @@ function createMedia({ dataDir, log = () => {} }) {
       reason: '',
       createdAt: new Date().toISOString()
     };
+    if (kind === 'image' && !IMAGE_NO_VIEW_EXT.has(ext)) {
+      try {
+        await makeImageView(media);
+      } catch (e) {
+        log(`[media] ${name} 图片适配失败，回退原图：${e.message}`);
+      }
+    }
     await mutate((d) => { d.medias.push(media); });
     log(`[media] 已上传 ${name}（${kind}，${(received / 1024).toFixed(0)}KB）`);
     if (media.status === 'processing') enqueueProcess(media);
@@ -579,14 +611,16 @@ function createMedia({ dataDir, log = () => {} }) {
 
   /** 原始文件（图片/视频）；视频需要 Range 支持（206 分片），否则部分内核拒绝起播 */
   function sendRaw(res, media, rangeHeader) {
-    const file = origFileOf(media.id);
+    const view = viewFileOf(media.id);
+    const useView = media.kind === 'image' && !IMAGE_NO_VIEW_EXT.has(media.ext) && fs.existsSync(view);
+    const file = useView ? view : origFileOf(media.id);
     let stat;
     try {
       stat = fs.statSync(file);
     } catch (e) {
       return sendJson(res, 404, { error: '素材文件缺失' }, CORS);
     }
-    const type = MIME[media.ext] || 'application/octet-stream';
+    const type = useView ? 'image/jpeg' : (MIME[media.ext] || 'application/octet-stream');
     streamFileWithRange(res, file, stat.size, type, String(rangeHeader || ''));
   }
 

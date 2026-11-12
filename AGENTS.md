@@ -164,7 +164,8 @@ systemctl restart tvshow && curl -s localhost:18000/api/admin/health     # 看 m
 
 #### 5.5.1 统一模型（最重要，别改歪）
 
-- **所有非视频素材最终都是「一页或多页 PNG」**：图片 = 本身就是 1 页（上传即 `ready`，不转换）；PDF/PPT/PPTX/DOC/DOCX = 服务端栅格化成 `page-N.png` 序列。播放端看到的永远是同一套分页播放器 + 同一套 URL，**不要为 PPT 单独做一套渲染/播放逻辑**。
+- **所有非视频素材最终都是「一页或多页 PNG/JPG」**：图片 = 上传即 `ready`（本身 1 页），同时由 ImageMagick 生成 `1920×1080` 以内的 `.view.jpg` 适配副本（原图保留；GIF/SVG 跳过）；PDF/PPT/PPTX/DOC/DOCX = 服务端栅格化成 `page-N.png` 序列。播放端看到的永远是同一套分页播放器 + 同一套 URL，**不要为 PPT 单独做一套渲染/播放逻辑**。
+  - **原因**：电视端 Android WebView（Chrome 66）解码 20MP+ / 9MB 级原图会黑屏但 `lastError=null`（2026-11-12 现场踩过）。`sendRaw` 对图片优先返回 `.view.jpg`（`image/jpeg`），控制台预览缩略图仍用原图。
 - **视频不转换**：MP4/WebM 上传即 `ready`，播放页用 `<video autoplay muted loop>` 直接播；`/media/<id>/raw` 必须支持 Range（206/416），否则部分内核拒绝起播或无法拖动。
 - **两端同一地址**：Web 与 TV 都只加载 `GET /media/<id>/view?interval=N`（**ES5，Chrome 66 底线**，与 `/shot/<id>/view`、`/cam/view` 同构）。任何新增播放能力都必须同时适用于两端，不要用 Web 专属 API。
 - **不可上墙的类型**：XLS/XLSX（版式不可读，让源端导 PDF）、HLS/RTSP（用 `type=camera` 画面墙）、Office 在线嵌入/外部网页（用普通入口 + `show` 指令）。
@@ -172,7 +173,7 @@ systemctl restart tvshow && curl -s localhost:18000/api/admin/health     # 看 m
 #### 5.5.2 服务端结构（`media.js`）
 
 - 路由：`/api/media`（列表）、`/api/media/upload?name=`（上传）、`DELETE /api/media/<id>`；`/media/<id>/{view,raw,preview,progress,page-N.png}`。
-- 注册表 `server/data/media.json`（原子写 + `.bak`，0600）；素材文件 `server/data/media/<id>.orig`、`<id>.pdf`（PPT 中转产物）、`<id>.page-N.png`、`<id>.rawpage-*.png`（转换中，完成后改名）。目录 0700。字段：`id/name/kind/ext/size/pages/phase/total/status/reason/intervalSec/createdAt`。
+- 注册表 `server/data/media.json`（原子写 + `.bak`，0600）；素材文件 `server/data/media/<id>.orig`、`<id>.view.jpg`（图片 1080p 适配副本，`/raw` 优先返回）、`<id>.pdf`（PPT 中转产物）、`<id>.page-N.png`、`<id>.rawpage-*.png`（转换中，完成后改名）。目录 0700。字段：`id/name/kind/ext/size/pages/phase/total/status/reason/intervalSec/createdAt`。
 - **上传是原始字节流**（请求体即文件，不做 multipart —— 零依赖），200MB 上限（先看 `Content-Length` 直接 413，落盘时逐块复核），扩展名白名单（`.jpg/.jpeg/.png/.gif/.webp/.bmp/.svg/.pdf/.ppt/.pptx/.doc/.docx/.mp4/.webm`），**流式直写磁盘**（`fs.createWriteStream` + `req.pipe`，RSS 不随文件大小线性增长；test-media 断言 80MB 上传 RSS 增长 <80MB）。文件名只取 `basename`、限 120 字符。
 - **转换是异步且可选的**：`processing → ready | unsupported`，`unsupported` 必带人话 `reason`。工具缺失不能阻塞启动，也不能影响上传（文件照常入库）。
   - PDF：`pdfinfo` 取页数 → `pdftoppm -png -r 120` → 归一化成 `page-N.png`。
