@@ -1303,17 +1303,59 @@ footer select {
           del.style.padding = '3px 10px';
           del.textContent = '删除';
           del.addEventListener('click', function () {
-            confirmModal('删除素材？', '将删除「' + m.name + '」。正在展示它的设备会看到「素材不存在」提示。', [
-              { text: '保留' },
-              { text: '删除', danger: true, run: async function () {
+            // 嵌套确认层：不替换当前素材弹层，删除后仍停留在上墙管理页面
+            // （confirmModal 会清空 #modalBox，导致整个素材弹层被关掉）
+            var oldMask = document.getElementById('mediaDelMask');
+            if (oldMask) oldMask.remove();
+            var delMask = document.createElement('div');
+            delMask.id = 'mediaDelMask';
+            delMask.style.cssText = 'position:fixed;inset:0;z-index:80;background:rgba(4,8,16,.6);' +
+              'display:flex;align-items:center;justify-content:center;padding:20px';
+            var delBox = document.createElement('div');
+            delBox.className = 'modal';
+            delBox.style.cssText = 'width:min(420px,92vw)';
+            var delHead = document.createElement('header');
+            delHead.innerHTML = '<h3></h3>';
+            delHead.querySelector('h3').textContent = '删除素材？';
+            var delP = document.createElement('p');
+            delP.textContent = '将删除「' + m.name + '」。正在展示它的设备会看到「素材不存在」提示。';
+            delHead.appendChild(delP);
+            var delList = document.createElement('div');
+            delList.className = 'confirm-list';
+            var delOnKey = function (e) {
+              if (e.key === 'Escape') {
+                e.stopPropagation();
+                e.preventDefault();
+                closeDel();
+              }
+            };
+            function closeDel() {
+              delMask.remove();
+              document.removeEventListener('keydown', delOnKey, true);
+            }
+            [['保留', false, false], ['删除', false, true]].forEach(function (opt) {
+              var b = document.createElement('div');
+              b.className = 'confirm-btn' + (opt[1] ? ' primary' : '') + (opt[2] ? ' danger' : '');
+              b.textContent = opt[0];
+              b.addEventListener('click', function () {
+                closeDel();
+                if (!opt[2]) return;
+                (async function () {
                   try {
                     await api('DELETE', '/api/media/' + encodeURIComponent(m.id));
                     toast('已删除素材');
                     refreshEntries();
                     renderList();
                   } catch (e) { toast('删除失败：' + e.message); }
-                } }
-            ]);
+                })();
+              });
+              delList.appendChild(b);
+            });
+            delBox.appendChild(delHead);
+            delBox.appendChild(delList);
+            delMask.appendChild(delBox);
+            document.body.appendChild(delMask);
+            document.addEventListener('keydown', delOnKey, true);
           });
           row.appendChild(del);
           listBox.appendChild(row);

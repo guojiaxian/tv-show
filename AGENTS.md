@@ -221,6 +221,7 @@ systemctl restart tvshow && curl -s localhost:18000/api/admin/health     # 看 m
 - **列表有独立轮询**：`syncList()` 2.5s 刷新（弹层关闭自停）；上传成功后必须主动调用它，否则首传素材在列表里看不到、删除按钮无从点起（曾踩）。
 - 预览：缩略图走 `/media/<id>/preview`（图片=原图；分页=第 1 页；视频无预览，`onerror` 隐藏）；「预览」按钮与上墙后设备卡「素材：xxx」摘要都打开**同一预览浮层**（自建遮罩 z-index 70，高于素材弹层；16:9 iframe 内嵌同一播放页）。**Esc 必须只关预览浮层**（捕获阶段监听 + `stopPropagation`，见 §8）。预览与设备端不是逐帧镜像：分页素材各自按间隔翻页。
 - 素材弹层复用了控制台通用 `formModal`：`#modalBox`，footer 按钮用 `.modal footer .btn` 定位；确认弹层用 `.confirm-btn`。
+- **删除素材不退出上墙弹层**：删除确认是素材弹层之上的嵌套确认层（`#mediaDelMask`，z-index 80），确认/取消只关确认层；**不要用通用 `confirmModal`**（它清空 `#modalBox`，会把整个上墙管理页面关掉）。
 
 #### 5.5.7 电视端（`MediaDisplayActivity`，2.2 起）
 

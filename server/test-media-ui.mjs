@@ -300,10 +300,17 @@ function makePdf3() {
     if (del) del.click();
   });
   await page2.waitForTimeout(300);
-  await page2.click('#modalBox .confirm-btn:has-text("删除")');
+  // 删除确认是素材弹层之上的嵌套确认层：确认后只关确认层，素材弹层必须保持打开
+  await page2.waitForSelector('#mediaDelMask .confirm-btn:has-text("删除")', { timeout: 5000 });
+  await page2.click('#mediaDelMask .confirm-btn:has-text("删除")');
   const deleted = await waitUntil(async () =>
     ((await api('GET', '/api/media')).json.medias || []).length === 0, { label: '素材删除' });
   check('弹层内删除素材生效（列表清空）', deleted);
+  const dialogKept = await page2.evaluate(() =>
+    !document.getElementById('mask').hidden &&
+    !!document.querySelector('#modalBox input[type="file"]') &&
+    !document.getElementById('mediaDelMask'));
+  check('删除素材后不退出上墙管理弹层（确认层已关闭）', dialogKept);
 
   // 关闭弹层
   await page2.evaluate(() => {
