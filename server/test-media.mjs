@@ -159,11 +159,17 @@ const created = [];
     list1.json && list1.json.medias);
 
   const raw = await api('GET', `/media/${imgId}/raw`);
-  check('图片原样回源（字节一致、Content-Type 正确）',
-    raw.status === 200 &&
-    Buffer.compare(Buffer.from(raw.text, 'latin1') && raw.status === 200 ? PNG_1PX : PNG_1PX, PNG_1PX) === 0 &&
-    /^image\/png$/.test(raw.headers.get('content-type') || ''),
-    { status: raw.status, ct: raw.headers.get('content-type') });
+  // 图片可能由 ImageMagick 生成 1080p 适配副本（.view.jpg）：/raw 优先返回它，原图保留。
+  // 若服务器没有 convert，则自动回退原图（PNG），两种情况都必须可解码。
+  const hasViewJpg = DATA_DIR
+    ? fs.existsSync(path.join(DATA_DIR, 'media', `${imgId}.view.jpg`))
+    : false;
+  const rawCt = raw.headers.get('content-type') || '';
+  const rawTotal = Number(raw.headers.get('content-length'));
+  check('图片回源：200 且返回可解码版本（有适配副本时 image/jpeg，否则原图）',
+    raw.status === 200 && rawTotal > 0 &&
+      (hasViewJpg ? /^image\/jpeg$/.test(rawCt) : /^image\/png$/.test(rawCt)),
+    { status: raw.status, ct: rawCt, hasViewJpg });
 
   const preview = await api('GET', `/media/${imgId}/preview`);
   check('图片 preview 即原图（200）', preview.status === 200, preview.status);
@@ -172,13 +178,13 @@ const created = [];
   const rng = await api('GET', `/media/${imgId}/raw`, undefined, { Range: 'bytes=0-9' });
   check('Range 请求返回 206 且 Content-Range 正确',
     rng.status === 206 &&
-    rng.headers.get('content-range') === `bytes 0-9/${PNG_1PX.length}` &&
+    rng.headers.get('content-range') === `bytes 0-9/${rawTotal}` &&
     Number(rng.headers.get('content-length')) === 10 &&
     rng.headers.get('accept-ranges') === 'bytes',
-    { status: rng.status, cr: rng.headers.get('content-range') });
+    { status: rng.status, cr: rng.headers.get('content-range'), total: rawTotal });
   const rngTail = await api('GET', `/media/${imgId}/raw`, undefined, { Range: 'bytes=-4' });
   check('末尾 Range（bytes=-N）返回 206',
-    rngTail.status === 206 && rngTail.headers.get('content-range') === `bytes ${PNG_1PX.length - 4}-${PNG_1PX.length - 1}/${PNG_1PX.length}`,
+    rngTail.status === 206 && rngTail.headers.get('content-range') === `bytes ${rawTotal - 4}-${rawTotal - 1}/${rawTotal}`,
     rngTail.headers.get('content-range'));
 
   /* ==================== 3. 校验与错误路径 ==================== */
