@@ -651,8 +651,9 @@ function createMedia({ dataDir, log = () => {} }) {
       '<title>' + esc(media.name) + '</title>' +
       '<style>' +
       'html,body{margin:0;width:100%;height:100%;background:#000;overflow:hidden}' +
-      '#stage{position:absolute;inset:0}' +
-      '#stage img,#stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}' +
+      /* 不能用 inset：Chrome 66 不支持（Chrome 87+），会导致舞台塌缩为 0×0 全黑 */
+      '#stage{position:absolute;top:0;right:0;bottom:0;left:0}' +
+      '#stage img,#stage video{position:absolute;top:0;right:0;bottom:0;left:0;width:100%;height:100%;object-fit:contain}' +
       '#ov{position:absolute;left:14px;bottom:12px;z-index:9;color:#fff;font:15px/1.5 ' +
       '"Microsoft YaHei",sans-serif;background:rgba(8,16,32,.55);border-radius:8px;' +
       'padding:6px 12px;pointer-events:none;transition:opacity .5s linear}' +
@@ -664,7 +665,7 @@ function createMedia({ dataDir, log = () => {} }) {
       'background:rgba(8,16,32,.6);border:1px solid rgba(255,255,255,.28);border-radius:8px;' +
       'padding:6px 14px;cursor:pointer}' +
       '#ctl button:hover{background:rgba(47,210,245,.35);border-color:#2FD2F5}' +
-      '.err{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;' +
+      '.err{position:absolute;top:0;right:0;bottom:0;left:0;display:flex;align-items:center;justify-content:center;' +
       'color:#8fa6c4;font:20px "Microsoft YaHei",sans-serif;text-align:center;line-height:2}' +
       '</style></head><body>';
 

@@ -202,9 +202,10 @@ const created = [];
 
   /* ==================== 4. 播放页（图片） ==================== */
   const view1 = await api('GET', `/media/${imgId}/view`);
-  check('图片播放页：200 且为 ES5（无 ?? 与 ?. 语法）',
-    view1.status === 200 && !/\?\?|\?\./.test(view1.text) && view1.text.includes('object-fit:contain'),
-    { status: view1.status });
+  check('图片播放页：200、ES5，且不含 Chrome 66 不支持的 inset（防舞台塌缩黑屏）',
+    view1.status === 200 && !/\?\?|\?\./.test(view1.text) && view1.text.includes('object-fit:contain') &&
+      !view1.text.includes('inset:') && view1.text.includes('top:0;right:0;bottom:0;left:0'),
+    { status: view1.status, hasInset: view1.text.includes('inset:') });
 
   /* ==================== 5. PDF 转图片（工具可用性自适应断言） ==================== */
   const pdfUp = await upload('巡检报告.pdf', makePdf(2));
