@@ -429,6 +429,20 @@ function makePdf3() {
       check('手动模式 4s 后仍停在第 1 页（默认不自动翻页）',
         manualStill && manualStill.page === 1, manualStill);
 
+      // 点击画面右侧热区（不依赖右下角小按钮）也应翻页
+      await page1.evaluate(() => {
+        const f = document.querySelector('#frameViewport iframe');
+        f.contentDocument.getElementById('zNext').click();
+      });
+      const zoneNext = await waitUntil(() => page1.evaluate(() => {
+        const f = document.querySelector('#frameViewport iframe');
+        try {
+          const st = f.contentDocument.defaultView.__tvMediaState();
+          return st && st.page === 2 ? st : false;
+        } catch (e) { return false; }
+      }), { timeout: 5000, label: '点击热区翻页' });
+      check('手动模式点击画面右侧热区翻到第 2 页', !!zoneNext, zoneNext);
+
       /* ---------- 自动翻页：弹框设置间隔 5s + 循环，确定后开始自动播放 ---------- */
       await page2.evaluate(() => {
         const btns = Array.from(document.querySelectorAll('#modalBox .row .btn'));

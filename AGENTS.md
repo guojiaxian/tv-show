@@ -14,7 +14,7 @@
 - **电脑浏览器客户端**（`server/client/index.html`，构建产物）：同源单文件页，能力与电视端基本对齐，被控时不锁鼠标。
 - **独立控制台**（`/console`）：平板书签直达的纯控制端，自身**不注册**为受控设备；也是素材上墙的上传/预览/下发入口。
 
-当前版本基线：**Android 2.3 / versionCode 26**；服务端零第三方运行时依赖（`esbuild`、`playwright-core` 均为可选增强；素材上墙的 PDF/PPT 转换依赖可选系统工具 `poppler-utils` / `LibreOffice`）。
+当前版本基线：**Android 2.4 / versionCode 27**；服务端零第三方运行时依赖（`esbuild`、`playwright-core` 均为可选增强；素材上墙的 PDF/PPT 转换依赖可选系统工具 `poppler-utils` / `LibreOffice`）。
 
 生产环境：systemd 单元 `tvshow.service`，工作目录 `server/`，默认 `18000` 端口。
 
@@ -79,10 +79,10 @@ export JAVA_HOME=/opt/java/jdk-17.0.20.1+1    # 本机已有；其他环境按�
 ./gradlew :app:compileDebugKotlin
 ./gradlew :app:lintDebug
 ./gradlew :app:assembleRelease
-cp app/build/outputs/apk/release/app-release.apk dist/TvShowCenter-v2.3-release.apk
+cp app/build/outputs/apk/release/app-release.apk dist/TvShowCenter-v2.4-release.apk
 # 打包后核对版本与签名（麒麟机 build-tools 路径）
 /opt/android-sdk/build-tools/35.0.0/aapt2 dump badging app/build/outputs/apk/release/app-release.apk | grep ^package
-/opt/android-sdk/build-tools/35.0.0/apksigner verify --print-certs dist/TvShowCenter-v2.3-release.apk
+/opt/android-sdk/build-tools/35.0.0/apksigner verify --print-certs dist/TvShowCenter-v2.4-release.apk
 
 # 素材上墙的系统依赖（麒麟 V10；装完必须重启服务刷新探测）
 yum install -y poppler-utils                                            # PDF → 图片（pdftoppm/pdfinfo）
@@ -202,7 +202,7 @@ systemctl restart tvshow && curl -s localhost:18000/api/admin/health     # 看 m
 - **兼容旧客户端（关键）**：电视 2.3 / 旧网页只加载 `/view?interval=N`，不带 auto/loop。服务端在 ctl 下发 media 时调用 `media.setPlayback(mediaId, {auto, intervalSec, loop})`，`/view` 未显式带参时沿用该记录（预览显式 `?auto=0` 强制手动）。新增播放参数时必须维护这条链路，否则老客户端永远只能手动。
 - **手动播放**（2.3）：右下角控制条 `◀ 上一页 / 暂停-播放 / 下一页 ▶`；键盘 `←/→` 翻页、`空格` 暂停/继续；电视端遥控器由 `MediaDisplayActivity` 把 `←/→/确定` 转发进 `__tvMediaNav('prev'|'next'|'toggle')`。
   - 暂停后页码静止（页码指示显示「已暂停」）；**手动翻页保持暂停态**；恢复自动时以当前时刻重新计时（不会立刻跳页）。
-  - 受控锁定优先：远程被控时手动翻页键照常被 `interceptKeyLocked` 拦下（属展示操作），**【返回】放行**。
+  - 受控锁定：素材播放页的 `←/→/确定` **始终放行**（手动翻页/暂停是默认玩法，2.4 起）；菜单等其余展示操作在远程被控时仍锁定，**【返回】放行**。
 - 调试/测试钩子（生产也保留，体积可忽略）：`window.__tvMediaState()` 返回 `{page, auto, cur, PAGES, mode:'manual'|'auto', loop, ended}`；`window.__tvMediaLog` 记录每次 `go()`（`via: tick|btn|key|nav`）。
 - 图片页：全屏 `<img>` + `object-fit:contain`（黑底不变形，GIF 动图原生播放），加载失败 3s 自动重试。视频页：`<video>` + 失败重试 + `play()` 兜底。不可用素材：直接显示 `reason` 文案（含装哪个工具）。
 
@@ -229,7 +229,7 @@ systemctl restart tvshow && curl -s localhost:18000/api/admin/health     # 看 m
 #### 5.5.7 电视端（`MediaDisplayActivity`，2.2 起）
 
 - 独立 Activity（`AppTheme.Fullscreen`、横屏、`FLAG_KEEP_SCREEN_ON`），URL = `{serverBaseUrl}/media/<id>/view?interval=N`，用 `WebViewFactory.create` 走统一 1920×1080 视口装配 + `applyInitialScale`。
-- 键位：`←` 上一页、`→` 下一页、`确定` 暂停/继续（`evaluateJavascript("window.__tvMediaNav && …")`）、`菜单` 控制菜单（刷新页面/返回首页）、`返回` 退出。**受控锁定检查必须放在这些分支之前**。
+- 键位：`←` 上一页、`→` 下一页、`确定` 暂停/继续（`evaluateJavascript("window.__tvMediaNav && …")`）、`菜单` 控制菜单（刷新页面/返回首页）、`返回` 退出。**这四类播放键必须在受控锁定检查之前处理**（否则控制台一上墙锁定方向键，现场无法翻页）；菜单等其余键仍受锁定。
 - 上报：`onResume` → `ControlChannel.reportMedia(mediaId)`；实现 `CommandApplier.Reloadable`，`reloadCurrent()` = `webView.reload()`。
 - 注册：`AndroidManifest.xml` 第 6 个 Activity（`exported=false`、`launchMode=standard`）。`CommandApplier.applyMedia()` 用 `CLEAR_TOP | NEW_TASK` 启动，`mediaId` 为空时报 `lastError` 不切页（避免错误锁定）。
 - 新增 `CommandApplier` 指令时必须同步**五处**：`DISPLAY_CMDS`、`apply()` 的 when 分支、`followsCommand`（若属展示类）、控制台 `applySentLocally` 的 `isDisplay` 列表、电脑端 `applyCommand` 的 `lastApplied` 判定。缺一就会出现「状态不交还 / 按钮不回显」。
@@ -253,9 +253,10 @@ systemctl restart tvshow && curl -s localhost:18000/api/admin/health     # 看 m
 | 服务端（无版本号） | 新增 `media.js`、`/api/media/*`、`/media/*`、互控 `media` 指令、health.media、`test-media.mjs`/`test-media-ui.mjs` |
 | **APK 2.2 / versionCode 25** | 新增 `MediaDisplayActivity` + `CommandApplier.applyMedia` + `ControlChannel.reportMedia` + Manifest 第 6 个 Activity；电脑端内嵌播放页 |
 | **APK 2.3 / versionCode 26** | 播放页手动播放（控制条/键盘/遥控器转发）；服务端转换实时进度（`/progress`）；控制台预览（缩略图/预览浮层/可点摘要） |
+| **APK 2.4 / versionCode 27** | 受控上墙时放行 `←/→/确定`（遥控器可手动翻页/暂停）；素材上墙改为默认手动翻页，控制台新增「自动翻页」设置（间隔/循环）；电脑端方向键转发素材页、播放页左右点击热区 |
 | 现场运维 | 2026-11-12 装 poppler-utils + LibreOffice（impress/writer/filters）并重启；实测 PPTX→2 页 PNG 全链路通过 |
 
-交付验证口径：服务端隔离回归 **396/396**、Kotlin 单测 19/19、lint、`assembleRelease`（v2.3，签名有效）；`test-media` 含性能基准（20MB/60MB 上传、RSS、24 路并发、首字节）。本机无 KVM，电视端真机交互按部署自检清单 36–41 条现场确认。
+交付验证口径：服务端隔离回归 **411/411**、Kotlin 单测 19/19、lint、`assembleRelease`（v2.4，签名有效）；`test-media` 含性能基准（20MB/60MB 上传、RSS、24 路并发、首字节）。本机无 KVM，电视端真机交互按部署自检清单 36–41 条现场确认。
 
 ### 5.6 反向代理与自动登录
 
@@ -279,16 +280,16 @@ systemctl restart tvshow && curl -s localhost:18000/api/admin/health     # 看 m
 - **弹窗**：管理后台/控制台的弹窗**只能通过按钮或 Esc 关闭**，点击遮罩不关闭（平板软键盘弹出易误点）；安卓 `TvDialogs` 确认框 `setCancelable(false)` + `setCanceledOnTouchOutside(false)`。
 - **APK 版本**：小米电视覆盖安装要求 `versionCode` **严格递增**，禁止回退；签名需 v1+v2+v3（`build.gradle.kts` 已配），否则内置安装器报「检测安装包异常」。发布证书 `keystore/tvshow-release.jks`，口令在 `gradle.properties`（示例值，正式外发前应替换）。
 - **本地设置**：轮询（开关/间隔/序列/时钟起点）、分区四格、极速开关均在本机，各台电视互不影响；无服务端指令时行为与旧版本一致。
-- **素材展示页（`MediaDisplayActivity`，2.2 起 / 2.3 加手动翻页）**：第 6 个 Activity（`AppTheme.Fullscreen`、横屏、`exported=false`、`standard`），加载服务端 `/media/<id>/view?interval=N`；用 `WebViewFactory` 统一视口装配。键位：`←/→` 手动翻页、`确定` 暂停/继续（`__tvMediaNav` 钩子）、`菜单` 控制菜单、`返回` 退出；**受控锁定检查在这些分支之前**（手动翻页属展示操作会被拦，【返回】放行）。`onResume` 里 `ControlChannel.reportMedia(mediaId)`，实现 `Reloadable` 供 `refresh` 指令刷新。新增指令时 `DISPLAY_CMDS`/`apply()`/`followsCommand`/控制台 `applySentLocally`/电脑端 `lastApplied` 五处必须同步（见 §5.5.7）。
+- **素材展示页（`MediaDisplayActivity`，2.2 起 / 2.3 手动翻页 / 2.4 受控时放行翻页键）**：第 6 个 Activity（`AppTheme.Fullscreen`、横屏、`exported=false`、`standard`），加载服务端 `/media/<id>/view?interval=N`；用 `WebViewFactory` 统一视口装配。键位：`←/→` 手动翻页、`确定` 暂停/继续（`__tvMediaNav` 钩子）、`菜单` 控制菜单、`返回` 退出；**播放键必须在受控锁定检查之前处理**（保证控制台上墙后遥控器仍可翻页），菜单等其余键仍受锁定，【返回】放行。`onResume` 里 `ControlChannel.reportMedia(mediaId)`，实现 `Reloadable` 供 `refresh` 指令刷新。新增指令时 `DISPLAY_CMDS`/`apply()`/`followsCommand`/控制台 `applySentLocally`/电脑端 `lastApplied` 五处必须同步（见 §5.5.7）。
 
 ---
 
 ## 7. 测试与验收
 
 ```bash
-node server/test-run.mjs          # 410 项：API 44 + 管理 20 + 同步 13 + 代理 42
+node server/test-run.mjs          # 411 项：API 44 + 管理 20 + 同步 13 + 代理 42
                                   # + 摄像头 17 + 极速 36 + 素材功能与性能 42 + 互控接口 84
-                                  # + 互控 UI 66 + 素材端到端 35 + 页面改版探测 11
+                                  # + 互控 UI 66 + 素材端到端 36 + 页面改版探测 11
 ```
 
 - **必须跑隔离实例**：`test-run.mjs` 会自起临时端口 + 临时数据目录；直接打生产 `18000` 会改写现场数据。
@@ -296,7 +297,7 @@ node server/test-run.mjs          # 410 项：API 44 + 管理 20 + 同步 13 + �
 - Kotlin 单测 19 项（LocalSettings / ConfigJson 往返 / ConfigClient.merge / CommandApplier 决策，含 media 指令映射与未知指令上报），CI 另跑 `lintDebug`。
 - **素材上墙两个套件**：
   - `test-media.mjs`（42 项，服务端+性能）：上传/白名单 400/空体 400/超大 Content-Length 413/列表脱敏/删除/预览/分页图/Range 206+末尾 Range/播放页 ES5 与控制条/**默认手动 + 显式 auto/loop + 旧客户端沿用上墙方式**/`progress` 相位断言（convert|raster，done≤total，完成 percent=100）/media 指令校验与闭环/场景 step/落盘权限 0600+0700/**性能基准**（20MB、60MB 上传，RSS 增长 <80MB，24 路并发分页图 <3s，播放页首字节 <500ms）。
-  - `test-media-ui.mjs`（35 项，双页面端到端）：控制台弹层上传 → **实时进度文本** → 列表「上墙」手动模式（auto=false，4s 不自动翻页）→ 显示端内嵌播放页真实出图 → `reported.mode=media` → 卡片摘要「素材：xxx」→ 缩略图/预览浮层/Esc 分层关闭 → 本地操作自动交还 → 「自动翻页」弹框设置 5s+循环 → 自动翻页/暂停静止/手动翻页 → 不循环到末页停止 → 删除后不退出弹层。
+  - `test-media-ui.mjs`（36 项，双页面端到端）：控制台弹层上传 → **实时进度文本** → 列表「上墙」手动模式（auto=false，4s 不自动翻页 + 点击右侧热区翻页）→ 显示端内嵌播放页真实出图 → `reported.mode=media` → 卡片摘要「素材：xxx」→ 缩略图/预览浮层/Esc 分层关闭 → 本地操作自动交还 → 「自动翻页」弹框设置 5s+循环 → 自动翻页/暂停静止/手动翻页 → 不循环到末页停止 → 删除后不退出弹层。
 - **测试注意事项（都踩过）**：
   - 翻页断言用 `__tvMediaState()` 闭包真值，**不能只看 `ov` 文本**（`el.onload` 滞后一拍）；曾因测试里有**两次 `bNext` 点击**（2/3→3/3→环绕回 1/3）误判「手动翻页失效」，排查半天。加断言前先 `grep -c "bNext"`。
   - 播放页等待条件不要写成 `for (… && !ready)`：首拍拿到 `processing` 就退出会误判跳过。

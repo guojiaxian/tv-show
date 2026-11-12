@@ -729,6 +729,9 @@ function createMedia({ dataDir, log = () => {} }) {
       'background:rgba(8,16,32,.6);border:1px solid rgba(255,255,255,.28);border-radius:8px;' +
       'padding:6px 14px;cursor:pointer}' +
       '#ctl button:hover{background:rgba(47,210,245,.35);border-color:#2FD2F5}' +
+      /* 手动翻页热区：点击画面左/右三分之一即可翻页（鼠标/触摸屏；遥控器走 __tvMediaNav） */
+      '#zPrev,#zNext{position:absolute;top:0;bottom:0;width:28%;z-index:5;cursor:pointer}' +
+      '#zPrev{left:0}#zNext{right:0}' +
       '.err{position:absolute;top:0;right:0;bottom:0;left:0;display:flex;align-items:center;justify-content:center;' +
       'color:#8fa6c4;font:20px "Microsoft YaHei",sans-serif;text-align:center;line-height:2}' +
       '</style></head><body>';
@@ -763,6 +766,7 @@ function createMedia({ dataDir, log = () => {} }) {
     const pages = Math.max(1, media.pages || 1);
     return head +
       '<div id="stage"><img id="ca" alt=""><img id="cb" alt=""></div>' +
+      '<div id="zPrev"></div><div id="zNext"></div>' +
       '<div id="ov">1/' + pages + ' · ' + (auto ? interval + 's/页' : '手动翻页') + '</div>' +
       '<div id="ctl">' +
       '<button id="bPrev" type="button">◀ 上一页</button>' +
@@ -822,6 +826,8 @@ function createMedia({ dataDir, log = () => {} }) {
       'function fit(){var im=new Image();im.onload=function(){show(1);preload(2>PAGES?1:2);};im.src=urlOf(1);}' +
       'document.getElementById("bPrev").onclick=function(){go(-1,"btn");};' +
       'document.getElementById("bNext").onclick=function(){go(1,"btn");};' +
+      'document.getElementById("zPrev").onclick=function(){go(-1,"btn");};' +
+      'document.getElementById("zNext").onclick=function(){go(1,"btn");};' +
       'bPlay.onclick=function(){setAuto(!auto,"btn");};' +
       'document.addEventListener("keydown",function(ev){' +
       'var k=ev.key;' +

@@ -1483,8 +1483,22 @@ select {
       applyZoom();
       // 同源（代理模式）才能注入自动登录脚本；跨域时静默跳过
       tryAutoLogin(frame, entry);
+      // 素材播放页：把焦点交给内嵌页，方向键/空格可直接翻页、暂停
+      if (entry.isMedia) {
+        try { frame.contentWindow.focus(); } catch (e) { /* 跨域忽略 */ }
+      }
     });
     applyZoom();
+  }
+
+  /** 转发素材播放页操作（电脑端未聚焦 iframe 时方向键也能生效） */
+  function mediaNav(action) {
+    var frame = el.frameViewport && el.frameViewport.querySelector('iframe');
+    if (!frame) return;
+    try {
+      var win = frame.contentWindow;
+      if (win && typeof win.__tvMediaNav === 'function') win.__tvMediaNav(action);
+    } catch (e) { /* 页面未就绪或跨域 */ }
   }
 
   /** 代理模式下被代理页与客户端同源，可注入与电视端完全相同的 auto_login.js */
@@ -2629,6 +2643,12 @@ select {
     }
 
     if (state.mode === 'display') {
+      // 素材播放页：方向键/空格转发给内嵌播放页（iframe 未聚焦时也能翻页/暂停）
+      if (state.entry && state.entry.isMedia) {
+        if (key === 'ArrowLeft') { e.preventDefault(); mediaNav('prev'); return; }
+        if (key === 'ArrowRight') { e.preventDefault(); mediaNav('next'); return; }
+        if (key === ' ' || key === 'Spacebar') { e.preventDefault(); mediaNav('toggle'); return; }
+      }
       if (key === 'r' || key === 'R') { e.preventDefault(); reloadPage(); }
       else if (key === '+' || key === '=') { e.preventDefault(); changeZoom(10); }
       else if (key === '-' || key === '_') { e.preventDefault(); changeZoom(-10); }

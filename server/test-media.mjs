@@ -255,14 +255,16 @@ const created = [];
     check('分页素材 preview 为第 1 页（200）', pv.status === 200, pv.status);
 
     const view2 = await api('GET', `/media/${pdfUp.json.media.id}/view?interval=5`);
-    check('分页播放页：默认手动翻页（MODE_AUTO=0），含控制条与 __tvMediaNav 钩子（ES5）',
+    check('分页播放页：默认手动翻页（MODE_AUTO=0），含控制条/点击热区与 __tvMediaNav 钩子（ES5）',
       view2.status === 200 && view2.text.includes('PAGES=2') && view2.text.includes('IV=5') &&
       view2.text.includes('MODE_AUTO=0') && view2.text.includes('手动翻页') &&
       view2.text.includes('/page-') && !/\?\?|\?\./.test(view2.text) &&
-      view2.text.includes('__tvMediaNav') && view2.text.includes('bNext') && view2.text.includes('bPlay'),
+      view2.text.includes('__tvMediaNav') && view2.text.includes('bNext') && view2.text.includes('bPlay') &&
+      view2.text.includes('zPrev') && view2.text.includes('zNext'),
       { hasPages: view2.text.includes('PAGES=2'), iv: view2.text.includes('IV=5'),
         manual: view2.text.includes('MODE_AUTO=0'),
-        ctl: view2.text.includes('bNext') && view2.text.includes('bPlay') });
+        ctl: view2.text.includes('bNext') && view2.text.includes('bPlay'),
+        zones: view2.text.includes('zPrev') && view2.text.includes('zNext') });
 
     const viewAuto = await api('GET', `/media/${pdfUp.json.media.id}/view?interval=5&auto=1&loop=0`);
     check('分页播放页：显式 auto=1 / loop=0 覆盖默认值',

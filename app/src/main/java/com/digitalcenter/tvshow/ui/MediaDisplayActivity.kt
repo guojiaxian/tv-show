@@ -125,22 +125,9 @@ class MediaDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
-            // 远程被控时锁定展示操作（【返回】豁免——正常退出操作，v6：退出取代取消控制）。
-            // 手动翻页属于展示操作：受控时同样被锁定（防误按），交还本地后即可用。
-            if (ControlChannel.interceptKeyLocked(event.keyCode, this, getString(R.string.ctl_locked_display))) return true
+            // 素材播放页的翻页/暂停键始终放行：手动翻页是默认玩法，受控锁定只拦菜单等
+            // 展示操作（否则控制台一上墙就锁定方向键，现场无法翻页）。
             when (event.keyCode) {
-                KeyEvent.KEYCODE_BACK -> {
-                    finish()
-                    return true
-                }
-                KeyEvent.KEYCODE_MENU,
-                KeyEvent.KEYCODE_INFO,
-                KeyEvent.KEYCODE_BUTTON_Y -> {
-                    showControlMenu()
-                    return true
-                }
-                // 手动播放：← 上一页 → 下一页 确定 暂停/继续自动翻页
-                // （转发给播放页 __tvMediaNav 钩子；暂停状态由屏上「已暂停」指示反馈）
                 KeyEvent.KEYCODE_DPAD_LEFT -> {
                     mediaNav("prev")
                     return true
@@ -153,6 +140,20 @@ class MediaDisplayActivity : AppCompatActivity(), CommandApplier.Reloadable {
                 KeyEvent.KEYCODE_ENTER,
                 KeyEvent.KEYCODE_NUMPAD_ENTER -> {
                     mediaNav("toggle")
+                    return true
+                }
+            }
+            // 其余展示操作（菜单等）在远程被控时照常锁定；【返回】豁免
+            if (ControlChannel.interceptKeyLocked(event.keyCode, this, getString(R.string.ctl_locked_display))) return true
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_BACK -> {
+                    finish()
+                    return true
+                }
+                KeyEvent.KEYCODE_MENU,
+                KeyEvent.KEYCODE_INFO,
+                KeyEvent.KEYCODE_BUTTON_Y -> {
+                    showControlMenu()
                     return true
                 }
             }
