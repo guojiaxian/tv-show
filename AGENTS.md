@@ -14,7 +14,7 @@
 - **电脑浏览器客户端**（`server/client/index.html`，构建产物）：同源单文件页，能力与电视端基本对齐，被控时不锁鼠标。
 - **独立控制台**（`/console`）：平板书签直达的纯控制端，自身**不注册**为受控设备。
 
-当前版本基线：**Android 2.1 / versionCode 24**；服务端零第三方运行时依赖（`esbuild`、`playwright-core` 均为可选增强）。
+当前版本基线：**Android 2.3 / versionCode 26**；服务端零第三方运行时依赖（`esbuild`、`playwright-core` 均为可选增强；素材上墙的 PDF/PPT 转换依赖可选系统工具 `poppler-utils` / `LibreOffice`）。
 
 生产环境：systemd 单元 `tvshow.service`，工作目录 `server/`，默认 `18000` 端口。
 
@@ -29,6 +29,7 @@ server/
 ├── store.js          # config.json：种子 / 归一化 / 原子写盘 / 串行 mutate
 ├── http-util.js      # HttpError / sendJson / readBody / CORS
 ├── ctl.js            # 多设备互控：心跳、设备档案、指令、模式、场景
+├── media.js          # 素材上墙：上传 / PDF·PPT 转图片（可选工具）/ 播放页 / Range 流式
 ├── page-watch.js     # 页面改版探测：ETag/Last-Modified 或正文指纹 → 心跳下发
 ├── proxy.js          # 反向代理：地址改写、自动登录注入、旧内核兼容转译
 ├── transpile.js      # esbuild 语法降级 + 运行时垫片 + 内容寻址缓存
@@ -44,7 +45,7 @@ tools/                # 页面模板与构建脚本（admin / console / client /
 app/src/main/java/com/digitalcenter/tvshow/
 ├── config/           # AppConfig（模型/解析）、LocalSettings（本机设置）、CommandApplier（指令映射）
 ├── net/              # ConfigClient / ConfigStore / ConfigRepository / ControlChannel
-├── ui/               # Main / WebDisplay / ZoneDisplay / CameraWall / Settings / TvDialogs / WebViewFactory
+├── ui/               # Main / WebDisplay / ZoneDisplay / CameraWall / MediaDisplay / Settings / TvDialogs / WebViewFactory
 └── util/             # UiUtil、ViewportFit
 docs/                 # 架构、API、部署运维、排障、发布说明、设计方案
 dist/                 # 交付产物（preview.html 入库；*.apk 忽略）
@@ -76,7 +77,7 @@ export JAVA_HOME=/opt/java/jdk-17.0.20.1+1    # 本机已有；其他环境按�
 ./gradlew :app:compileDebugKotlin
 ./gradlew :app:lintDebug
 ./gradlew :app:assembleRelease
-cp app/build/outputs/apk/release/app-release.apk dist/TvShowCenter-v2.1-release.apk
+cp app/build/outputs/apk/release/app-release.apk dist/TvShowCenter-v2.3-release.apk
 ```
 
 **生效规则**：
@@ -119,13 +120,13 @@ cp app/build/outputs/apk/release/app-release.apk dist/TvShowCenter-v2.1-release.
 - **设备身份只认客户端本地 `tvshow.deviceId`**（Web 端 `localStorage`，APK `SharedPreferences`）。
   **绝对不要按 IP / MAC 归并**：路由器 NAT 后整片设备共享同一来源地址；跨网段时服务端 ARP 只有网关 MAC，按 MAC 归并会把网关下所有设备并成一台；Android 10+ 还会随机化 MAC。曾实现过按 IP 归并，已按现场要求撤销。
 - 心跳 3 秒；离线判定 9 秒（连续 3 次未收到）；离线设备不下发指令（控制台拦截并提示）。
-- `managed` 是模式权威：展示类指令（`show/rotate/zone/home`）自动置 `true`；`release` / `switchTo:"local"` 置 `false` 并清空 `desired`。维护类指令（`refresh/sync/turbo`）不改变模式。
+- `managed` 是模式权威：展示类指令（`show/rotate/zone/home/media`）自动置 `true`；`release` / `switchTo:"local"` 置 `false` 并清空 `desired`。维护类指令（`refresh/sync/turbo`）不改变模式。
 - `desired` 只保留最后一条（覆盖不排队）；维护类 ack 后清除，展示类保留（供开机恢复重发）。
 - **回归即本地控制**：页面重开（`boot`）或离线超过阈值后回归，一律 `managed=false`、丢弃未确认指令，不会自动恢复旧画面。
 - 受控设备本地操作偏离指令画面 → 自动 `switchTo:"local"` 交还；若有未确认展示指令在途则**指令优先**。
 - 删除设备是**临时移除**（删档案，下次心跳自动重新注册），不是永久屏蔽。
 - 控制台是纯控制端：**自身不注册为受控设备**，打开它的平板/电脑不会被自己下发锁住。
-- 设备卡状态顺序固定：**在线/离线（绿/黄）→ 本地/远程控制（绿/蓝）→ 版本 → IP**；不显示「暂无上报」。点击类型标签循环 `PC → PAD → TV`，手动类型优先于心跳上报。
+- 设备卡状态顺序固定：**在线/离线（绿/黄）→ 本地/远程控制（绿/蓝）→ 版本 → IP → 画面摘要（显示：xxx / 轮询中 / 素材：xxx，无上报不显示）**；不显示「暂无上报」。点击类型标签循环 `PC → PAD → TV`，手动类型优先于心跳上报。
 - 控制台卡片是增量渲染：`deviceSignature` **必须包含所有可见字段**（含 `reported.turbo`）。曾漏掉 turbo，导致本机切换后卡片不重建、按钮永远显示旧值。
 - 下发成功后控制台**立即本地重绘** `managed=true`（再靠 3 秒轮询对齐）；设备列表轮询在卡片下拉聚焦时只暂缓那一张卡，不能整体停更新。
 
@@ -145,7 +146,19 @@ cp app/build/outputs/apk/release/app-release.apk dist/TvShowCenter-v2.1-release.
 - 页面重新发布时 `pageWatch` 回调 `shot.reloadIfActive(id)` 重载采集页；无观看者时不做事。
 - `playwright-core` + Chromium 缺失时自动降级，不阻塞服务端启动。
 
-### 5.5 反向代理与自动登录
+### 5.5 素材上墙（`media.js` + 互控 `media` 指令，2.2 新增）
+
+- **两端同一地址**：显示端只加载 `GET /media/<id>/view?interval=N`（ES5，Chrome 66 可执行）；图片全屏、PDF/PPT/DOC 为服务端栅格化图片的分页播放（**自动翻页 + 手动播放**：页内控制条「◀ 上一页 / 暂停-播放 / 下一页 ▶」+ `__tvMediaNav` 钩子 + 方向键/空格，暂停后页码静止、手动翻页保持暂停态）、MP4 为 `<video>` 循环（`raw` 支持 Range，起播必需）。电视端遥控器由 `MediaDisplayActivity` 转发（←/→/确定，受控锁定优先）；Web/预览用页内按钮与方向键。
+- **转换是异步且可选的**：图片/视频上传即 `ready`；PDF/PPT 走 `processing → ready|unsupported`（pdftoppm / soffice 缺失时 unsupported + 原因，控制台可见）。**不要把转换改成同步**——soffice 一次可能几十秒。
+- **转换进度是实时的**：`GET /media/<id>/progress` 返回 `{status, phase, done, total, percent}`——raster 相位（PDF→图片）按「输出目录里已生成的 rawpage 文件数 / pdfinfo 总页数」算百分比，convert 相位（soffice→PDF）为不定长（percent=0，前端放流动动画）；列表接口每条素材也带 `progress`。控制台弹层 600ms 轮询它驱动进度条与「已转换 x/N 页」文本。**别用 registry 里的 pages 当进度**——pages 只在转换完成后写入。
+- **上传是原始字节流**（`POST /api/media/upload?name=`，非 multipart、零依赖），200MB 上限、扩展名白名单、**流式直写**（RSS 有界，test-media 有断言）；存储在 `server/data/media/` + `media.json`（已 gitignore，0600/0700）。
+- **`media` 是展示类指令**（ctl.js `DISPLAY_CMDS`）：自动接管、desired 覆盖、回归即本地控制、可入场景；下发时经 `getMedia` 校验素材存在性，删除后立即 400。
+- **脱离语义依赖 `lastApplied`**：电脑端 `applyCommand` 与电视端 `ControlChannel` 的展示类判定**都必须含 media**——漏掉会导致「本地操作偏离素材画面」不自动交还（曾漏过，test-media-ui 已覆盖）。
+- **控制台弹层的素材列表有自己的轮询**（`syncList`，2.5s，弹层关闭自停）；上传后必须主动刷新它，否则首传素材在列表里看不到、删除按钮无从点起。
+- **控制台可预览素材**：弹层每行有缩略图（`/media/<id>/preview`）+「预览」按钮，设备卡「素材：xxx」摘要在上墙后变为可点击——都打开同一预览浮层（独立遮罩 z-index 70，内嵌与设备端同一播放页）。**Esc 必须只关预览浮层**（捕获阶段监听 + stopPropagation），否则会连带关掉下层素材弹层。预览与设备端不是逐帧镜像：分页素材各自按间隔翻页。
+- 旧客户端（<2.2 APK / 旧网页）收到 `media` 指令会上报「客户端不支持指令（版本过旧）」，控制台可见——排查「下发没生效」先看设备卡摘要与版本 chip。
+
+### 5.6 反向代理与自动登录
 
 - 代理只允许 `/proxy/<已配置入口 id>/...`，目标由入口 `url` 推导，禁止 URL 参数指定目标（防 SSRF），并拒绝指向服务端自身。
 - HTML 注入 shim：把上游绝对地址、根相对地址、fetch/XHR/WebSocket/EventSource 收敛到代理前缀；history 路由 SPA 用入口字段 `spaHistory: true` 剥离前缀。
@@ -173,14 +186,15 @@ cp app/build/outputs/apk/release/app-release.apk dist/TvShowCenter-v2.1-release.
 ## 7. 测试与验收
 
 ```bash
-node server/test-run.mjs          # 333 项：API 44 + 管理 20 + 同步 13 + 代理 42
-                                  # + 摄像头 17 + 极速 36 + 互控接口 84 + 互控 UI 66
-                                  # + 页面改版探测 11
+node server/test-run.mjs          # 396 项：API 44 + 管理 20 + 同步 13 + 代理 42
+                                  # + 摄像头 17 + 极速 36 + 素材功能与性能 36 + 互控接口 84
+                                  # + 互控 UI 66 + 素材端到端 27 + 页面改版探测 11
 ```
 
 - **必须跑隔离实例**：`test-run.mjs` 会自起临时端口 + 临时数据目录；直接打生产 `18000` 会改写现场数据。
 - UI 套件（`test-ctl-ui.mjs`）依赖 `playwright-core` + Chromium；缺失时脚本打印 `SKIP` 并退出 0——**看到 SKIP 不等于通过**。
-- Kotlin 单测 17 项（LocalSettings / ConfigJson 往返 / ConfigClient.merge / CommandApplier 决策），CI 另跑 `lintDebug`。
+- Kotlin 单测 19 项（LocalSettings / ConfigJson 往返 / ConfigClient.merge / CommandApplier 决策，含 media 指令映射与未知指令上报），CI 另跑 `lintDebug`。
+- **测试 media 播放页的翻页断言必须用状态钩子**（`__tvMediaState` 闭包真值），不能只看 `ov` 文本——ov 由 `el.onload` 滞后一拍更新，页码变但文本未变会造成假失败（曾因此误判手动翻页失效，排查半天发现是测试点了两次按钮）。
 - 改动涉及页面模板时，务必重新构建并确认产物与模板一致（`git status` 应只有预期的产物变化）。
 
 ---
@@ -204,8 +218,8 @@ node server/test-run.mjs          # 333 项：API 44 + 管理 20 + 同步 13 + �
 
 | 文档 | 用途 |
 | --- | --- |
-| `docs/架构与实现.md` | 轮询/分区/同步协议/遥控器/自动登录/兼容转译/极速/互控/预览/代码结构 |
-| `docs/API.md` | `/api/config`、管理接口、入口字段 |
+| `docs/架构与实现.md` | 轮询/分区/同步协议/遥控器/自动登录/兼容转译/极速/素材上墙/互控/预览/代码结构 |
+| `docs/API.md` | `/api/config`、管理接口、素材上墙接口、入口字段 |
 | `docs/部署与运维.md` | 交付物、安装、服务启动、安全、上线自检 |
 | `docs/排障与验证.md` | 现场问题（白屏、缩放、视口）与历史验证记录 |
 | `docs/发布说明-2.0.md` | 阶段 0–5 摘要、验收结果、上线/回滚清单、2026-11-10/11 现场修复 |
@@ -218,4 +232,5 @@ node server/test-run.mjs          # 333 项：API 44 + 管理 20 + 同步 13 + �
 - 发布证书与 `gradle.properties` 口令仍是交付示例值，正式外发前应替换；仓库历史中曾提交过含明文自动登录口令的配置文件，如需彻底清除需改写历史。
 - 页面改版探测依赖 ETag/Last-Modified；两者都没有且正文持续变化的页面会被判定为「不可靠」并跳过（不会误重载，但也不会自动更新）。
 - 同一台电脑的多个浏览器会各占一行设备卡（设计如此）。
-- 极速模式依赖服务器安装 `playwright-core` + Chromium；兼容转译依赖 `esbuild`；摄像头依赖 `ffmpeg`。缺失时各自降级，不影响服务端启动。
+- 极速模式依赖服务器安装 `playwright-core` + Chromium；兼容转译依赖 `esbuild`；摄像头依赖 `ffmpeg`；素材上墙的 PDF 转换依赖 `poppler-utils`、PPT/DOC 依赖 `LibreOffice`（图片/视频无额外依赖）。缺失时各自降级，不影响服务端启动。
+- 素材上墙的电视端真机交互（遥控器在素材播放页的锁定/返回/菜单）未在开发环境验证（无 KVM），需现场按部署自检清单 36–41 条确认。

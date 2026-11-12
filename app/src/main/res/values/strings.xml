@@ -121,4 +121,7 @@
     <string name="camera_menu_reconnect">重新连接</string>
     <string name="camera_reconnecting">正在重新连接…</string>
     <string name="camera_switched">当前画面：%1$s</string>
+
+    <!-- 素材上墙（远程 media 指令） -->
+    <string name="media_menu_subtitle">素材上墙 · 支持图片 / PDF / PPT / 文档 / 视频</string>
 </resources>

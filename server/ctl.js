@@ -5,7 +5,8 @@
  *
  * 职责（全部挂在 /api/ctl/* 前缀，由 server.js 分发）：
  *   POST /api/ctl/beat              设备心跳：注册 / 上报状态 / 领指令 / 同步模式
- *   POST /api/ctl/send              控制端下发指令（targets 支持 ["*"]）
+ *   POST /api/ctl/send              控制端下发指令（targets 支持 ["*"]；
+ *                                   展示类含素材上墙 media）
  *   POST /api/ctl/release           控制端「取消控制」：managed=false + desired 清空
  *   GET  /api/ctl/devices           设备列表（含在线判定 / 待送达标记）
  *   PUT  /api/ctl/device/:id        改名 / 开关 bootRestore
@@ -35,8 +36,8 @@ const crypto = require('node:crypto');
 
 const DEVICE_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const ALLOWED_KINDS = ['tv', 'pc', 'tablet'];
-/** 展示类指令：应用后设备自动进入远程被控 */
-const DISPLAY_CMDS = ['show', 'rotate', 'zone', 'home'];
+/** 展示类指令：应用后设备自动进入远程被控（media = 素材上墙） */
+const DISPLAY_CMDS = ['show', 'rotate', 'zone', 'home', 'media'];
 /** 维护类指令：不改变模式，两种模式下都可用 */
 const MAINTAIN_CMDS = ['refresh', 'sync', 'turbo'];
 const ALL_CMDS = [...DISPLAY_CMDS, ...MAINTAIN_CMDS];
@@ -62,7 +63,7 @@ const bad = (msg) => new HttpError(400, msg);
 
 /* ============================ 模块工厂 ============================ */
 
-function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
+function createCtl({ dataDir, getEntries, getMedia, getContentVersion, log = () => {} }) {
   const DATA_FILE = path.join(dataDir, 'devices.json');
   const BACKUP_FILE = `${DATA_FILE}.bak`;
 
@@ -247,6 +248,21 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
     if (cmd === 'turbo') {
       if (typeof args.enabled !== 'boolean') throw bad('turbo 需要 enabled（true / false）');
       return { cmd, args: { enabled: args.enabled } };
+    }
+
+    if (cmd === 'media') {
+      const mediaId = String(args.mediaId || '').trim();
+      if (!mediaId) throw bad('media 需要 mediaId');
+      // 素材存在性由 media 模块判定（素材可能在保存场景后、应用前被删除）
+      if (typeof getMedia === 'function' && !getMedia()(mediaId)) {
+        throw bad(`素材「${mediaId}」不存在`);
+      }
+      const intervalSec = args.intervalSec === undefined || args.intervalSec === ''
+        ? 10 : Math.round(Number(args.intervalSec));
+      if (!Number.isFinite(intervalSec) || intervalSec < 3 || intervalSec > 3600) {
+        throw bad('素材翻页间隔需在 3–3600 秒之间');
+      }
+      return { cmd, args: { mediaId, intervalSec } };
     }
 
     // home / refresh / sync：无参数
@@ -501,6 +517,12 @@ function createCtl({ dataDir, getEntries, getContentVersion, log = () => {} }) {
           if (!slots || slots.length !== 4) return null;
           const norm = slots.map((s) => (s && entryExists(String(s)) ? String(s) : null));
           return { deviceId: dev.id, cmd: 'zone', args: { slots: norm } };
+        }
+        case 'media': {
+          const mediaId = String(r.mediaId || '');
+          if (!mediaId) return null;
+          if (typeof getMedia === 'function' && !getMedia()(mediaId)) return null;
+          return { deviceId: dev.id, cmd: 'media', args: { mediaId } };
         }
         case 'home':
           return { deviceId: dev.id, cmd: 'home', args: {} };

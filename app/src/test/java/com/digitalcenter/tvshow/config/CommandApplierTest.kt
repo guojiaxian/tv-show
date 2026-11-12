@@ -3,6 +3,7 @@ package com.digitalcenter.tvshow.config
 import android.app.Activity
 import com.digitalcenter.tvshow.net.ControlChannel
 import com.digitalcenter.tvshow.ui.MainActivity
+import com.digitalcenter.tvshow.ui.MediaDisplayActivity
 import com.digitalcenter.tvshow.ui.WebDisplayActivity
 import org.json.JSONObject
 import org.junit.After
@@ -93,6 +94,27 @@ class CommandApplierTest {
         assertEquals(1, activity.reloads)
         assertFalse(ControlChannel.locked)
         assertEquals(null, ControlChannel.lastError)
+    }
+
+    @Test
+    fun mediaCommandOpensMediaDisplayAndEntersRemote() {
+        val activity = activity()
+        CommandApplier.apply(
+            activity, "media",
+            JSONObject().put("mediaId", "m-abc123").put("intervalSec", 15)
+        )
+        assertEquals(MediaDisplayActivity::class.java.name, lastTarget(activity))
+        assertEquals(null, ControlChannel.lastError)
+        assertTrue(ControlChannel.locked)
+    }
+
+    @Test
+    fun unknownCommandReportsErrorAndStaysLocal() {
+        val activity = activity()
+        CommandApplier.apply(activity, "hologram", JSONObject())
+        // 旧 APK 收到新版本指令（如素材上墙）时如实上报，便于控制台提示升级
+        assertNotEquals(null, ControlChannel.lastError)
+        assertFalse(ControlChannel.locked)
     }
 
     @Test

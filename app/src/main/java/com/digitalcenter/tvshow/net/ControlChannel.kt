@@ -53,8 +53,8 @@ object ControlChannel {
     private const val BEAT_MAX_BACKOFF_MS = 9_000L
     private const val BEAT_TIMEOUT_MS = 5000
 
-    /** 心跳与档案的状态枚举（与服务端约定） */
-    private const val DISPLAY_CMDS = "show,rotate,zone,home"
+    /** 心跳与档案的状态枚举（与服务端约定；media = 素材上墙） */
+    private const val DISPLAY_CMDS = "show,rotate,zone,home,media"
 
     /* ---------------- 状态（跨线程读，主线程写为主，这里用 @Volatile 保护心跳线程读） ---------------- */
 
@@ -206,6 +206,11 @@ object ControlChannel {
 
     fun reportSettings() {
         reported = JSONObject().put("mode", "settings")
+    }
+
+    /** 素材上墙（media 指令）：上报正在展示的素材，控制台摘要显示「素材：xxx」 */
+    fun reportMedia(mediaId: String) {
+        reported = JSONObject().put("mode", "media").put("mediaId", mediaId)
     }
 
     /* ---------------- 模式（v6 决议：受控端无任何取消入口） ----------------
@@ -448,6 +453,9 @@ object ControlChannel {
                     r.optString("mode") == "zone" &&
                         z.optJSONArray("slots")?.join(",") == args.optJSONArray("slots")?.join(",")
                 }
+                "media" ->
+                    r.optString("mode") == "media" &&
+                        r.optString("mediaId") == args.optString("mediaId")
                 "home" -> r.optString("mode") == "home"
                 else -> true // 维护类不参与
             }

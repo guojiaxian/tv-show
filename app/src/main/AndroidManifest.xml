@@ -76,6 +76,13 @@
             android:launchMode="standard"
             android:screenOrientation="landscape"
             android:theme="@style/AppTheme.Fullscreen" />
+        <activity
+            android:name=".ui.MediaDisplayActivity"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout|smallestScreenSize|uiMode|density"
+            android:exported="false"
+            android:launchMode="standard"
+            android:screenOrientation="landscape"
+            android:theme="@style/AppTheme.Fullscreen" />
     </application>
 
 </manifest>

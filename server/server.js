@@ -35,6 +35,7 @@ const { URL } = require('node:url');
 const { createProxy } = require('./proxy');
 const camera = require('./camera');
 const { createShot } = require('./shot');
+const { createMedia } = require('./media');
 const { createCtl } = require('./ctl');
 const { createPageWatch } = require('./page-watch');
 const { HttpError, sendJson, CORS } = require('./http-util');
@@ -85,6 +86,8 @@ let proxy = null;
 let shot = null;
 /** 多设备互控 · 控制通道（设备档案 / 心跳 / 指令 / 场景） */
 let ctl = null;
+/** 素材上墙：上传 / 转换（PDF/PPT→图片）/ 播放页与原始文件服务 */
+let media = null;
 /** 页面改版探测：页面重新发布（ETag/Last-Modified 变化）后通知客户端自动重载 */
 let pageWatch = null;
 
@@ -100,7 +103,8 @@ const router = createRouter({
   },
   getProxy: () => proxy,
   getShot: () => shot,
-  getCtl: () => ctl
+  getCtl: () => ctl,
+  getMedia: () => media
 });
 
 /* ============================ 启动 ============================ */
@@ -120,6 +124,12 @@ function start() {
 
   // 摄像头画面墙：RTSP 凭据只留在服务端，客户端仅按编号点播
   camera.configure(data.cameras);
+
+  // 素材上墙：可选系统工具（pdftoppm / soffice），缺失时对应类型降级提示，不阻塞启动
+  media = createMedia({
+    dataDir: DATA_DIR,
+    log: (msg) => console.log(msg)
+  });
 
   // 极速模式：可选依赖（playwright-core/Chromium），缺失时自动降级，不阻塞启动
   shot = createShot({
@@ -142,6 +152,8 @@ function start() {
   ctl = createCtl({
     dataDir: DATA_DIR,
     getEntries: () => data.entries,
+    // media 指令（素材上墙）下发时校验素材存在性
+    getMedia: () => (media ? media.exists : () => false),
     // 心跳响应携带内容版本与页面指纹：客户端发现落后即立即强制同步 / 重载当前页
     getContentVersion: () => ({
       version: data.version,

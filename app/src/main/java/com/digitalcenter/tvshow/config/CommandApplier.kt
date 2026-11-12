@@ -9,6 +9,7 @@ import com.digitalcenter.tvshow.net.ConfigRepository
 import com.digitalcenter.tvshow.net.ControlChannel
 import com.digitalcenter.tvshow.ui.CameraWallActivity
 import com.digitalcenter.tvshow.ui.MainActivity
+import com.digitalcenter.tvshow.ui.MediaDisplayActivity
 import com.digitalcenter.tvshow.ui.WebDisplayActivity
 import com.digitalcenter.tvshow.ui.ZoneDisplayActivity
 import org.json.JSONObject
@@ -48,11 +49,16 @@ object CommandApplier {
                 "show" -> applyShow(activity, args)
                 "rotate" -> applyRotate(activity, args)
                 "zone" -> applyZone(activity, args)
+                "media" -> applyMedia(activity, args)
                 "home" -> goHome(activity)
                 "refresh" -> applyRefresh(activity)
                 "sync" -> ConfigRepository.syncNow(force = true)
                 "turbo" -> applyTurbo(activity, args)
-                else -> Log.w(TAG, "未知指令：$cmd（忽略）")
+                else -> {
+                    Log.w(TAG, "未知指令：$cmd（忽略）")
+                    // 旧 APK 收到新版本指令（如素材上墙）时如实上报，控制台据此提示升级
+                    ControlChannel.lastError = "客户端不支持指令「$cmd」（版本过旧）"
+                }
             }
         } catch (e: Exception) {
             Log.w(TAG, "指令应用失败：$cmd -> ${e.message}")
@@ -137,6 +143,29 @@ object CommandApplier {
         LocalSettings.saveZones(context, zones)
         activity.startActivity(
             Intent(activity, ZoneDisplayActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+    }
+
+    /* ---------------- media（素材上墙） ---------------- */
+
+    /**
+     * 素材上墙：打开 [MediaDisplayActivity] 加载服务端播放页。
+     * 素材存在性已由服务端在下发时校验；素材随后被删除时播放页自带
+     * 「素材不存在」提示，客户端无需重复校验。
+     */
+    private fun applyMedia(activity: Activity, args: JSONObject) {
+        val mediaId = args.optString("mediaId")
+        if (mediaId.isEmpty()) {
+            ControlChannel.lastError = "素材指令缺少 mediaId"
+            Toast.makeText(activity, ControlChannel.lastError, Toast.LENGTH_LONG).show()
+            return
+        }
+        val intervalSec = args.optInt("intervalSec", 10).coerceIn(3, 3600)
+        activity.startActivity(
+            Intent(activity, MediaDisplayActivity::class.java)
+                .putExtra(MediaDisplayActivity.EXTRA_MEDIA_ID, mediaId)
+                .putExtra(MediaDisplayActivity.EXTRA_INTERVAL_SEC, intervalSec)
                 .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
         )
     }

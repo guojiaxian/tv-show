@@ -210,8 +210,9 @@ function fullMeta(d) {
  * @param {function} opts.getProxy 反向代理实例取值（start() 内创建）
  * @param {function} opts.getShot  极速模式实例取值
  * @param {function} opts.getCtl   互控通道实例取值
+ * @param {function} opts.getMedia 素材上墙实例取值
  */
-function createRouter({ store, camera, files, getProxy, getShot, getCtl }) {
+function createRouter({ store, camera, files, getProxy, getShot, getCtl, getMedia }) {
   async function handle(req, res) {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     // 数据与写入口：读操作直接看当前快照，写操作走串行 mutate
@@ -220,6 +221,7 @@ function createRouter({ store, camera, files, getProxy, getShot, getCtl }) {
     const proxy = getProxy();
     const shot = getShot();
     const ctl = getCtl();
+    const media = getMedia ? getMedia() : null;
 
     // 反向代理必须用**未归一化**的原始 pathname（/cockpit/ 与 /cockpit 语义不同），
     // 所以要放在下面的尾斜杠归一化之前。
@@ -230,6 +232,9 @@ function createRouter({ store, camera, files, getProxy, getShot, getCtl }) {
 
     // 多设备互控 · 控制通道：/api/ctl/*
     if (ctl && ctl.isCtlPath(url.pathname)) return ctl.handle(req, res, url);
+
+    // 素材上墙：/api/media/*（上传/列表/删除）与 /media/*（播放页与资源）
+    if (media && media.isMediaPath(url.pathname)) return media.handle(req, res, url);
 
     const p = url.pathname.replace(/\/+$/, '') || '/';
     const method = req.method.toUpperCase();
@@ -308,7 +313,9 @@ function createRouter({ store, camera, files, getProxy, getShot, getCtl }) {
           ? shot.status()
           : { available: false, reason: '未初始化', activeEntries: 0 },
         // 多设备互控：设备档案规模与在线数
-        ctl: ctl ? ctl.status() : null
+        ctl: ctl ? ctl.status() : null,
+        // 素材上墙：素材规模 / 处理中 / 存储占用 / 转换工具可用性
+        media: media ? media.status() : null
       }, { ...CORS, ETag: etagOf(data) });
     }
 

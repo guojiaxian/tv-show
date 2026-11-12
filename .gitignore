@@ -8,6 +8,9 @@ server/server.log*
 server/.cache/
 # 极速模式的浏览器会话缓存（含站点 Cookie / Bearer Token，禁止入库）
 server/data/shot-cache/
+# 素材上墙：上传的素材文件、转换产物与注册表（现场数据，禁止入库）
+server/data/media/
+server/data/media.json*
 # 运行期数据（配置 / 设备档案及其备份、原子写临时文件）：现场数据，禁止入库。
 # 新部署首次启动时由 store.js / ctl.js 的种子数据自动生成。
 server/data/config.json*

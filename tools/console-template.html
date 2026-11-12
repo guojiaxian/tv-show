@@ -75,6 +75,20 @@ main { flex: 1; overflow: auto; padding: 16px 22px; display: flex; flex-directio
 .chip.remote { color: #9fe7ff; border-color: rgba(47,210,245,.5); background: rgba(47,210,245,.1); }
 .chip.local { color: #7df0c0; border-color: rgba(63,224,166,.4); }
 .chip.pending { color: #FFB020; border-color: rgba(255,176,32,.5); }
+/* 素材预览：弹层缩略图 + 设备卡「素材：xxx」可点击摘要 */
+.media-thumb {
+  width: 72px; height: 40px; object-fit: cover; flex: none; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 6px; background: #000; display: block;
+}
+.chip.sm-link { cursor: pointer; color: #9fe7ff; border-color: rgba(47,210,245,.5); }
+.chip.sm-link:hover { background: rgba(47,210,245,.12); }
+/* 转换进度：raster 相位为确定百分比；convert 相位（soffice）为不定长流动动画 */
+.bar-ind {
+  background: linear-gradient(90deg, #2FD2F5, #1667c8, #2FD2F5) !important;
+  background-size: 200% 100%;
+  animation: barSlide 1.1s linear infinite;
+}
+@keyframes barSlide { from { background-position: 0 0; } to { background-position: -200% 0; } }
 .card .ops { display: flex; gap: 6px; flex: none; align-items: center; flex-wrap: wrap; justify-content: flex-end; max-width: 60%; }
 .card .ops .btn { padding: 5px 10px; font-size: 12px; }
 .card .ops select {
@@ -207,6 +221,7 @@ footer select {
   <select id="selEntry"><option value="">显示页面…</option></select>
   <button class="btn" id="btnRotate">轮询</button>
   <button class="btn" id="btnZone">2×2 分屏</button>
+  <button class="btn" id="btnMedia">素材上墙</button>
   <button class="btn" id="btnHome">回首页</button>
   <button class="btn" id="btnRelease">取消控制</button>
   <button class="btn" id="btnRefreshCmd">刷新当前页</button>
@@ -229,14 +244,14 @@ footer select {
     btnSceneSave: $('btnSceneSave'), btnSceneManage: $('btnSceneManage'),
     deviceList: $('deviceList'), selInfo: $('selInfo'), selEntry: $('selEntry'),
     devSearch: $('devSearch'), devKind: $('devKind'), devOnline: $('devOnline'), devCount: $('devCount'),
-    btnRotate: $('btnRotate'), btnZone: $('btnZone'), btnHome: $('btnHome'),
+    btnRotate: $('btnRotate'), btnZone: $('btnZone'), btnHome: $('btnHome'), btnMedia: $('btnMedia'),
     btnRelease: $('btnRelease'), btnRefreshCmd: $('btnRefreshCmd'),
     btnSync: $('btnSync'), btnAll: $('btnAll'), mask: $('mask'),
     modalBox: $('modalBox'), toast: $('toast')
   };
 
   var state = {
-    devices: [], scenes: [], entries: [], selected: {}, deviceCards: {},
+    devices: [], scenes: [], entries: [], medias: [], selected: {}, deviceCards: {},
     filter: { q: '', kind: '', status: '' }
   };
   /** 3s 轮询防重入：请求未返回时不再叠加下一次 */
@@ -336,6 +351,11 @@ __API_JS__
       renderEntryOptions();
       renderDevices(); // 卡片上的「显示页面」下拉跟随最新页面列表
     } catch (e) { /* 下拉沿用旧列表 */ }
+    try {
+      var ml = await api('GET', '/api/media');
+      state.medias = ml.medias || [];
+      renderDevices(); // 素材摘要（「素材：xxx」）随素材增删与状态变化刷新
+    } catch (e2) { /* 素材列表沿用旧数据 */ }
   }
 
   function entryOf(id) {
@@ -375,7 +395,14 @@ __API_JS__
       return '分屏：' + r.zone.slots.map(function (s) { return s ? t(s).slice(0, 6) : '—'; }).join(' / ');
     }
     if (r.mode === 'settings') return '本机设置';
+    if (r.mode === 'media') return '素材：' + mediaNameOf(r.mediaId);
     return r.mode || '—';
+  }
+
+  /** 素材名（控制台摘要用）；素材已删除时退回 id */
+  function mediaNameOf(id) {
+    for (var i = 0; i < state.medias.length; i++) if (state.medias[i].id === id) return state.medias[i].name;
+    return id || '—';
   }
 
   /** 当前筛选条件下可见的设备（默认全部） */
@@ -487,6 +514,26 @@ __API_JS__
       ip.title = '连接来源 IP（DHCP 变化属正常）';
       st.appendChild(ip);
     }
+    // 实际画面摘要（显示：xxx / 轮询中 / 素材：xxx…）：确认「上屏成功」的最直接依据。
+    // 无上报时不显示（延续「不显示暂无上报」的约定），排在固定的 在线/模式/版本/IP 之后。
+    // 素材摘要可点击：打开与设备端同一播放页的预览浮层（上墙后控制台随时可看）。
+    // 注意：本函数里 var r = d.reported 在 ops 段才声明（var 提升），此处不能用它。
+    var sm = summary(d);
+    if (sm) {
+      var smChip = document.createElement('span');
+      smChip.className = 'chip';
+      smChip.textContent = sm;
+      var smRep = d.reported || {};
+      if (smRep.mode === 'media' && smRep.mediaId && mediaNameOf(smRep.mediaId) !== smRep.mediaId) {
+        var mid = smRep.mediaId;
+        smChip.className = 'chip sm-link';
+        smChip.title = '点击预览该素材（与设备端同一播放页；分页素材按各自间隔翻页）';
+        smChip.addEventListener('click', function () {
+          openMediaPreview(mid, mediaNameOf(mid), 10);
+        });
+      }
+      st.appendChild(smChip);
+    }
     if (d.pending) {
       var pend = document.createElement('span');
       pend.className = 'chip pending';
@@ -538,14 +585,11 @@ __API_JS__
       sendCmd('show', { entryId: sel.value }, [d.id]);
     });
     ops.appendChild(sel);
-    ['轮询', '分屏'].forEach(function (label) {
+    [['轮询', rotateDialog], ['分屏', zoneDialog], ['素材上墙', mediaDialog]].forEach(function (item) {
       var btn = document.createElement('button');
       btn.className = 'btn';
-      btn.textContent = label;
-      btn.addEventListener('click', function () {
-        if (label === '轮询') rotateDialog([d.id]);
-        else zoneDialog([d.id]);
-      });
+      btn.textContent = item[0];
+      btn.addEventListener('click', function () { item[1]([d.id]); });
       ops.appendChild(btn);
     });
     // 极速模式开关：按设备当前上报状态取反下发（维护类指令，不改变受控模式）
@@ -694,7 +738,7 @@ __API_JS__
    * 再走一轮轮询对齐真实结果。避免「已下发却还显示本地控制，要手动刷新」。
    */
   function applySentLocally(cmd, ids) {
-    var isDisplay = ['show', 'rotate', 'zone', 'home'].indexOf(cmd) >= 0;
+    var isDisplay = ['show', 'rotate', 'zone', 'home', 'media'].indexOf(cmd) >= 0;
     state.devices.forEach(function (d) {
       if (ids.indexOf(d.id) < 0) return;
       if (isDisplay) d.managed = true; // 展示类指令 = 强制接管（与服务端一致）
@@ -903,6 +947,341 @@ __API_JS__
       });
       foot.appendChild(cancel);
       foot.appendChild(ok);
+    });
+  }
+
+  /* ---------- 素材预览浮层（独立于弹窗遮罩，Esc 只关它自己） ---------- */
+
+  /**
+   * 打开素材预览：内嵌与设备端**同一播放页**（/media/<id>/view，同源 iframe）。
+   * 图片 / 视频与设备端画面一致；分页素材（PDF/PPT/文档）各自按间隔独立翻页，
+   * 不是逐帧镜像——作用是确认素材内容与观感，而非像素级同步。
+   * 自建遮罩层（z-index 高于弹窗）：素材弹层内、设备卡摘要上都能随时打开；
+   * Esc 仅关闭本浮层（捕获阶段拦截，不波及下层弹窗）。
+   */
+  function openMediaPreview(mediaId, name, intervalSec) {
+    var old = document.getElementById('mediaPvMask');
+    if (old) old.remove();
+    var mask = document.createElement('div');
+    mask.id = 'mediaPvMask';
+    mask.style.cssText = 'position:fixed;inset:0;z-index:70;background:rgba(4,8,16,.72);' +
+      'display:flex;align-items:center;justify-content:center;padding:20px';
+    var box = document.createElement('div');
+    box.style.cssText = 'width:min(880px,94vw);background:var(--panel);border:1px solid var(--line);' +
+      'border-radius:14px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.6)';
+    var head = document.createElement('div');
+    head.style.cssText = 'display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line)';
+    var h3 = document.createElement('h3');
+    h3.textContent = '素材预览 · ' + (name || mediaId);
+    h3.style.cssText = 'font-size:15px;margin:0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+    var note = document.createElement('span');
+    note.style.cssText = 'color:var(--muted);font-size:11px;white-space:nowrap';
+    note.textContent = '与设备端同一播放页 · 分页按各自间隔翻页';
+    var closeBtn = document.createElement('button');
+    closeBtn.className = 'btn';
+    closeBtn.textContent = '关闭';
+    var frameBox = document.createElement('div');
+    frameBox.style.cssText = 'position:relative;width:100%;padding-top:56.25%;background:#000';
+    var frame = document.createElement('iframe');
+    frame.src = '/media/' + encodeURIComponent(mediaId) + '/view?interval=' +
+      Math.min(3600, Math.max(3, Math.round(Number(intervalSec) || 10)));
+    frame.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0';
+    frame.setAttribute('allow', 'autoplay');
+    frame.setAttribute('title', '素材预览');
+    function close() {
+      frame.setAttribute('src', '');
+      mask.remove();
+      document.removeEventListener('keydown', onKey, true);
+    }
+    function onKey(e) {
+      if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); close(); }
+    }
+    closeBtn.addEventListener('click', close);
+    document.addEventListener('keydown', onKey, true);
+    head.appendChild(h3);
+    head.appendChild(note);
+    head.appendChild(closeBtn);
+    frameBox.appendChild(frame);
+    box.appendChild(head);
+    box.appendChild(frameBox);
+    mask.appendChild(box);
+    document.body.appendChild(mask);
+  }
+
+  /* ---------- 素材上墙弹层 ---------- */
+
+  var MEDIA_ACCEPT = '.jpg,.jpeg,.png,.gif,.webp,.bmp,.svg,.pdf,.ppt,.pptx,.doc,.docx,.mp4,.webm';
+
+  /**
+   * 素材上墙：explicit = 单台目标（设备卡快捷），否则底部勾选集。
+   * 上传采用原始字节流（POST /api/media/upload?name=），XHR 提供上传进度；
+   * PDF/PPT/文档由服务端异步转换（processing→ready/unsupported），就绪后自动下发 media 指令。
+   */
+  function mediaDialog(explicit) {
+    if (!explicit && !targets()) { toast('请先勾选目标设备'); return; }
+    var targetName = explicit ? (state.devices.find(function (d) { return d.id === explicit[0]; }) || {}).name : null;
+    var pollTimer = 0;
+    var progTimer = 0;
+    formModal('素材上墙', (targetName ? '目标：' + targetName + '。' : '对勾选设备下发。') +
+      '支持图片 / PDF / PPT / 文档 / MP4（PDF 需服务器装有 poppler-utils，PPT/文档需 LibreOffice），上传后自动上屏', function (body, foot) {
+      var fileRow = document.createElement('div');
+      fileRow.className = 'row';
+      var fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.accept = MEDIA_ACCEPT;
+      fileInput.style.display = 'none';
+      var pickBtn = document.createElement('button');
+      pickBtn.className = 'btn primary';
+      pickBtn.textContent = '选择素材…';
+      var fileName = document.createElement('span');
+      fileName.className = 'grow';
+      fileName.textContent = '未选择文件';
+      fileRow.appendChild(pickBtn);
+      fileRow.appendChild(fileName);
+      body.appendChild(fileRow);
+      body.appendChild(fileInput);
+
+      var bar = document.createElement('div');
+      bar.style.cssText = 'height:6px;border-radius:3px;background:rgba(255,255,255,.12);overflow:hidden;margin:6px 0;display:none';
+      var barIn = document.createElement('div');
+      barIn.style.cssText = 'height:100%;width:0;background:#2FD2F5;transition:width .2s';
+      bar.appendChild(barIn);
+      body.appendChild(bar);
+
+      // 转换进度文本（「正在转换为图片：已转换 x/N 页（p%）」/ LibreOffice 相位提示）
+      var progNote = document.createElement('div');
+      progNote.id = 'mediaProgNote';
+      progNote.style.cssText = 'color:var(--muted);font-size:12px;padding:0 2px;display:none';
+      body.appendChild(progNote);
+
+      var rowIv = document.createElement('div');
+      rowIv.className = 'row';
+      var lbIv = document.createElement('label');
+      lbIv.appendChild(document.createTextNode('每页停留（PDF/PPT/文档翻页）'));
+      var selIv = document.createElement('select');
+      [5, 10, 15, 20, 30, 60].forEach(function (s) {
+        var o = document.createElement('option');
+        o.value = String(s);
+        o.textContent = s + ' 秒';
+        if (s === 10) o.selected = true;
+        selIv.appendChild(o);
+      });
+      lbIv.appendChild(selIv);
+      rowIv.appendChild(lbIv);
+      body.appendChild(rowIv);
+
+      var listBox = document.createElement('div');
+      body.appendChild(listBox);
+
+      /** 同步素材清单到弹层（上传后立即可见；弹层开着时每 2.5s 跟随服务端状态） */
+      function syncList() {
+        return api('GET', '/api/media').then(function (json) {
+          state.medias = json.medias || [];
+          renderList();
+        }).catch(function () { /* 下一轮重试 */ });
+      }
+      var listTimer = setInterval(function () {
+        if (els.mask.hidden) { clearInterval(listTimer); clearInterval(progTimer); return; }
+        syncList();
+      }, 2500);
+
+      function sendTo(mediaId) {
+        var t = explicit || targets();
+        if (!t || !t.length) { toast('请先勾选目标设备'); return; }
+        sendCmd('media', { mediaId: mediaId, intervalSec: Number(selIv.value) }, t);
+      }
+
+      /** 上传成功后：图片/视频即时下发；分页素材轮询转换状态 + 实时进度条，就绪即自动上墙 */
+      function autoSendWhenReady(m) {
+        var t = explicit || targets();
+        renderList();
+        if (!t || !t.length) return;
+        if (m.status === 'ready') { sendTo(m.id); return; }
+        if (m.status === 'unsupported') { toast('素材无法上墙：' + (m.reason || '')); return; }
+        toast('素材转换中，就绪后自动上墙…');
+        clearTimeout(pollTimer);
+        clearInterval(progTimer);
+        var t0 = Date.now();
+
+        // 实时转换进度：600ms 拉一次 /media/<id>/progress。
+        // raster 相位（PDF→图片）按页数报确定百分比；convert 相位（soffice→PDF）为不定长动画。
+        var updateProg = function () {
+          if (els.mask.hidden) { clearInterval(progTimer); return; }
+          api('GET', '/media/' + encodeURIComponent(m.id) + '/progress').then(function (p) {
+            if (!p || p.status !== 'processing') {
+              bar.style.display = 'none';
+              progNote.style.display = 'none';
+              clearInterval(progTimer);
+              return;
+            }
+            bar.style.display = 'block';
+            progNote.style.display = 'block';
+            if (p.phase === 'raster' && p.total > 0) {
+              barIn.className = '';
+              barIn.style.width = Math.max(4, p.percent) + '%';
+              progNote.textContent = '正在转换为图片：已转换 ' + p.done + '/' + p.total + ' 页（' + p.percent + '%）';
+            } else {
+              barIn.className = 'bar-ind';
+              barIn.style.width = '100%';
+              progNote.textContent = p.phase === 'convert'
+                ? '正在转换 ' + (m.label || '素材') + ' 为 PDF（LibreOffice）…'
+                : '正在转换为图片…';
+            }
+          }).catch(function () { /* 下一轮重试 */ });
+        };
+        progTimer = setInterval(updateProg, 600);
+        updateProg();
+
+        pollTimer = setInterval(function () {
+          api('GET', '/api/media').then(function (json) {
+            var cur = (json.medias || []).filter(function (x) { return x.id === m.id; })[0];
+            renderList();
+            if (!cur) { clearInterval(pollTimer); clearInterval(progTimer); return; }
+            if (cur.status === 'ready') {
+              clearInterval(pollTimer); clearInterval(progTimer);
+              bar.style.display = 'none'; progNote.style.display = 'none';
+              sendTo(m.id);
+            } else if (cur.status === 'unsupported') {
+              clearInterval(pollTimer); clearInterval(progTimer);
+              bar.style.display = 'none'; progNote.style.display = 'none';
+              toast('素材无法上墙：' + (cur.reason || ''));
+            } else if (Date.now() - t0 > 300000) {
+              clearInterval(pollTimer); clearInterval(progTimer);
+              toast('素材转换超时，可稍后在列表手动「上墙」');
+            }
+          }).catch(function () { /* 下一轮重试 */ });
+        }, 1500);
+      }
+
+      function upload(file) {
+        if (!file) return;
+        fileName.textContent = file.name + '（' + (file.size / 1048576).toFixed(1) + 'MB）';
+        bar.style.display = 'block';
+        barIn.style.width = '0%';
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/media/upload?name=' + encodeURIComponent(file.name));
+        xhr.upload.onprogress = function (ev) {
+          if (ev.lengthComputable) barIn.style.width = Math.round(ev.loaded / ev.total * 100) + '%';
+        };
+        xhr.onload = function () {
+          bar.style.display = 'none';
+          var json = null;
+          try { json = JSON.parse(xhr.responseText); } catch (e) { /* 非 JSON */ }
+          if (xhr.status !== 201 || !json || !json.media) {
+            toast('上传失败：' + ((json && json.error) || ('HTTP ' + xhr.status)));
+            return;
+          }
+          toast('已上传「' + json.media.name + '」');
+          autoSendWhenReady(json.media);
+          refreshEntries();
+          syncList();
+        };
+        xhr.onerror = function () { bar.style.display = 'none'; toast('上传失败：网络错误'); };
+        xhr.send(file);
+      }
+
+      function renderList() {
+        listBox.innerHTML = '';
+        if (!state.medias.length) {
+          var tip = document.createElement('div');
+          tip.style.cssText = 'color:var(--muted);font-size:12px;padding:8px 4px;';
+          tip.textContent = '还没有素材：点上方「选择素材…」从本地选择文件上传。';
+          listBox.appendChild(tip);
+          return;
+        }
+        state.medias.forEach(function (m) {
+          var row = document.createElement('div');
+          row.className = 'row';
+          // 缩略图：图片→原图、分页素材→第 1 页；视频无预览图（onerror 隐藏，仅剩名称与类型）
+          var thumb = document.createElement('img');
+          thumb.className = 'media-thumb';
+          thumb.alt = '';
+          thumb.loading = 'lazy';
+          thumb.src = '/media/' + encodeURIComponent(m.id) + '/preview';
+          thumb.title = '点击预览';
+          thumb.addEventListener('error', function () { thumb.style.display = 'none'; });
+          thumb.addEventListener('click', function () {
+            if (m.status === 'ready') openMediaPreview(m.id, m.name, Number(selIv.value));
+          });
+          row.appendChild(thumb);
+          var nm = document.createElement('span');
+          nm.className = 'grow';
+          nm.textContent = m.name + (m.pages > 1 ? '（' + m.pages + ' 页）' : '') +
+            '（' + (m.size > 1048576 ? (m.size / 1048576).toFixed(1) + 'MB' : Math.round(m.size / 1024) + 'KB') + '）';
+          row.appendChild(nm);
+          var kind = document.createElement('span');
+          kind.className = 'chip';
+          kind.textContent = m.label;
+          row.appendChild(kind);
+          if (m.status === 'processing') {
+            var st = document.createElement('span');
+            st.className = 'chip pending';
+            st.textContent = '转换中' + (m.progress && m.progress.phase === 'raster' && m.progress.total > 0
+              ? ' ' + m.progress.percent + '%'
+              : '…');
+            row.appendChild(st);
+          } else if (m.status === 'unsupported') {
+            var st2 = document.createElement('span');
+            st2.className = 'chip pending';
+            st2.title = m.reason || '';
+            st2.textContent = '不可用';
+            row.appendChild(st2);
+          }
+          var pvBtn = document.createElement('button');
+          pvBtn.className = 'btn';
+          pvBtn.style.padding = '3px 10px';
+          pvBtn.textContent = '预览';
+          pvBtn.disabled = m.status !== 'ready';
+          pvBtn.title = m.status === 'ready'
+            ? '打开预览浮层（与设备端同一播放页）'
+            : (m.reason || '素材不可用');
+          pvBtn.addEventListener('click', function () {
+            openMediaPreview(m.id, m.name, Number(selIv.value));
+          });
+          row.appendChild(pvBtn);
+
+          var send = document.createElement('button');
+          send.className = 'btn primary';
+          send.style.padding = '3px 10px';
+          send.textContent = '上墙';
+          send.disabled = m.status !== 'ready';
+          send.title = m.status === 'unsupported' ? (m.reason || '素材不可用') : '对目标设备下发该素材';
+          send.addEventListener('click', function () { sendTo(m.id); });
+          row.appendChild(send);
+          var del = document.createElement('button');
+          del.className = 'btn danger';
+          del.style.padding = '3px 10px';
+          del.textContent = '删除';
+          del.addEventListener('click', function () {
+            confirmModal('删除素材？', '将删除「' + m.name + '」。正在展示它的设备会看到「素材不存在」提示。', [
+              { text: '保留' },
+              { text: '删除', danger: true, run: async function () {
+                  try {
+                    await api('DELETE', '/api/media/' + encodeURIComponent(m.id));
+                    toast('已删除素材');
+                    refreshEntries();
+                    renderList();
+                  } catch (e) { toast('删除失败：' + e.message); }
+                } }
+            ]);
+          });
+          row.appendChild(del);
+          listBox.appendChild(row);
+        });
+      }
+      syncList();
+
+      pickBtn.addEventListener('click', function () { fileInput.click(); });
+      fileInput.addEventListener('change', function () {
+        if (fileInput.files && fileInput.files[0]) upload(fileInput.files[0]);
+        fileInput.value = '';
+      });
+
+      var close = document.createElement('button');
+      close.className = 'btn';
+      close.textContent = '关闭';
+      close.addEventListener('click', function () { clearInterval(listTimer); clearInterval(progTimer); closeModal(); });
+      foot.appendChild(close);
     });
   }
 
@@ -1148,6 +1527,7 @@ __API_JS__
   });
   els.btnRotate.addEventListener('click', function () { rotateDialog(); });
   els.btnZone.addEventListener('click', function () { zoneDialog(); });
+  els.btnMedia.addEventListener('click', function () { mediaDialog(); });
   els.btnHome.addEventListener('click', function () { sendCmd('home'); });
   els.btnRelease.addEventListener('click', function () { releaseCmd(); });
   els.btnRefreshCmd.addEventListener('click', function () { sendCmd('refresh'); });

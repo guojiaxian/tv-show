@@ -35,13 +35,28 @@
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | POST | `/api/ctl/beat` | 设备心跳（3s 一拍）：注册 / 上报状态 / 领指令；`switchTo` 字段保留协议兼容（当前客户端不发送） |
-| POST | `/api/ctl/send` | 下发指令 `{targets, cmd, args}`；展示类（show/rotate/zone/home）自动接管，维护类（refresh/sync）不改模式；`targets:["*"]` = 全部设备 |
+| POST | `/api/ctl/send` | 下发指令 `{targets, cmd, args}`；展示类（show/rotate/zone/home/**media**）自动接管，维护类（refresh/sync/turbo）不改模式；`targets:["*"]` = 全部设备 |
 | POST | `/api/ctl/release` | 「取消控制」：目标设备 `managed=false` 并清空 desired（与设备端开关同一状态翻转） |
 | GET | `/api/ctl/devices` | 设备列表（模式 / 在线判定 / reported 状态 / 待送达标记）+ 场景列表 |
 | PUT / DELETE | `/api/ctl/device/:id` | 设备改名 / 从档案移除 |
 | POST | `/api/ctl/scenes` | 保存场景：直接传 `steps`，或快照当前现场（受控设备取 desired，本地设备把上报状态转为等价指令） |
 | POST | `/api/ctl/scenes/:id/apply` | 应用场景（逐台下发，seq 逐台自增；离线设备存储转发补投递） |
 | PUT / DELETE | `/api/ctl/scenes/:id` | 场景重命名 / 删除 |
+
+素材上墙接口（`/api/media/*` 与 `/media/*`，内网免鉴权；类型分析见[素材上墙-分析与设计](素材上墙-分析与设计.md)）：
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| POST | `/api/media/upload?name=<文件名>` | 上传素材，请求体为**原始文件字节**（非 multipart）。支持：图片 jpg/jpeg/png/gif/webp/bmp/svg、PDF、PPT/PPTX、DOC/DOCX、MP4/WebM；上限 200MB（超限 413）。图片/视频即时 `ready`，PDF/PPT 异步转换（`processing → ready/unsupported`） |
+| GET | `/api/media` | 素材列表（仅元数据：id/name/kind/label/size/pages/status/reason/createdAt） |
+| DELETE | `/api/media/:id` | 删除素材（含转换产物）；正在展示它的设备会看到「素材不存在」提示 |
+| GET | `/media/:id/view?interval=10` | **播放页**（ES5，Web 与 TV 两端共用）：图片全屏 / 分页定时翻页（3–3600s，默认 10）+ 手动播放（页内控制条、方向键/空格、电视端遥控器转发）/ 视频循环播放 |
+| GET | `/media/:id/progress` | 转换进度（实时）：`{status, phase: convert\|raster\|done, done, total, percent}`；raster 按「已生成页数/总页数」报确定百分比，convert（soffice）为不定长（percent=0）；列表接口每条素材同样携带 `progress` |
+| GET | `/media/:id/raw` | 原始文件（图片/视频）；支持 Range 请求（视频起播/拖动必需） |
+| GET | `/media/:id/page-N.png` | 分页图片（PDF/PPT/DOC 的转换产物，1 起） |
+| GET | `/media/:id/preview` | 预览图（图片→原图；分页→第 1 页；视频无预览 404） |
+
+互控 `media` 指令（展示类，自动接管）：`args = { mediaId 必填, intervalSec? 3–3600 }`；下发时校验素材存在性；可入场景。
 
 > 服务端接口只围绕**内容**（元信息 + 页面列表）。轮询与分区是客户端本机设置，服务端不提供对应接口。
 
