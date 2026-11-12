@@ -14,7 +14,7 @@
 - **电脑浏览器客户端**（`server/client/index.html`，构建产物）：同源单文件页，能力与电视端基本对齐，被控时不锁鼠标。
 - **独立控制台**（`/console`）：平板书签直达的纯控制端，自身**不注册**为受控设备；也是素材上墙的上传/预览/下发入口。
 
-当前版本基线：**Android 2.4 / versionCode 27**；服务端零第三方运行时依赖（`esbuild`、`playwright-core` 均为可选增强；素材上墙的 PDF/PPT 转换依赖可选系统工具 `poppler-utils` / `LibreOffice`）。
+当前版本基线：**Android 2.5 / versionCode 28**；服务端零第三方运行时依赖（`esbuild`、`playwright-core` 均为可选增强；素材上墙的 PDF/PPT 转换依赖可选系统工具 `poppler-utils` / `LibreOffice`）。
 
 生产环境：systemd 单元 `tvshow.service`，工作目录 `server/`，默认 `18000` 端口。
 
@@ -79,10 +79,10 @@ export JAVA_HOME=/opt/java/jdk-17.0.20.1+1    # 本机已有；其他环境按�
 ./gradlew :app:compileDebugKotlin
 ./gradlew :app:lintDebug
 ./gradlew :app:assembleRelease
-cp app/build/outputs/apk/release/app-release.apk dist/TvShowCenter-v2.4-release.apk
+cp app/build/outputs/apk/release/app-release.apk dist/TvShowCenter-v2.5-release.apk
 # 打包后核对版本与签名（麒麟机 build-tools 路径）
 /opt/android-sdk/build-tools/35.0.0/aapt2 dump badging app/build/outputs/apk/release/app-release.apk | grep ^package
-/opt/android-sdk/build-tools/35.0.0/apksigner verify --print-certs dist/TvShowCenter-v2.4-release.apk
+/opt/android-sdk/build-tools/35.0.0/apksigner verify --print-certs dist/TvShowCenter-v2.5-release.apk
 
 # 素材上墙的系统依赖（麒麟 V10；装完必须重启服务刷新探测）
 yum install -y poppler-utils                                            # PDF → 图片（pdftoppm/pdfinfo）
@@ -254,9 +254,10 @@ systemctl restart tvshow && curl -s localhost:18000/api/admin/health     # 看 m
 | **APK 2.2 / versionCode 25** | 新增 `MediaDisplayActivity` + `CommandApplier.applyMedia` + `ControlChannel.reportMedia` + Manifest 第 6 个 Activity；电脑端内嵌播放页 |
 | **APK 2.3 / versionCode 26** | 播放页手动播放（控制条/键盘/遥控器转发）；服务端转换实时进度（`/progress`）；控制台预览（缩略图/预览浮层/可点摘要） |
 | **APK 2.4 / versionCode 27** | 受控上墙时放行 `←/→/确定`（遥控器可手动翻页/暂停）；素材上墙改为默认手动翻页，控制台新增「自动翻页」设置（间隔/循环）；电脑端方向键转发素材页、播放页左右点击热区 |
+| **APK 2.5 / versionCode 28** | 首页底栏右侧显示当前安装包版本号（`v2.5 (28)`），现场排查无需进设置 |
 | 现场运维 | 2026-11-12 装 poppler-utils + LibreOffice（impress/writer/filters）并重启；实测 PPTX→2 页 PNG 全链路通过 |
 
-交付验证口径：服务端隔离回归 **411/411**、Kotlin 单测 19/19、lint、`assembleRelease`（v2.4，签名有效）；`test-media` 含性能基准（20MB/60MB 上传、RSS、24 路并发、首字节）。本机无 KVM，电视端真机交互按部署自检清单 36–41 条现场确认。
+交付验证口径：服务端隔离回归 **411/411**、Kotlin 单测 19/19、lint、`assembleRelease`（v2.5，签名有效）；`test-media` 含性能基准（20MB/60MB 上传、RSS、24 路并发、首字节）。本机无 KVM，电视端真机交互按部署自检清单 36–41 条现场确认。
 
 ### 5.6 反向代理与自动登录
 
@@ -280,6 +281,7 @@ systemctl restart tvshow && curl -s localhost:18000/api/admin/health     # 看 m
 - **弹窗**：管理后台/控制台的弹窗**只能通过按钮或 Esc 关闭**，点击遮罩不关闭（平板软键盘弹出易误点）；安卓 `TvDialogs` 确认框 `setCancelable(false)` + `setCanceledOnTouchOutside(false)`。
 - **APK 版本**：小米电视覆盖安装要求 `versionCode` **严格递增**，禁止回退；签名需 v1+v2+v3（`build.gradle.kts` 已配），否则内置安装器报「检测安装包异常」。发布证书 `keystore/tvshow-release.jks`，口令在 `gradle.properties`（示例值，正式外发前应替换）。
 - **本地设置**：轮询（开关/间隔/序列/时钟起点）、分区四格、极速开关均在本机，各台电视互不影响；无服务端指令时行为与旧版本一致。
+- **首页版本号（2.5 起）**：底栏右侧常显 `v<versionName> (<versionCode>)`，值来自 `BuildConfig`，用于现场确认安装的是哪一版；不要写死在 XML。
 - **素材展示页（`MediaDisplayActivity`，2.2 起 / 2.3 手动翻页 / 2.4 受控时放行翻页键）**：第 6 个 Activity（`AppTheme.Fullscreen`、横屏、`exported=false`、`standard`），加载服务端 `/media/<id>/view?interval=N`；用 `WebViewFactory` 统一视口装配。键位：`←/→` 手动翻页、`确定` 暂停/继续（`__tvMediaNav` 钩子）、`菜单` 控制菜单、`返回` 退出；**播放键必须在受控锁定检查之前处理**（保证控制台上墙后遥控器仍可翻页），菜单等其余键仍受锁定，【返回】放行。`onResume` 里 `ControlChannel.reportMedia(mediaId)`，实现 `Reloadable` 供 `refresh` 指令刷新。新增指令时 `DISPLAY_CMDS`/`apply()`/`followsCommand`/控制台 `applySentLocally`/电脑端 `lastApplied` 五处必须同步（见 §5.5.7）。
 
 ---

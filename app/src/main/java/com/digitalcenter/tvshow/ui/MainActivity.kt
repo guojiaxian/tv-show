@@ -16,6 +16,7 @@ import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import com.digitalcenter.tvshow.BuildConfig
 import com.digitalcenter.tvshow.R
 import com.digitalcenter.tvshow.config.ConfigLoader
 import com.digitalcenter.tvshow.config.DisplayEntry
@@ -82,6 +83,8 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        // 首页底栏显示当前安装包版本，现场排查「装的是哪版」无需进设置
+        binding.appVersion.text = "v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
         binding.emptySync.setOnClickListener { syncFromServer(force = true) }
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
