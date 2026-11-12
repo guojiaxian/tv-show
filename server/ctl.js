@@ -7,7 +7,8 @@
  *   POST /api/ctl/beat              设备心跳：注册 / 上报状态 / 领指令 / 同步模式
  *   POST /api/ctl/send              控制端下发指令（targets 支持 ["*"]；
  *                                   展示类含素材上墙 media）
- *   POST /api/ctl/release           控制端「取消控制」：managed=false + desired 清空
+ *   POST /api/ctl/release           控制端「取消控制」：managed=false + desired 清空；
+ *                                   body.home=true 时为「退出上墙」：先下发 home，设备 ack 后自动交还本地
  *   GET  /api/ctl/devices           设备列表（含在线判定 / 待送达标记）
  *   PUT  /api/ctl/device/:id        改名 / 开关 bootRestore
  *   DELETE /api/ctl/device/:id      从控制列表暂时移除（设备下次心跳会自动重新注册）
@@ -92,6 +93,8 @@ function createCtl({ dataDir, getEntries, getMedia, getContentVersion, log = () 
       registeredAt: raw.registeredAt || new Date().toISOString(),
       managed: raw.managed === true,
       desired: normalizeDesired(raw.desired),
+      // 「退出上墙」在途标记：设备 ack 该 seq 后自动交还本地（服务重启后仍能完成）
+      releaseAfterAck: Math.max(0, Number(raw.releaseAfterAck) || 0),
       ackedSeq: Number.isFinite(Number(raw.ackedSeq)) ? Number(raw.ackedSeq) : 0,
       // 以下为内存态（不落盘）
       reported: null,
@@ -163,6 +166,7 @@ function createCtl({ dataDir, getEntries, getMedia, getContentVersion, log = () 
         registeredAt: d.registeredAt,
         managed: d.managed,
         desired: d.desired,
+        releaseAfterAck: d.releaseAfterAck || 0,
         ackedSeq: d.ackedSeq
       })),
       scenes: data.scenes
@@ -330,6 +334,7 @@ function createCtl({ dataDir, getEntries, getMedia, getContentVersion, log = () 
           if (dev.managed || dev.desired) log(`[ctl] ${dev.id} 现场交还本地控制`);
           dev.managed = false;
           dev.desired = null;
+          dev.releaseAfterAck = 0;
           dirty = true;
         }
       } else if (switchTo === 'remote') {
@@ -355,6 +360,17 @@ function createCtl({ dataDir, getEntries, getMedia, getContentVersion, log = () 
         log(`[ctl] ${dev.id} 回归即本地控制（${boot ? '页面重开/重启' : '离线回归'}），丢弃未确认指令`);
         dev.desired = null;
         dev.managed = false;
+        dev.releaseAfterAck = 0;
+        dirty = true;
+      }
+
+      // 「退出上墙」完成：home 指令已被设备应用并 ack → 交还本地
+      //（本拍响应即带 managed=false + desired=null，客户端随后解锁）
+      if (dev.releaseAfterAck && dev.ackedSeq >= dev.releaseAfterAck) {
+        log(`[ctl] ${dev.id} 退出上墙完成，交还本地控制`);
+        dev.managed = false;
+        dev.desired = null;
+        dev.releaseAfterAck = 0;
         dirty = true;
       }
 
@@ -406,6 +422,7 @@ function createCtl({ dataDir, getEntries, getMedia, getContentVersion, log = () 
         if (!record) continue;
         if (isDisplay) record.managed = true; // 展示类指令 = 强制接管（设计 §8）
         record.desired = { seq: d.seq, cmd, args, issuedAt };
+        record.releaseAfterAck = 0; // 新指令优先：取消未完成的「退出上墙」
         results.push({ id: record.id, ok: true, seq: d.seq });
       }
       log(`[ctl] 下发 ${cmd} → ${results.map((r) => r.id).join(', ')}（seq=${d.seq}）`);
@@ -415,17 +432,33 @@ function createCtl({ dataDir, getEntries, getMedia, getContentVersion, log = () 
 
   async function handleRelease(body) {
     const targets = resolveTargets(body.targets);
+    // home=true：「退出上墙」——先下发 home，设备 ack 后自动交还本地。
+    // 不能直接 release：清空 desired 会让 home 永远送不到设备。
+    const goHome = body.home === true;
     return mutate((d) => {
       const results = [];
+      if (goHome) d.seq += 1;
+      const seq = d.seq;
+      const issuedAt = new Date().toISOString();
       for (const dev of targets) {
         const record = d.devices.find((x) => x.id === dev.id);
         if (!record) continue;
-        record.managed = false;
-        record.desired = null;
-        results.push({ id: record.id, ok: true });
+        if (goHome) {
+          record.managed = true;
+          record.desired = { seq, cmd: 'home', args: {}, issuedAt };
+          record.releaseAfterAck = seq;
+          results.push({ id: record.id, ok: true, seq });
+        } else {
+          record.managed = false;
+          record.desired = null;
+          record.releaseAfterAck = 0;
+          results.push({ id: record.id, ok: true });
+        }
       }
-      log(`[ctl] 取消控制 → ${results.map((r) => r.id).join(', ')}`);
-      return { ok: true, results };
+      log(goHome
+        ? `[ctl] 退出上墙（回首页后交还本地） → ${results.map((r) => r.id).join(', ')}（seq=${seq}）`
+        : `[ctl] 取消控制 → ${results.map((r) => r.id).join(', ')}`);
+      return { ok: true, seq: goHome ? seq : undefined, results };
     });
   }
 

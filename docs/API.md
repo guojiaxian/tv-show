@@ -36,7 +36,7 @@
 | --- | --- | --- |
 | POST | `/api/ctl/beat` | 设备心跳（3s 一拍）：注册 / 上报状态 / 领指令；`switchTo` 字段保留协议兼容（当前客户端不发送） |
 | POST | `/api/ctl/send` | 下发指令 `{targets, cmd, args}`；展示类（show/rotate/zone/home/**media**）自动接管，维护类（refresh/sync/turbo）不改模式；`targets:["*"]` = 全部设备 |
-| POST | `/api/ctl/release` | 「取消控制」：目标设备 `managed=false` 并清空 desired（与设备端开关同一状态翻转） |
+| POST | `/api/ctl/release` | 「取消控制」：目标设备 `managed=false` 并清空 desired；传 `home:true` 为「退出上墙」：先下发 `home`，设备 ack 后自动交还本地 |
 | GET | `/api/ctl/devices` | 设备列表（模式 / 在线判定 / reported 状态 / 待送达标记）+ 场景列表 |
 | PUT / DELETE | `/api/ctl/device/:id` | 设备改名 / 从档案移除 |
 | POST | `/api/ctl/scenes` | 保存场景：直接传 `steps`，或快照当前现场（受控设备取 desired，本地设备把上报状态转为等价指令） |

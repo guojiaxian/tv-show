@@ -216,6 +216,7 @@ systemctl restart tvshow && curl -s localhost:18000/api/admin/health     # 看 m
 
 - 入口：设备卡右侧「素材上墙」（单台）与底部操作条「素材上墙」（勾选集）。
 - 弹层：选择文件（隐藏 input + 自定义按钮）→ XHR 上传带字节进度 → **就绪后自动下发**（图片/视频立即；分页素材轮询 `ready` 后自动，无需再点）；列表每行：缩略图 + 素材名（页数/大小）+ 类型 chip + 转换状态（含百分比）+「预览」+「上墙」+「删除」；「每页停留」下拉（5/10/15/20/30/60，默认 10）。
+- **退出上墙**：设备卡（仅 `reported.mode==='media'` 时显示）与素材弹层底部都有「退出上墙」；走 `POST /api/ctl/release {home:true}`——服务端先下发 `home`，设备 ack 后自动置 `managed=false`（**不能直接 release**，否则 desired 被清空，home 永远送不到设备）。设备端无需改动。
 - **列表有独立轮询**：`syncList()` 2.5s 刷新（弹层关闭自停）；上传成功后必须主动调用它，否则首传素材在列表里看不到、删除按钮无从点起（曾踩）。
 - 预览：缩略图走 `/media/<id>/preview`（图片=原图；分页=第 1 页；视频无预览，`onerror` 隐藏）；「预览」按钮与上墙后设备卡「素材：xxx」摘要都打开**同一预览浮层**（自建遮罩 z-index 70，高于素材弹层；16:9 iframe 内嵌同一播放页）。**Esc 必须只关预览浮层**（捕获阶段监听 + `stopPropagation`，见 §8）。预览与设备端不是逐帧镜像：分页素材各自按间隔翻页。
 - 素材弹层复用了控制台通用 `formModal`：`#modalBox`，footer 按钮用 `.modal footer .btn` 定位；确认弹层用 `.confirm-btn`。

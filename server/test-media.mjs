@@ -308,6 +308,23 @@ const created = [];
     sceneSnap.json.scene && sceneSnap.json.scene.steps);
   created.sceneId = sceneSnap.json.scene?.id;
 
+  /* ==================== 7.5 退出上墙（回首页 + 交还本地） ==================== */
+  const relHome = await api('POST', '/api/ctl/release', { targets: ['dev-media01'], home: true });
+  check('退出上墙受理：下发 home 并返回 seq',
+    relHome.status === 200 && relHome.json.seq > 0 && relHome.json.results.length === 1,
+    relHome.json);
+  const homeGot = await beat('dev-media01');
+  check('退出上墙：设备心跳领到 home 指令（仍处于接管态）',
+    homeGot.json.desired && homeGot.json.desired.cmd === 'home' && homeGot.json.managed === true,
+    homeGot.json);
+  const homeAck = await beat('dev-media01', {
+    ackedSeq: homeGot.json.desired.seq,
+    state: { mode: 'home' }
+  });
+  check('退出上墙：home ack 后自动交还本地（managed=false，desired 清空）',
+    homeAck.json.managed === false && homeAck.json.desired === null,
+    homeAck.json);
+
   /* ==================== 8. 删除 ==================== */
   const del = await api('DELETE', `/api/media/${imgId}`);
   const delAgain = await api('DELETE', `/api/media/${imgId}`);

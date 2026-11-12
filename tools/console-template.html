@@ -592,6 +592,15 @@ __API_JS__
       btn.addEventListener('click', function () { item[1]([d.id]); });
       ops.appendChild(btn);
     });
+    // 正在展示素材时给出显式退出入口（结束素材 → 回首页 → 交还本地）
+    if (d.reported && d.reported.mode === 'media') {
+      var exitM = document.createElement('button');
+      exitM.className = 'btn';
+      exitM.textContent = '退出上墙';
+      exitM.title = '结束素材展示，回到首页并交还本地控制';
+      exitM.addEventListener('click', function () { exitMediaCmd([d.id]); });
+      ops.appendChild(exitM);
+    }
     // 极速模式开关：按设备当前上报状态取反下发（维护类指令，不改变受控模式）
     var turboOn = !!(d.reported && d.reported.turbo);
     var turboBtn = document.createElement('button');
@@ -792,6 +801,21 @@ __API_JS__
         refresh();
       } }
     ]);
+  }
+
+  /**
+   * 退出上墙：目标是「结束素材展示并回首页」，不是把画面停在素材页。
+   * 服务端先下发 home，等设备 ack 后再自动交还本地（managed=false），
+   * 避免直接 release 清空 desired 导致 home 指令永远送不到设备。
+   */
+  async function exitMediaCmd(explicit) {
+    var t = explicit || targets();
+    if (!t) { toast('请先勾选目标设备'); return; }
+    try {
+      var json = await api('POST', '/api/ctl/release', { targets: t, home: true });
+      toast('已退出上墙：' + json.results.length + ' 台设备回首页并交还本地');
+    } catch (e) { toast('退出上墙失败：' + e.message); }
+    refresh();
   }
 
   /* ---------- 轮询弹层 ---------- */
@@ -1276,6 +1300,13 @@ __API_JS__
         if (fileInput.files && fileInput.files[0]) upload(fileInput.files[0]);
         fileInput.value = '';
       });
+
+      var exitBtn = document.createElement('button');
+      exitBtn.className = 'btn';
+      exitBtn.textContent = '退出上墙';
+      exitBtn.title = '结束素材展示，回到首页并交还本地控制';
+      exitBtn.addEventListener('click', function () { exitMediaCmd(explicit); });
+      foot.appendChild(exitBtn);
 
       var close = document.createElement('button');
       close.className = 'btn';
